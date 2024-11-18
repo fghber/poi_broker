@@ -19,19 +19,17 @@ Our alert broker, called *Point of Interest*, is tailored towards the needs of a
 ## Usage
 This repository contais the web frontend, including a small database for testing purposes.
 
-After downloading the package, within the folder `_web_frontend`, create a file with the name `.env` with the following content for local development:
-
-`FLASK_ENV=development`
-
-
-install all required packages:
+After downloading the package, within the folder `_web_frontend` install all required packages:
 
 `pip3 install -r requirements.txt`
 
 
-start it from the terminal with
+start the web app from the terminal with 
 
 `flask run`
+
+or `flask --app app run --debug` to start in debug mode (alternatively, `export FLASK_DEBUG=1` in the terminal https://stackoverflow.com/questions/17309889/how-to-debug-a-flask-app)
+(optionally, install the flask-debugtoolbar https://www.askpython.com/python-modules/flask/flask-debug-mode)
 
 In the web browser, enter
 `http://127.0.0.1:5000/`

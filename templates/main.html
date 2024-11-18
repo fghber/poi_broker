@@ -149,7 +149,7 @@ See the help page for descriptions of the table values and available filters.<br
               <th class="sortable" id="alert_id" title='Enter a specific alert_id, and click the "Filter" button.'>alert_id</th>
               <th class="sortable" id="ztf_object_id" title='Enter a specific ztf_object_id, and click the "Filter" button.'>ztf_object_id</th>
               <th class="" id="date_alert_mjd" title='*Julian Date - Enter a specific *jd or enter a range, and click the "Filter" button.  Value ranges can be entered like: >2459190.85, <2459190.85, or  2459190.84 2459190.86'>mjd</th>
-              <th title='ZTF filter g,r,i - Select a filter, and click the "Filter" button.'>filter</th>
+              <th title='ZTF filter g,r,i - Select a ant_passband filter, and click the "Filter" button.'>ant_passband</th>
               <th class="sortable" id="locus_id" title='Enter a specific locus_id, and click the "Filter" button.'>locus_id</th>
               <th class="sortable" id="locus_ra" title='Right ascension degrees - Enter a specific ra or enter a range, and click the "Filter" button.  Value ranges can be entered like: >85, <85, or  80 90'>ra</th>
               <th class="sortable" id="locus_dec" title='Declination degrees - Enter a specific dec or enter a range, and click the "Filter" button.  Value ranges can be entered like: >18, <18, or  18.8 19.4'>dec</th>
@@ -188,19 +188,19 @@ See the help page for descriptions of the table values and available filters.<br
               <th>
                 <!-- <div class="form-group"> -->
                 <!-- <label for="filter">Filter</label> -->
-                <input type="text" class="form-control form-control-sm" id="ztf_object_id" name="ztf_object_id"
-                  value=""> <!-- TODO -->
-                <!-- <select id="filter" name="filter" class="form-control form-control-sm"
-                  sytle="select.form-control {padding: 2px;}" value="{{ request.args.filter }}">
-                  <option value="" sytle="padding-right:0" {% if request.args.filter=='' %} selected {% endif %}>
+                <!-- <input type="text" class="form-control form-control-sm" id="ztf_object_id" name="ztf_object_id"
+                  value="{{ request.args.ant_passband }}"> -->
+                  <select id="ant_passband" name="ant_passband" class="form-control form-control-sm"
+                  sytle="select.form-control {padding: 2px;}" value="{{ request.args.ant_passband }}">
+                  <option value="" sytle="padding-right:0" {% if not request.args.ant_passband in ['g', 'i', 'R'] %} selected {% endif %}>
                   </option>
-                  <option value="1" sytle="padding-right:0" {% if request.args.filter=='1' %} selected {% endif %}>g
+                  <option value="g" sytle="padding-right:0" {% if request.args.ant_passband=='g' %} selected {% endif %}>g
                   </option>
-                  <option value="2" sytle="padding-right:0" {% if request.args.filter=='2' %} selected {% endif %}>r
+                  <option value="R" sytle="padding-right:0" {% if request.args.ant_passband=='R' %} selected {% endif %}>R
                   </option>
-                  <option value="3" sytle="padding-right:0" {% if request.args.filter=='3' %} selected {% endif %}>i
+                  <option value="i" sytle="padding-right:0" {% if request.args.ant_passband=='i' %} selected {% endif %}>i
                   </option>
-                </select> -->
+                </select>
                 <!-- </div> -->
               </th>
               <th>
@@ -246,7 +246,7 @@ See the help page for descriptions of the table values and available filters.<br
                   data-locusdec="{{ alert.locus_dec }}">{{ alert.ztf_object_id }}</a>
               </td>
               <td>{{ alert.date_alert_mjd }}</td>
-              <td>{{ alert.filter | astro_filter }}</td>
+              <td>{{ alert.ant_passband | astro_filter }}</td>
               <td>{{ alert.locus_id  }}</td>
               <td>{{ '%.5f'|format(alert.locus_ra) }}</td>
               <td>{{ '%.5f'|format(alert.locus_dec) }}</td>
