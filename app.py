@@ -1,4 +1,4 @@
-## #!C:\laragon\bin\python\python-3.6.1\python.exe
+import os
 import random
 from flask import (Flask, render_template, abort, jsonify, request, Response,
                    redirect, url_for, logging, make_response)
@@ -22,21 +22,14 @@ from bokeh.models import Legend
 
 #debug/set_trace breakpoints
 import pdb
-
 from pprint import pprint
-
-import os
 
 app = Flask(__name__)
 #app.config.from_pyfile(config_filename)
 
 app.jinja_env.auto_reload = True
 
-
-
 current_dirs_parent = os.path.dirname(os.getcwd())
-print(current_dirs_parent)
-
 db_path = current_dirs_parent + '/_broker_db/ztf_alerts_stream.db'
 db_uri = 'sqlite:///{}'.format(db_path)
 
@@ -285,18 +278,16 @@ class Ztf(db.Model):
 #v1: Access SQLite via SQLAlchemy -> flask-sqlalchemy
 
 #Jinja Filter
-# @app.template_filter('astro_filter')
-# def astro_filter(num):
-#     if (num == 1):
-#         return "g"
-#     elif (num == 2):
-#         return "r"
-#     elif (num == 3):
-#         return "i"
-
 @app.template_filter('astro_filter')
-def astro_filter(num):
-    return 'tbd'
+def astro_filter(str):
+    if (str == "g"):
+        return "g"
+    elif (str == "R"): #TODO?
+        return "R"
+    elif (str == "i"):
+        return "i"
+    else:
+         return ""
 
 @app.template_filter('mag_filter')
 def mag_filter(num):
@@ -353,6 +344,9 @@ def start():
 
         #if request.args.get('filter'):
             #query = query.filter(Ztf.filter == int(request.args.get('filter'))) # 1:g, 2:r, 3:i
+        if request.args.get('ant_passband'):
+            query = query.filter(Ztf.ant_passband == request.args.get('ant_passband')) # g, R, i
+
 
         if request.args.get('locus_id'):
             query = query.filter(Ztf.locus_id == request.args.get('locus_id'))
@@ -385,6 +379,8 @@ def start():
                 query = query.order_by(Ztf.date_alert_mjd.desc())
             if sort__date_order == 'asc':
                 query = query.order_by(Ztf.date_alert_mjd.asc())
+        else:
+            query = query.order_by(Ztf.date_alert_mjd.desc()) #default sort order
 
         #Sort order by candid
         if request.args.get('sort__candid'):
@@ -436,7 +432,9 @@ def start():
 
 
         #latest = db.session.query(Ztf).order_by(Ztf.jd.desc()).first() # ? to show latest update date
-        paginator = query.paginate(page, 100, True)
+        #paginator = query.paginate(page, 100, True)
+        paginator = query.paginate(page=page, per_page=100, error_out=True)
+
         #pdb.set_trace()
         # response = {
         #     'has_next': paginator.has_next,
@@ -767,8 +765,8 @@ def extract_filter(input_field, db_field, query, convert_callback):
     return query
 
 
-import numpy as np
-import matplotlib.pyplot as plt
+#import numpy as np
+#import matplotlib.pyplot as plt
 
 def generate_dcmag_lightcurve(dflc):
 
