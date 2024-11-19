@@ -1,38 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Help Page</title>
-
-    <!-- Styling-->
-    <style>
-        .header{
-            position: relative;
-            top: 0;
-            text-align: center;
-            width: 100%;
-            height: 75px; /* Set the fixed height of the footer here */
-            line-height: 60px; /* Vertically center the text there */
-            background-color: #f5f5f5;
-        }
-        .footer {
-            position: absolute;
-            bottom: 0;
-            text-align: center;
-            width: 100%;
-            height: 100px; /* Set the fixed height of the footer here */
-            line-height: 60px; /* Vertically center the text there */
-            background-color: #f5f5f5;
-        }
-    </style>
-    
-</head>
-<body>
-    <div class="header"> 
-        <h1>Point of Interest Broker - Help Page</h1>
-    </div>
+{% extends 'site.html' %}
+{% block content %}
+<div style="margin-top: 29px;"> 
+    <h1>Point of Interest Broker - Help Page</h1>
+</div>
 
     
     
@@ -106,22 +76,4 @@ Only features which can be calculated for this light curve are displayed.<br>
 
 Cross-matches to various astronomical catalogs are displayed.
 
-    
-
-    <div class="footer">
-        <a href="/">Return to POI Broker</a>
-    </div>
-
-</body>
-</html>
-
-
-    
-    
-    
-    
-
-    
-
-    
-
+{% endblock %}
