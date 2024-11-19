@@ -456,6 +456,18 @@ def start():
         filter_warning = filter_warning_message
     )
 
+@app.route('/help', methods=['GET'])
+def help():
+    return render_template(
+        "help.html"
+    )
+
+@app.route('/contact', methods=['GET'])
+def contact():
+    return render_template(
+        "contact.html"
+    )
+
 @app.route('/query_lightcurve_data', methods=['GET'])
 def query_lightcurve_data():
     locusId = request.args.get('locusId')

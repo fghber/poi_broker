@@ -96,13 +96,13 @@
 
 
     <!-- <script src="https://cdn.bokeh.org/bokeh/release/bokeh-2.3.3.min.js"></script> -->
-    <script src="https://cdn.bokeh.org/bokeh/release/bokeh-3.5.1.min.js"></script><!-- TODO: Determine bokeh.js version dynamically -->
+    <script src="https://cdn.bokeh.org/bokeh/release/bokeh-3.6.1.min.js"></script><!-- TODO: Determine bokeh.js version dynamically -->
   </head>
   <body {#{% if bodyClass is defined %}class="{{ bodyClass }}"{% endif %}#}>
     <!-- main CONTENT -->
     {% block body %}{% endblock %}
     <!-- Extendable Footer -->
     {% block foot %}{% endblock %}
-    <!-- NOTE: Default Javascript at the end (as recommended) in the inner most content template that requires JS (%impor does not solve this properly, AFAIK)--> -->
+    <!-- NOTE: Default Javascript at the end (as recommended) in the inner most content template that requires JS (%impor does not solve this properly, AFAIK)-->
 </body>
 </html>
