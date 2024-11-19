@@ -4,25 +4,76 @@
     <h1>Point of Interest Broker - Help Page</h1>
 </div>
 
+<br><br>
     
-    
-The Point of Interest Broker provides a browser-based interface to the public ZTF alert stream.<br>
-<br>
-Point of Interest allows users to look up alerts and to apply filters to display only a subset of alerts. The alert table can then be downloaded.<br><br>
+       <div class="header"> 
+        <h1>Frequently Asked Questions</h1>
+    </div>
 
+
+<h2>What is the Point of Interest (POI) Broker?</h2>
+The Point of Interest broker is a future <a href="https://www.lsst.org/scientists/alert-brokers">LSST alert broker</a>
+and currently a prototype with <a href="https://www.ztf.caltech.edu/">ZTF</a>.
+<br>
+We are ingesting alerts from the ZTF survey and processing them. We are providing information for observed astronomical objects, such as
+the complete light curve, changes in light curve parameters (features), cross-matches to observations from other surveys, and an observing planning tool.
+<br>
+A bit more technical information:
+The Point of Interest broker is a downstream broker from <a href="https://antares.noirlab.edu/">ANTARES</a>.
+We are ingesting that portion of alerts that is seen by ANTARES as a high-amplitude variable star (broker topic high_amplitude_variable_star_candidate_staging).
+<br><br>
+
+<h2>How do I lookup data in the Point of Interest broker?</h2>
+You can look for the most recently observed objects from which we have received an alert. The table is automatically sorted to show the most recent 
+alert on top. <br>
+You can filter and sort alerts by any column provided. You can thus e.g. look up objects by their RA and Dec.
+<br><br>
+
+<h2>How do I cite the Point of Interest broker?</h2>
+A paper will be out soon. In the meanwhile, please mention us in the acknowledgements of your paper.
+<br><br>
+
+<h2>What other brokers are out there?</h2>
+There are several other groups developing brokers to process the ZTF alert stream. 
+The full list of brokers is as follows:<br><br>
+
+
+Rubin Observatory Full-Stream Alert Brokers
+   <ul>
+    <li>Alerce
+    <li>AMPEL
+    <li>ANTARES
+    <li>Babamul
+    <li>Fink
+    <li>Lasair
+    <li>Pitt-Google
+   </ul>
+   
+Rubin Observatory Downstream Alert Brokers
+   <ul>
+    <li>SNAPS
+    <li>POI: Variables
+   </ul>
+
+   
+   <br>
+    <div class="header"> 
+        <h1>How do I use the Point of Interest broker?</h1>
+    </div>
+    
+    
 
 
     <h2>Descriptions of Table Values</h2>
     <ul>
         <li>date: The date of the alert</li>
-        <li>candid: ZTF transient candidate, unique to an alert</li>
-        <li>objectID: ZTF identifier for this astronomical object, unique to this object, appears in all alerts for this object</li>
-        <li>jd: observation time at start of exposure, given in Julian date</li>
-        <li>filter: Filter name (g, r, i) derived from fid (1, 2, 3)</li>
+        <li>alert_id: ZTF transient candidate, unique to an alert</li>
+        <li>ztf_object_id: ZTF identifier for this astronomical object, unique to an astronomical object, appears in all alerts for this object</li>
+        <li>mjd: observation time at start of exposure, given in Julian date</li>
+        <li>ant_passband: Filter name (g, R, i) derived from ZTF fid (1, 2, 3)</li>
         <li>ra: Right Ascension of candidate; J2000 [deg]</li>
         <li>dec: Declination of candidate; J2000 [deg]</li>
-        <li>magpsf: Magnitude from PSF-fit photometry measured from difference image [mag]</li>
-        <!-- <li>magap: Aperture mag using 8 pixel diameter aperture measured from difference image [mag]</li> -->
+        <li>ant_mag_corrected: Magnitude from PSF-fit photometry measured from difference image, obtained from ANTARES [mag]</li>
     </ul>
 
     <h2>Available Filters</h2>
@@ -40,40 +91,31 @@ Point of Interest allows users to look up alerts and to apply filters to display
     
     
     <h2>Viewing details of a single alert</h2>
-    Clicking on the objectId of an alert in the main table will bring you to that alert’s detail page.<br>
-    Here you can see a plot of the concatenated light curve, the cutout images, calculated features, and a classification done by cross-matching to existing catalogs.<br>
+    Clicking on the ztf_object_id of an alert in the main table will bring you to that alert’s detail page.<br>
+    Here you can see a plot of the light curve, thumbnails (cutout images), calculated features including how they change over time, an observing planning tool, a cross-match to other 
+    surveys and classification.<br>
     <br>
-    The three cutouts are taken from the .avro file and display the 1x1 arcmin area surrounding the alert.<br><br><br>
+    
+    
+    <h3>Thumbnails</h3>
+    The three cutouts are taken from the alert and display the 1x1 arcmin area surrounding the alert.<br><br>
     
 
-
-    Lightcurve data is plotted using a "DC" magnitude calculated from the magpsf value from the ZTF alerts. According to ZTF, "magpsf" reports the flux in the 
-    difference image, and is positive by construction.<br>
-<br>
-    The alert packets can be combined to construct absolute photometric (DC) lightcurves, 
-    for example, for (a)periodic variable sources. Such lightcurves can be computed by 
-    combining the nearest reference image catalog magnitude (magnr), differential magnitude 
-    (magpsf), and isdiffpos (positive or negative difference image detection) as follows:<br>
-<br>
-    mag<sub>DC</sub> = -2.5 log_{10} (10<sup>[-0.4magnr]</sup>+sign10<sup>[-0.4magpsf]</sup>)
-<br>
-    with<br>
-    sign = 1 if isdiffpos = 't'<br>
-    sign = -1 if isdiffpos = 'f'<br>
-    <br>
-    In the light curve plots, upper and lower limit detections are denoted with triangles.<br>
-
-
+    <h3>Observing Planning Tool</h3>
+    The observing planning tool assists with planning folow-up observations. Users can chose from a list of observatories, or enter their own.
+    The moon is displayed according to the latitute of the observer.<br><br>
+    
+    
+    
     <h3>Light Curve Features</h3>
-
 Light curve features are derived properties of light curves.<br>
 Depending on the number of observations, some features might not be calculated (i.e.: too few observations).<br>
 Only features which can be calculated for this light curve are displayed.<br>
+As Point of Interest is a downstream broker from ANTARES, we are reusing the features calculated by ANTARES.
+Differently to ANTARES which stores only the most recent set of features, calculated for the light curve with all the current alerts,
+we keep a history of the features. This means, once there is a new alert for a particular object, we are adding its current set of features. <br>
+This allows to track how features change over time.
 
 
-
-<h3>Cross-matches</h3>
-
-Cross-matches to various astronomical catalogs are displayed.
 
 {% endblock %}
