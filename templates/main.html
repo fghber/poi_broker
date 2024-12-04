@@ -4,16 +4,13 @@
   <div class="col-md-12">
 
   
-    <p>
 <hr>
-
+<p>
 The following table lists ZTF alerts in descending order by date. Use the arrow buttons for sorting and the filter fields for filtering the table. Click on a ztf_object_id to see 
 details about the object.<br>
-An object's (previous) alerts can be accessed by filtering for the ztf_object_id.<br><br>
-    </p>
-    <p>
-      See the <a href="/static/help.html" title="help">Help</a> page for descriptions of the table values and available filters.
-    </p>
+An object's (previous) alerts can be accessed by filtering for the ztf_object_id. See the <a href="/static/help.html" title="help">Help</a> page for descriptions of the table values and available filters.
+</p>
+<hr>
   </div>
 </div>
 <!-- This is our general Bootstrap alert div -->
@@ -24,17 +21,21 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
 {% endif %}
 <form method="GET" action="/" id="filter_form">
   <div class="row">
-
-    <div class="col-md-10">
+    
+    <div class="col-md-12">
       <div class="responsive">
-
-        <div class="row justify-content-center">
+        <div class="row">
+        <div class="col-md-3 mt-2">
+          <div class="justify-content-start">&nbsp;<b>Rows:</b> {{total_queries}}</div> 
+        </div> 
+        <div class="col-md-6">
+        <div class="justify-content-center">
           <p>
           <!-- TODO: Pagination: arg_str not implemented {{ arg_str }}& -->
           <!-- e.g. ?sort_value=date_alert_mjd&sort_order=desc&ztf_object_id=&alert_id=&time__gt=2021-02-28&time__lt=&time__since=&jd__gt=&jd__lt=&filter=&cone=&objectcone=&objectidps=&ra__gt=&ra__lt=&dec__gt=&dec__lt=&l__gt=&l__lt=&b__gt=&b__lt=&magpsf__gte=&magpsf__lte=&sigmapsf__lte=&magap__gte=&magap__lte=&distnr__gte=&distnr__lte=&deltamaglatest__gte=&deltamaglatest__lte=&deltamagref__gte=&deltamagref__lte=&elong__lte=&nbad__lte=&rb__gte=&drb__gte=&classtar__gte=&classtar__lte=&fwhm__lte= -->
           <!-- <div class="col"> -->
           <!-- Buttons are disabled via CSS based on page no. and has_next -->
-          <a href="/?{{ query_string }}&page=1" class="btn btn-primary {% if page == 1 %}disabled{% endif %}"><i class="fa fa-step-backward" aria-hidden="true"></i></i> First</a>
+          <a href="/?{{ query_string }}&page=1" class="btn btn-primary {% if page == 1 %}disabled{% endif %}"><i class="fa fa-step-backward" aria-hidden="true"></i> First</a>
           <a href="/?{{ query_string }}&page={{ page - 1 }}" class="btn btn-primary {% if page == 1 %}disabled{% endif %}"><i class="fa fa-caret-left fa-lg" title="Filter" aria-label="Previous"></i> Prev</a>
           <a href="/?{{ query_string }}&page={{ page + 1 }}" class="btn btn-primary {% if has_next == False %}disabled{% endif %}">Next <i class="fa fa-caret-right fa-lg" title="Next" aria-label="Next"></i></a>  
           <a href="/?{{ query_string }}&page={{ last_page }}" class="btn btn-primary {% if has_next == False %}disabled{% endif %}">Last <i class="fa fa-step-forward" aria-hidden="true"></i></a>
@@ -42,12 +43,30 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
           <div class="col-md-4">&nbsp;xxxxxx</div> -->
           </p>
         </div>
+        </div>
+
+            <!-- Side Panel -->
+        <div class="col-md-3">
+          <div class="d-flex justify-content-end">
+          <!-- TODO: Style/pad insted -->
+          <button type="submit" class="btn btn-primary">
+            <i class="fa fa-filter fa-lg" title="Filter" aria-label="Filter"></i> Filter
+          </button>
+          <!-- <a href="/" class="btn btn-secondary">
+          <span class="fa-stack fa-lg">
+            <i class="fa fa-filter fa-stack-1x" style="font-size:22px" aria-hidden="true"></i>
+            <i class="fa fa-ban fa-stack-2x text-danger" style="-webkit-text-stroke: 1px background-color;"
+              aria-hidden="true"></i>
+          </span></a> -->
+          <a href="/" class="btn btn-danger">
+            <i class="fa fa-close fa-lg" title="Clear" aria-label="Clear"></i> Clear
+          </a>
+        </div>
+        </div>
+      <!--{# TODO: HTML Validation: Some id's are duplicated, etc https://validator.w3.org/nu/ #}-->
         <div class="row">
 
-          <!-- <table class="table table-striped table-sm"> 
-                        </table>
-            -->
-          <!-- <div class="form-row">
+          <!--{# <div class="form-row">
               <div class="col">
                 <label for="time__gt">time (lower)</label>
                 <input type="date" class="form-control form-control-sm" id="time__gt" name="time__gt" value="{{ request.args.time__gt }}" placeholder="Lower">
@@ -63,15 +82,15 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
                 <label for="time__since">time since</label>
                 <input type="number" step="any" class="form-control form-control-sm" id="time__since" name="time__since" value="{{ request.args.time__since }}" placeholder="seconds">
               </div>
-            </div> -->
+            </div>
 
-          <!-- <div class="form-group">
+          <div class="form-group">
               <label for="cone">Cone Search</label>
               <input type="text" class="form-control form-control-sm" id="cone" name="cone" value="{{ request.args.cone }}">
               <small class="form-text text-muted">Format: ra,dec,radius in degrees.</small>
-            </div> -->
+            </div>
 
-          <!-- <div class="form-group">
+           <div class="form-group">
               <label for="objectcone">Cone Search (object)</label>
               <input type="text" class="form-control form-control-sm" id="cone" name="objectcone" value="{{ request.args.objectcone }}">
               <small class="form-text text-muted">
@@ -83,16 +102,14 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
               <label for="objectidps">Nearby Objects</label>
               <input type="text" class="form-control form-control-sm" id="objectidps" name="objectidps" value="{{ request.args.objectidps }}">
               <small class="form-text text-muted">ID from PS1 catalog.</small>
-            </div> -->
+            </div>
 
-          <!-- Equatorial coords ra & dec-->
-          <!-- <div id="equatorial_coords">
-              <p>Equatorial Coords</p>    
+          <div id="equatorial_coords">
+              <p>Equatorial Coords ra & dec</p>    
 
-            </div> -->
+            </div>
 
-          <!-- galactic coords -->
-          <!-- <div id="galactic_coords">
+          <div id="galactic_coords">
               <p>Galactic Coords</p>
               <label for="l__gt">l</label>
               <div class="form-row">
@@ -113,27 +130,24 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
                    <input type="number" step="any" class="form-control form-control-sm" id="b__lt" name="b__lt" value="{{ request.args.b__lt }}" placeholder="Upper">
                 </div>
               </div>
-            </div> -->
-
-          <!-- <div class="form-group">
+            </div>  <div class="form-group">
               <label for="sigmapsf__lte">sigmapsf &lt;= </label>
               <input type="number" step="any" class="form-control form-control-sm" id="sigmapsf__lte" name="sigmapsf__lte" value="{{ request.args.sigmapsf__lte }}">
-            </div> -->
-
+            </div> #}-->
         </div>
 
-        <table class="table table-sm table-striped">
+        <table class="table table-sm table-striped table-hover table-auto">
           <thead>
-            <tr> <!-- TODO! date vs date_alert_mjd sortable?!  -->
-              <th class="sortable" id="date" title='Enter a specific date or enter a range, and click the "Filter" button.  Value ranges can be entered like: >20201208, <20201210, or 20201207 20201209'>date</th>
+            <tr class="sticky-top" style="background-color: #073642"> <!-- TODO! date vs date_alert_mjd sortable?!  -->
+              <th class="sortable" id="date" title='Enter a specific date or enter a range, and click the "Filter" button.  Value ranges can be entered like: >20201208, <20201210, or 20201207 20201209'>date (UTC)</th>
               <th class="sortable" id="alert_id" title='Enter a specific alert_id, and click the "Filter" button.'>alert_id</th>
               <th class="sortable" id="ztf_object_id" title='Enter a specific ztf_object_id, and click the "Filter" button.'>ztf_object_id</th>
               <th class="" id="date_alert_mjd" title='*Julian Date - Enter a specific *jd or enter a range, and click the "Filter" button.  Value ranges can be entered like: >2459190.85, <2459190.85, or  2459190.84 2459190.86'>mjd</th>
-              <th title='ZTF filter g,r,i - Select a ant_passband filter, and click the "Filter" button.'>ant_passband</th>
+              <th title='ZTF filter g,r,i - Select a ant_passband filter, and click the "Filter" button.'>ant passband</th>
               <th class="sortable" id="locus_id" title='Enter a specific locus_id, and click the "Filter" button.'>locus_id</th>
               <th class="sortable" id="locus_ra" title='Right ascension degrees - Enter a specific ra or enter a range, and click the "Filter" button.  Value ranges can be entered like: >85, <85, or  80 90'>ra</th>
               <th class="sortable" id="locus_dec" title='Declination degrees - Enter a specific dec or enter a range, and click the "Filter" button.  Value ranges can be entered like: >18, <18, or  18.8 19.4'>dec</th>
-              <th class="" id="ant_mag_corrected" title='Point-spread function (PSF) magnitude - Enter a specific mag or enter a range, and click the "Filter" button.  Value ranges can be entered like: >18, <18, or  18.8 19.4'>ant_mag_corrected</th>
+              <th class="" id="ant_mag_corrected" title='Point-spread function (PSF) magnitude - Enter a specific mag or enter a range, and click the "Filter" button.  Value ranges can be entered like: >18, <18, or  18.8 19.4'>ant_mag corrected</th>
               <!-- <th class="sortable" id="magap" title='Aperture magnitude - Enter a specific magap or enter a range, and click the "Filter" button.  Value ranges can be entered like: >18, <18, or  18.8 19.4'>magap</th> -->
             </tr>
 
@@ -204,7 +218,7 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
                   value="{{ request.args.magpsf }}"> <!-- TODO -->
               </th>
             </tr>
-            <!-- </form> -->
+            <!-- /form> -->
             <!-- <button type="submit" class="btn btn-primary"><i class="fa fa-filter" aria-hidden="true"></i> Filter</button>
             <a href="/" class="btn btn-secondary">Reset</a> -->
 
@@ -215,7 +229,7 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
             <tr>
               <!-- <td><a href="/{#{ alert.lco_id }}/" title="{{ alert.lco_id }}">{{ alert.lco_id }#}</a></td> -->
               <td>{{ alert.date_alert_mjd|format_mjd_readable }}</td>
-              <td>{{ alert.alert_id }}</td>
+              <td>{{ alert.alert_id | replace('ztf_candidate:','') }}</td>
               <td>
                 <a href="#myModal" data-toggle="modal" data-target="#objectIdModal" 
                   data-object-id="{{ alert.ztf_object_id }}" 
@@ -238,24 +252,6 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
       </div>
     </div>
 
-    <!-- Side Panel -->
-    <div class="col-md-2">
-      <br><br><!-- TODO: Style/pad insted -->
-      <button type="submit" class="btn btn-primary">
-        <i class="fa fa-filter fa-lg" title="Filter" aria-label="Filter"></i> Filter
-      </button>
-      <!-- <a href="/" class="btn btn-secondary">
-      <span class="fa-stack fa-lg">
-        <i class="fa fa-filter fa-stack-1x" style="font-size:22px" aria-hidden="true"></i>
-        <i class="fa fa-ban fa-stack-2x text-danger" style="-webkit-text-stroke: 1px background-color;"
-          aria-hidden="true"></i>
-      </span></a> -->
-      <a href="/" class="btn btn-danger">
-        <i class="fa fa-close fa-lg" title="Clear" aria-label="Clear"></i> Clear
-      </a>
-      <br><br>
-      <div class="">&nbsp;<b>Rows:</b> {{total_queries}}</div>
-    </div>
   </div>
 </form>
 
@@ -290,6 +286,10 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
               <li class="nav-item">
                 <a class="nav-link" id="classification-tab" data-toggle="tab" href="#classification" role="tab" aria-controls="classification"
                   aria-selected="false">Classification</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" id="crossmatches-tab" data-toggle="tab" href="#crossmatches" role="tab" aria-controls="crossmatches"
+                  aria-selected="false">Catalog cross-matches</a>
               </li>
             </ul>
           </ul>
@@ -471,6 +471,13 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
                 </p>
                 <span id="classification_output"></span>
               </div>
+              <div role="tabpanel" class="tab-pane fade" id="crossmatches" aria-labelledby="crossmatches-tab">                
+                <p>
+                  <br>
+                  <span>Catalog cross-matches: </span>
+                </p>
+                <span id="crossmatches_table_output"></span>
+              </div>
           </div>
       </div>
       <div class="modal-footer">
@@ -518,6 +525,8 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
     $('select[multiple].active.3col').val(default_features);
     $('select[multiple].active.3col').multiselect('reload');
     query_featureplot(locus_id, default_features.join(','));
+
+    query_crossmatches_table(locus_id);
     
     //query_classification(ztf_object_id);
   });
@@ -585,12 +594,41 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
       }
     });
   }*/
+
+  function query_crossmatches_table(locus_id) {
+    let backend_url = `/query_crossmatches?locusId=${locus_id}`;
+    $.ajax({
+      type: 'GET',
+      url: backend_url,
+      dataType: 'json',
+      complete: function(r){
+        console.log(r.responseText);
+        var json_obj = JSON.parse(r.responseText);
+        $('body').find('#crossmatches_table_output').html(json2crossmatchestable(json_obj));
+      }
+    });
+  }
+
   
   //feature_table specific as of now
-  function json2table(json_obj) {
+  function json2featurestable(json_obj) {
     var stable = '<table class="table table-sm table-striped">';
         for (let key in json_obj) {
           if (json_obj[key] != null && key.startsWith('feature_')) {
+            let value = json_obj[key];
+            //console.log(key, value);
+            //fstring += key + ': ' + value + '<br>';
+            stable += `<tr><td>${key}</td><td>${value}</td></tr>`;
+          }
+        }
+        stable += '</table>';
+        return stable;
+  }
+
+  function json2crossmatchestable(json_obj) {
+    var stable = '<table class="table table-sm table-striped">';
+        for (let key in json_obj) {
+          if (json_obj[key] != null && ['a', 'b', 'c'].includes(key)) {
             let value = json_obj[key];
             //console.log(key, value);
             //fstring += key + ': ' + value + '<br>';
