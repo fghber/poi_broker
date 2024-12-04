@@ -1,8 +1,8 @@
 import os
-import random
+from datetime import datetime
 from flask import (Flask, render_template, abort, jsonify, request, Response,
                    redirect, url_for, logging, make_response)
-
+import jinja2
 # if app.debug is not True:
 import logging
 logging.basicConfig(handlers=[logging.FileHandler(filename="app.log", 
@@ -301,7 +301,14 @@ def format_mjd_readable(value):
     #return (value / 86400000) + 40587
     jdate = value+2400000.5
     t = Time(jdate, format='jd')
-    return t.isot #in UTC
+    #return t.isot #in UTC
+    dt = datetime.fromisoformat(t.isot) # ISO 8601 string in UTC
+    return  dt.strftime('%Y-%m-%d %H:%M:%S')
+
+# Example usage:
+value = 58000  # Example MJD value
+print(format_mjd_readable(value))
+
 
 @app.route('/', methods=['GET', 'POST'])
 def start():
@@ -716,6 +723,24 @@ def query_featureplot_data():
     return f'{ div }{ script }'
 
 
+@app.route('/query_crossmatches', methods=['GET'])
+def query_crossmatches():
+    locus_id = request.args.get('locusId')
+
+    crossmatches_query = db.session.query(Ztf)
+    print('query_crossmatches')
+    crossmatches_query = crossmatches_query.filter(Ztf.locus_id == locus_id)
+    data = object_as_dict(crossmatches_query.first()) #TODO: FIRST is this correct?
+    print('query_crossmatches')
+    print(data)
+    
+    response = app.response_class(
+        response=json.dumps(data), #TODO? array[] with single row when using BootstrapTable?
+        status=200,
+        mimetype='application/json'
+    )
+    return response
+"""
 #NOTE: #classification filter by objectId
 @app.route('/query_classification', methods=['GET'])
 def query_classification():
@@ -733,6 +758,7 @@ def query_classification():
         mimetype='application/json'
     )
     return response
+"""
 
 if __name__ == '__main__':
     app.run(debug=True) #uses flask debugger
@@ -780,6 +806,7 @@ def extract_filter(input_field, db_field, query, convert_callback):
 #import numpy as np
 #import matplotlib.pyplot as plt
 
+"""
 def generate_dcmag_lightcurve(dflc):
 
 	len_good = ( len(  dflc[dflc.isdiffpos.notnull() & (dflc.magnr>0) & (dflc.magpsf>0)] ) )
@@ -843,7 +870,7 @@ def generate_dcmag_lightcurve(dflc):
 			
 	return dflc	
 
-
+    
 def plot_lightcurve(dflc, lc_plot_folder, objectId):
 	len_good = ( len(  dflc[dflc.isdiffpos.notnull() & (dflc.magnr>0) & (dflc.magpsf>0)] ) )
 	#len_good = ( len(  dflc[dflc.isdiffpos.notnull()] ) )
@@ -930,3 +957,4 @@ def plot_lightcurve(dflc, lc_plot_folder, objectId):
 		return lc_plot_fullpath
 	else:
 		return '/' + str(lc_plot_folder).replace('\\', '/') + '/not_enough_data_for_analysis.png'
+"""
