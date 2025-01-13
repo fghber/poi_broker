@@ -49,22 +49,19 @@ def object_as_dict(obj):
     return {c.key: getattr(obj, c.key)
             for c in inspect(obj).mapper.column_attrs}
 
+def result_to_dict(query_results):
+    def to_dict(obj):
+        return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}    
+    return [to_dict(result) for result in query_results]
+
+# Example usage:
+# results = session.query(MyModel).all()
+# json_output = convert_to_json(results)
+# print(json_output)
+
+
 db = SQLAlchemy(app)
 class Ztf(db.Model):
-    
-    #OLD:
-    #__tablename__ = 'indextable'
-    #id = db.Column(db.Integer, primary_key=True)
-    #date = db.Column(db.Integer)
-    #candid = db.Column(db.Integer)
-    #objectId = db.Column(db.String)
-    #jd = db.Column(db.Float)
-    #filter = db.Column(db.Integer)
-    #ra = db.Column(db.Float)
-    #dec = db.Column(db.Float)
-    #magpsf = db.Column(db.Float)
-    #magap = db.Column(db.Float)
-    
     __tablename__ = 'featuretable'
     #id = db.Column(db.Integer, primary_key=True)
     date_alert_mjd = db.Column(db.Float, primary_key=True)
@@ -181,7 +178,6 @@ class Ztf(db.Model):
     feature_chi2_flux_g = db.Column(db.Float)
     feature_skew_flux_g = db.Column(db.Float)
     feature_stetson_k_flux_g = db.Column(db.Float)
-		
 
     # @property
     # def ra(self):
@@ -195,6 +191,36 @@ class Ztf(db.Model):
 
     def __str__(self):
         return self.ztf_object_id
+
+class Crossmatches(db.Model):
+    __tablename__ = 'crossmatches'
+    id = db.Column(db.Integer, primary_key=True)
+    locus_id = db.Column(db.String)
+    catalog = db.Column(db.String)
+    object = db.Column(db.String)
+    ra_cat = db.Column(db.Float)
+    dec_cat = db.Column(db.Float)
+    separation = db.Column(db.Float)
+
+class Gaiadr3_variability(db.Model):
+    __tablename__ = 'gaiadr3_variability'
+    source_id = db.Column(db.Integer, primary_key=True) #ot a real PK
+    ra = db.Column(db.Float)
+    dec = db.Column(db.Float)
+    phot_g_mean_mag = db.Column(db.Float)
+    phot_rp_mean_mag = db.Column(db.Float)
+    in_vari_classification_result = db.Column(db.Integer)
+    in_vari_rrlyrae = db.Column(db.Integer)
+    in_vari_cepheid = db.Column(db.Integer)
+    in_vari_planetary_transit = db.Column(db.Integer)
+    in_vari_short_timescale = db.Column(db.Integer)
+    in_vari_long_period_variable = db.Column(db.Integer)
+    in_vari_eclipsing_binary = db.Column(db.Integer)
+    in_vari_rotation_modulation = db.Column(db.Integer)
+    in_vari_ms_oscillator = db.Column(db.Integer)
+    in_vari_agn = db.Column(db.Integer)
+    in_vari_microlensing = db.Column(db.Integer)
+    in_vari_compact_companion = db.Column(db.Integer)
 
 #OLD:
 #class Features(db.Model):
@@ -722,20 +748,19 @@ def query_featureplot_data():
     # Return the components to the HTML template
     return f'{ div }{ script }'
 
-
 @app.route('/query_crossmatches', methods=['GET'])
 def query_crossmatches():
-    locus_id = request.args.get('locusId')
+    locusId = request.args.get('locusId') # locusname="ANT2018fywy2"
+    print(locusId)
 
-    crossmatches_query = db.session.query(Ztf)
-    print('query_crossmatches')
-    crossmatches_query = crossmatches_query.filter(Ztf.locus_id == locus_id)
-    data = object_as_dict(crossmatches_query.first()) #TODO: FIRST is this correct?
-    print('query_crossmatches')
-    print(data)
+    #query where locus id equals selected id
+    crossmatches_query = db.session.query(Crossmatches)
+    crossmatches_query = crossmatches_query.filter(Crossmatches.locus_id == locusId) #TODO: load only specific columns
+    dict = result_to_dict(crossmatches_query.all())
+    print(dict)
     
     response = app.response_class(
-        response=json.dumps(data), #TODO? array[] with single row when using BootstrapTable?
+        response=json.dumps(dict), #TODO? array[] with single row when using BootstrapTable?
         status=200,
         mimetype='application/json'
     )
