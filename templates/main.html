@@ -258,7 +258,7 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
 <!-- Modal -->
 <div class="modal fade" id="objectIdModal" tabindex="-1" role="dialog" aria-labelledby="objectIdModalLabel" 
   aria-hidden="true">
-  <div class="modal-dialog modal-lg" role="document">
+  <div class="modal-dialog modal-xl" role="document">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="objectIdModalLabel">Modal title</h5>
@@ -474,9 +474,9 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
               <div role="tabpanel" class="tab-pane fade" id="crossmatches" aria-labelledby="crossmatches-tab">                
                 <p>
                   <br>
-                  <span>Catalog cross-matches: </span>
+                <span id="crossmatches_table_output"></span><br>
+                <span id="crossmatches_footer_output"></span>
                 </p>
-                <span id="crossmatches_table_output"></span>
               </div>
           </div>
       </div>
@@ -527,6 +527,7 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
     query_featureplot(locus_id, default_features.join(','));
 
     query_crossmatches_table(locus_id);
+    query_crossmatches_footer(locus_id, ztf_object_id, locus_ra, locus_dec);
     
     //query_classification(ztf_object_id);
   });
@@ -556,15 +557,15 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
       url: backend_url,
       dataType: 'json',
       complete: function(r){
-        console.log(r.responseText);
+        //console.log(r.responseText);
         var json_obj = JSON.parse(r.responseText);
-        $('body').find('#features_table_output').html(json2table(json_obj));
+        $('body').find('#features_table_output').html(json2featurestable(json_obj));
       }
     });
   }
 
   function query_featureplot(locus_id, selected_features) {
-    console.log(selected_features);
+    //console.log(selected_features);
 
     let featureplot_data_url = '/query_featureplot_data?locusId=' + locus_id + '&features=' + selected_features;
     $.ajax({
@@ -609,6 +610,21 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
     });
   }
 
+  function query_crossmatches_footer(locus_id, ztf_object_id, locus_ra, locus_dec) {
+    var footer = `<p>This object can also be found in:</p>
+                  Alert brokers:
+                  <ul><li>ALeRCE <a href="https://alerce.online/object/${ztf_object_id}" target="_blank">https://alerce.online/object/${ztf_object_id}</a></li>
+                  <li>ANTARES <a href="https://antares.noirlab.edu/loci/${locus_id}" target="_blank">https://antares.noirlab.edu/loci/${locus_id}</a></li></ul>
+                  External Services:
+                  <ul><li><a href="https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query?objstr=${locus_ra}${locus_dec > 0 ? '+' : ''}${locus_dec}+&catalog=ztf_objects_dr5&mission=irsa&radius=1" target="_blank">IPAC</a></li>
+                  <li><a href="http://simbad.u-strasbg.fr/simbad/sim-coo?Coord=${locus_ra}%2C${locus_dec}&CooFrame=FK5&CooEpoch=2000&CooEqui=2000&CooDefinedFrames=none&Radius=2&Radius.unit=arcsec&submit=submit+query&CoordList=" target="_blank">SIMBAD</a></li>
+                  <li><a href="https://ztf.snad.space/search/${locus_ra}%20${locus_dec}/1" target="_blank">SNAD</a></li>
+                  <li><a href="https://www.wis-tns.org/search?&ra=${locus_ra}&decl=${locus_dec}&radius=1&coords_unit=arcsec" target="_blank">TNS</a></li>
+                  <li><a href="https://vizier.cds.unistra.fr/viz-bin/VizieR-4?-ref=VIZ600f5483a73e&-to=-4c%3DGo%21b&-from=-1&-this=-4c%3DGo%21&%2F%2Fc=${locus_ra}${locus_dec > 0 ? '+' : ''}${locus_dec}-out.max=50&%2F%2FCDSportal=http%3A%2F%2Fcdsportal.u-strasbg.fr%2FStoreVizierData.html&-out.form=HTML+Table&-out.add=_r&-out.add=_RAJ%2C_DEJ&%2F%2Foutaddvalue=default&-sort=_r&-order=I&-oc.form=sexa&-nav=key%3Ac%3D184.4669870191518+30.116833377497727%26pos%3A184.4669870191518+30.116833377497727%28+++2+arcsec+J2000%29%26HTTPPRM%3A&-c=184.4669870191518+30.116833377497727&-c.eq=J2000&-c.r=++2&-c.u=arcsec&-c.geom=r&-source=&-meta.ucd=2&-meta=1&-meta.foot=1&-usenav=1&-bmark=GET" target="_blank">VizieR</a></li></ul>
+                  `;
+    $('body').find('#crossmatches_footer_output').html(footer);
+  }
+
   
   //feature_table specific as of now
   function json2featurestable(json_obj) {
@@ -626,17 +642,20 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
   }
 
   function json2crossmatchestable(json_obj) {
-    var stable = '<table class="table table-sm table-striped">';
+    var ctable = '<table class="table table-sm table-striped">';
+    ctable += '<thead><th>locus_id</th><th>catalog</th><th>object</th><th>ra_cat</th><th>dec_cat</th><th>separation(mas)</th></thead>';
         for (let key in json_obj) {
-          if (json_obj[key] != null && ['a', 'b', 'c'].includes(key)) {
-            let value = json_obj[key];
-            //console.log(key, value);
-            //fstring += key + ': ' + value + '<br>';
-            stable += `<tr><td>${key}</td><td>${value}</td></tr>`;
-          }
+          ctable += '<tr>';
+          ctable += `<td>${json_obj[key].locus_id}</td>`;
+          ctable += `<td>${json_obj[key].catalog}</td>`;
+          ctable += `<td>${json_obj[key].object}</td>`;
+          ctable += `<td>${json_obj[key].ra_cat}</td>`;
+          ctable += `<td>${json_obj[key].dec_cat}</td>`;
+          ctable += `<td>${json_obj[key].separation.toPrecision(3)}</td>`;
+          ctable += '</tr>';
         }
-        stable += '</table>';
-        return stable;
+        ctable += '</table>';
+        return ctable;
   }
 </script>
 
