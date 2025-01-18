@@ -283,9 +283,13 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
                 <a class="nav-link" id="features-tab" data-toggle="tab" href="#features" role="tab" aria-controls="features"
                   aria-selected="false">Features</a>
               </li>
-              <li class="nav-item">
+              <!-- <li class="nav-item">
                 <a class="nav-link" id="classification-tab" data-toggle="tab" href="#classification" role="tab" aria-controls="classification"
                   aria-selected="false">Classification</a>
+              </li> -->
+              <li class="nav-item">
+                <a class="nav-link" id="observing-tab" data-toggle="tab" href="#observing" role="tab" aria-controls="observing"
+                  aria-selected="false">Observing Planning Tool</a>
               </li>
               <li class="nav-item">
                 <a class="nav-link" id="crossmatches-tab" data-toggle="tab" href="#crossmatches" role="tab" aria-controls="crossmatches"
@@ -347,7 +351,6 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
                 <p>
                   <br>
                   <span>Features: </span>
-
                   <!--# https://www.npmjs.com/package/@nobleclem/jquery-multiselect -->
                   <select name="basic[]" multiple="multiple" class="3col active">
                     <option value="feature_amplitude_magn_r">feature_amplitude_magn_r</option>
@@ -464,13 +467,74 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
                   WHERE locus_id LIKE 'ANT2018gj4my' ORDER BY date_alert_mjd -->
                 <span id="features_table_output"></span>
               </div>
-              <div role="tabpanel" class="tab-pane fade" id="classification" aria-labelledby="classification-tab">                
+              <div role="tabpanel" class="tab-pane fade" id="observing" aria-labelledby="observing-tab">                
+
+                  <p>
+                  <!-- <br> -->
+                  <!-- <form> -->
+
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label for="obs_dropdown">Observatory:</label>
+                                <select class="form-control" id="obs_dropdown">
+                                  {% for obs in observatories %}
+                                  <option>{{ obs }}</option>
+                                  {% endfor %}                                    
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                          <label for="datetimepicker1">Date:</label>
+                          <div class="input-group date" id="datetimepicker1" data-target-input="nearest">      
+                                <input type="text" class="form-control datetimepicker-input" data-target="#datetimepicker1" value="{{ today_utc }}" />
+                                <div class="input-group-append" data-target="#datetimepicker1">
+                                    <div class="input-group-text"><i class="fa fa-calendar"></i></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="radioButtons">Time:</label><br>
+                            <div class="btn-group btn-group-toggle" data-toggle="buttons" id="time_radios">
+                                <label class="btn btn-secondary active">
+                                    <input type="radio" name="options" id="option_utc" autocomplete="off" checked data-wat='utc'> UTC
+                                </label>
+                                <label class="btn btn-secondary">
+                                    <input type="radio" name="options" id="option_local" autocomplete="off" data-wat='local'> Local
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                      <div class="col-md-4">
+                        <label for="">Ra:</label><br>
+                        <span id="obs_ra"></span>
+                      </div>
+                      <div class="col-md-4">
+                        <label for="">Dec:</label><br>
+                        <span id="obs_dec"></span>
+                      </div>
+                      <div class="col-md-4">
+                          <label for="">&nbsp;</label>
+                          <button type="button" class="btn btn-primary" onclick="query_observing_plot()">Retrieve</button>
+                      </div>
+                    </div>
+                <!-- </form> -->
+
+                <span id="observing_output"></span>
+
+
+
+                
+                </p>
+              </div>
+              <!-- <div role="tabpanel" class="tab-pane fade" id="classification" aria-labelledby="classification-tab">                
                 <p>
                   <br>
                   <span>Classification: </span>
                 </p>
                 <span id="classification_output"></span>
-              </div>
+              </div> -->
               <div role="tabpanel" class="tab-pane fade" id="crossmatches" aria-labelledby="crossmatches-tab">                
                 <p>
                   <br>
@@ -503,6 +567,8 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
     $('#locus-id-label').html('Locus ID: '+ locus_id);
     $('#locus-ra-label').html('Locus Ra: '+ locus_ra);
     $('#locus-dec-label').html('Locus Dec: '+ locus_dec);
+    $('#obs_ra').html(locus_ra);
+    $('#obs_dec').html(locus_dec);
     //$('body').find('span[name="date-label"]').html("Date: " + date); //{# ! TODO: de-mess! #}
     $('#thumbnail-1').attr("src", "https://storage.googleapis.com/antares-production-ztf-stamps/candid"+candid+"_pid"+candid.substring(0,13)+"_targ_sci.fits.png");
     $('#thumbnail-2').attr("src", "https://storage.googleapis.com/antares-production-ztf-stamps/candid"+candid+"_ref.fits.png");
@@ -579,6 +645,37 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
         // script.innerHTML = data.substring(scriptPosition, data.length-10);
         // document.body.appendChild(script);
         $("#feature-plot").html(data);
+    });
+  }
+
+  function query_observing_plot() {
+    const obs_loc = document.querySelector('#obs_dropdown option:checked').value;
+    console.log(obs_loc);
+    const obs_date = $('#datetimepicker1 > input')[0].value;
+    console.log(obs_date);
+    const obs_tz = document.querySelector('#time_radios input[name="options"]:checked').id;
+    console.log(obs_tz);
+    const ra = $('#obs_ra').text();
+    console.log(ra);
+    const dec = $('#obs_dec').text();
+    console.log(dec);
+    //clear output first
+    $("#observing_output").html('');
+
+    let observing_plot_data_url = '/query_observing_plot?obs_loc=' + obs_loc + '&obs_date=' + obs_date + '&dobs_tz=' + obs_tz + '&ra=' + ra + '&dec=' + dec;
+    //let observing_plot_data_url = '/query_observing_plot?obs_loc=Rubin%20Observatory&obs_date=2024-11-14&dobs_tz=option_utc&ra=101.28715533&dec=16.71611586';
+    console.log(observing_plot_data_url);
+    $.ajax({
+          url: observing_plot_data_url,
+          cache: false
+    }).done(function(data) {
+        // const divPosition = data.search("</div>");
+        // document.getElementById("locus-plot").innerHTML = data.substring(0,divPosition);//
+        // const scriptPosition = data.search("(?<=<script type=\"text/javascript\">)");
+        // var script = document.createElement('script');
+        // script.innerHTML = data.substring(scriptPosition, data.length-10);
+        // document.body.appendChild(script);
+        $("#observing_output").html(data);
     });
   }
 
@@ -811,6 +908,51 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
           }
       });
 
+    // https://getdatepicker.com/6/options
+    const datetimepicker1 = new tempusDominus.TempusDominus(document.getElementById('datetimepicker1'), {
+      localization: {
+        locale: 'utc', //NaN?
+        format: 'yyyy-MM-dd',
+      },
+      display: {
+      icons: {
+        type: 'icons',
+        time: 'fa-solid fa-clock',
+        date: 'fa-solid fa-calendar',
+        up: 'fa-solid fa-arrow-up',
+        down: 'fa-solid fa-arrow-down',
+        previous: 'fa-solid fa-chevron-left',
+        next: 'fa-solid fa-chevron-right',
+        today: 'fa-solid fa-calendar-check',
+        clear: 'fa-solid fa-trash',
+        close: 'fa-solid fa-xmark'
+      },
+      sideBySide: false,
+      calendarWeeks: false,
+      viewMode: 'calendar',
+      toolbarPlacement: 'bottom',
+      keepOpen: false,
+      buttons: {
+        today: false,
+        clear: false,
+        close: false
+      },
+      components: {
+        calendar: true,
+        date: true,
+        month: false,
+        year: false,
+        decades: false,
+        clock: false,
+        hours: false,
+        minutes: false,
+        seconds: false,
+      },
+      inline: false,
+      theme: 'light'
+    },
+    useCurrent: true
+    });
   });
 </script>
 

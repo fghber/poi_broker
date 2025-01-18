@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 from flask import (Flask, render_template, abort, jsonify, request, Response,
-                   redirect, url_for, logging, make_response)
+                   redirect, url_for, logging, make_response, Blueprint)
 import jinja2
 # if app.debug is not True:
 import logging
@@ -10,6 +10,7 @@ logging.basicConfig(handlers=[logging.FileHandler(filename="app.log",
                     format="%(asctime)s %(name)s:%(levelname)s:%(message)s", 
                     level=logging.INFO)
 from astropy.time import Time
+from astropy.coordinates import EarthLocation
 import re
 import json
 from flask_sqlalchemy import SQLAlchemy
@@ -24,10 +25,13 @@ from bokeh.models import Legend
 import pdb
 from pprint import pprint
 
+from observing_tool import observing_tool_bp
+
 app = Flask(__name__)
 #app.config.from_pyfile(config_filename)
-
 app.jinja_env.auto_reload = True
+# Register blueprints
+app.register_blueprint(observing_tool_bp)
 
 current_dirs_parent = os.path.dirname(os.getcwd())
 db_path = current_dirs_parent + '/_broker_db/ztf_alerts_stream.db'
@@ -478,6 +482,9 @@ def start():
         print(request.query_string.decode('ascii'))
         print(re.sub('[&?]page=\\d+', '', request.query_string.decode('ascii')))
 
+        site_names = EarthLocation.get_site_names()
+        current_date = Time.now().datetime.date()
+
     return render_template(
         "main.html",
         total_queries=paginator.total,
@@ -486,7 +493,9 @@ def start():
         has_next=paginator.has_next,
         last_page=paginator.pages,
         query_string=re.sub('[&?]?page=\\d+', '', request.query_string.decode('ascii')), # ? b'' binary string
-        filter_warning = filter_warning_message
+        filter_warning = filter_warning_message,
+        observatories = site_names,
+        today_utc = current_date
     )
 
 @app.route('/help', methods=['GET'])
