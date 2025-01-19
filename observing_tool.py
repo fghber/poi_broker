@@ -33,12 +33,11 @@ observing_tool_bp = Blueprint('observing_tool', __name__) # TODO: Maybe add a UR
 
 # TODO: Add param for chosen observatory from list!
 @observing_tool_bp.route('/query_observing_plot')
-def calculate():
+def calc_observing_plot():
     
     #http://localhost:5000/query_observing_plot?obs_loc=Rubin%20Observatory&obs_date=2024-11-14&dobs_tz=option_utc&ra=101.28715533&dec=16.71611586
     #/query_observing_data?obs_loc=ALMA&obs_date=2025-01-13&dobs_tz=option_utc&ra=15.7574139&dec=16.215272799999994
 
-    #TODO: test for space & special chars?
     obs_loc = request.args.get('obs_loc') #EarthLocation.of_site('Rubin Observatory')
     obs_date = request.args.get('obs_date')
     year, month, day = obs_date.split("-")
@@ -80,109 +79,112 @@ def calculate():
     sun_altazs = sun.transform_to(frame)
     sun_alt = sun_altazs.alt.value
 
+    # (Nested) Observing Plot function (to structure code better)
+    def observing_plot():
+        plt.style.use(astropy_mpl_style)
+        plt.figure(figsize=(8,6.5))
+        #plt.margins(0.01, tight=True) #The default margins are rcParams["axes.xmargin"] (default: 0.05) and rcParams["axes.ymargin"] (default: 0.05).
+        quantity_support()
+        ax = plt.gca()
+        if(obs_tz == 'option_utc'):
+            timetoplot = times_range_utc
+            ax.set_xlabel("Time starting {0} UTC]".format(min(timetoplot).datetime.date()))
+        else:
+            timetoplot = times_range_zone
+            utcoffset = tz.utcoffset(midnight_zone).total_seconds() / (60*60)
+            ax.set_xlabel("Time starting {0} [{1}, UTC{2}]".format(min(timetoplot).datetime.date(), tz,f'{utcoffset:+.0f}'))
+
+        # Format the time axis
+        xlo, xhi = (timetoplot[0]), (timetoplot[-1])
+        ax.set_xlim([xlo.plot_date, xhi.plot_date])
+        date_formatter = dates.DateFormatter('%H:%M')
+        ax.xaxis.set_major_formatter(date_formatter)
+        plt.setp(ax.get_xticklabels(), rotation=30, ha='right')
+
+        plt.fill_between(
+            timetoplot.datetime,
+            0 * u.deg,
+            90 * u.deg,
+            sun_altazs.alt < -0 * u.deg,
+            color="0.5",
+            zorder=0,
+        )
+
+        plt.fill_between(
+        timetoplot.datetime,
+        0 * u.deg,
+        90 * u.deg,
+        sun_altazs.alt < -18 * u.deg,
+        color="k",
+        zorder=0,
+        )
+
+        plt.scatter(
+            timetoplot.datetime,
+            moon_altazs.alt.value,s=1,c="lightblue")
+
+        plt.scatter(
+            timetoplot.datetime,
+            object_altazs.alt.value,s=1,c="orange")
+
+        plt.ylim(0, )
+        plt.ylabel("Altitude [deg]")
+        ax.set_ylim(0,90)
+        airmass_ticks = np.array([1, 2, 3])
+        altitude_ticks = 90 - np.degrees(np.arccos(1/airmass_ticks))
+
+        ax2 = ax.twinx()
+        ax2.set_yticks(altitude_ticks)
+        ax2.set_yticklabels(airmass_ticks)
+        ax2.set_ylim(ax.get_ylim())
+        ax2.set_ylabel('Airmass')
+        plt.grid(color = 'grey', linestyle = '--', linewidth = 0.5)
+        print(altitude_ticks)
+        ax2.grid(None)
+
+        #plt.show()
+        # Create an in-memory buffer
+        img_io = io.BytesIO()
+        plt.savefig(img_io, format='png')
+        img_io.seek(0)
+
+        # Option a: Create a response with the image data
+        #response = make_response(img_io.read())
+        #response.headers['Content-Type'] = 'image/png'
+        # Option b : Encode image to base64
+        img_data = base64.b64encode(img_io.getvalue()).decode('utf-8')
+        img_obs = f"data:image/png;base64,{img_data}"
+        # Close plot
+        plt.close()
+        return img_obs
+
+    #1: Create an observing plot
+    obs_img = observing_plot()
+
+    #2: Create a finder chart
+    finder_img = plot_finder_image(stellar_object)
+
+    #3: Create Moon Panel
     moon_panel = ''
     # 1st: Is the moon up at night?
     night_moon_alt = moon_alt[np.where(sun_alt<0)]
     #print(night_moon_alt)
     if(np.max(night_moon_alt) < 0):
-        print('moon down')
-    else:
-        print('moon up')
-        moon_separation = moon.separation(stellar_object)
+        moon_panel = 'Moon down'
+    else: 
+        #Moon up
+        moon_separation = moon.separation(stellar_object, origin_mismatch="ignore")
         moon_panel = get_moon_phase_panel(observatory, midnight_utc, moon_separation)
-
-    # 2nd: Plot
-    plt.style.use(astropy_mpl_style)
-    plt.figure(figsize=(8,6.5))
-    #plt.margins(0.01, tight=True) #The default margins are rcParams["axes.xmargin"] (default: 0.05) and rcParams["axes.ymargin"] (default: 0.05).
-    quantity_support()
-    ax = plt.gca()
-    if(obs_tz == 'option_utc'):
-        timetoplot = times_range_utc
-        ax.set_xlabel("Time starting {0} UTC]".format(min(timetoplot).datetime.date()))
-    else:
-        timetoplot = times_range_zone
-        utcoffset = tz.utcoffset(midnight_zone).total_seconds() / (60*60)
-        ax.set_xlabel("Time starting {0} [{1}, UTC{2}]".format(min(timetoplot).datetime.date(), tz,f'{utcoffset:+.0f}'))
-
-    # Format the time axis
-    xlo, xhi = (timetoplot[0]), (timetoplot[-1])
-    ax.set_xlim([xlo.plot_date, xhi.plot_date])
-    date_formatter = dates.DateFormatter('%H:%M')
-    ax.xaxis.set_major_formatter(date_formatter)
-    plt.setp(ax.get_xticklabels(), rotation=30, ha='right')
-
-    plt.fill_between(
-        timetoplot.datetime,
-        0 * u.deg,
-        90 * u.deg,
-        sun_altazs.alt < -0 * u.deg,
-        color="0.5",
-        zorder=0,
-    )
-
-    plt.fill_between(
-    timetoplot.datetime,
-    0 * u.deg,
-    90 * u.deg,
-    sun_altazs.alt < -18 * u.deg,
-    color="k",
-    zorder=0,
-    )
-
-    plt.scatter(
-        timetoplot.datetime,
-        moon_altazs.alt.value,s=1,c="lightblue")
-
-    plt.scatter(
-        timetoplot.datetime,
-        object_altazs.alt.value,s=1,c="orange")
-
-    plt.ylim(0, )
-    plt.ylabel("Altitude [deg]")
-    ax.set_ylim(0,90)
-    airmass_ticks = np.array([1, 2, 3])
-    altitude_ticks = 90 - np.degrees(np.arccos(1/airmass_ticks))
-
-    ax2 = ax.twinx()
-    ax2.set_yticks(altitude_ticks)
-    ax2.set_yticklabels(airmass_ticks)
-    ax2.set_ylim(ax.get_ylim())
-    ax2.set_ylabel('Airmass')
-    plt.grid(color = 'grey', linestyle = '--', linewidth = 0.5)
-    print(altitude_ticks)
-    ax2.grid(None)
-
-    #plt.show()
-    # Create an in-memory buffer
-    img_io = io.BytesIO()
-    plt.savefig(img_io, format='png')
-    img_io.seek(0)
-
-    # Option a: Create a response with the image data
-    #response = make_response(img_io.read())
-    #response.headers['Content-Type'] = 'image/png'
-    # Option b : Encode image to base64
-    img_data = base64.b64encode(img_io.getvalue()).decode('utf-8')
-    img_obs = f"data:image/png;base64,{img_data}"
-
-    # Close plot
-    plt.close()
-
-    # Create a finder chart
-    finder_img = plot_finder_image(stellar_object)
 
     #messier1 = FixedTarget.from_name("M1")
     # ra=101.28715533
     # dec=16.71611586
     # target = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
-    
-
 
     #return response
-    return f'<hr><div class="row"><div class="col-md-6"><img src="{img_obs}"></div><div class="col-md-6">&nbsp;&nbsp;&nbsp;<img src="{finder_img}"></div></div>{moon_panel}'
-    
-    #2nd option: Bokeh plot
+    return f'<hr><div class="row"><div class="col-md-6"><img src="{obs_img}"></div><div class="col-md-6">&nbsp;&nbsp;&nbsp;<img src="{finder_img}"></div></div>{moon_panel}'
+
+    #Alternative Observing Plot using Bokeh
     '''
     p = figure(x_axis_type="datetime", title="Altitude vs Time", height=350, width=800)
     p.xaxis.axis_label = "Time"
@@ -257,40 +259,43 @@ def get_moon_phase_panel(observatory, midnight_utc, moon_separation):
     phase_image=''
     if(phase == 0):
         phase_name='new moon'
-        phase_image = 'Moon_new.gif'
+        phase_image = 'Moon_new.png'
     if(0 < phase < 0.25):
         phase_name='waxing crescent'
-        phase_image = 'Moon_waxingcrescent.gif'
+        phase_image = 'Moon_waxingcrescent.png'
     if(phase == 0.25):
         phase_name='first quarter'
-        phase_image = 'Moon_firstquarter.gif'
+        phase_image = 'Moon_firstquarter.png'
     if(0.25 < phase < 0.5):
         phase_name='waxing gibbous'
-        phase_image = 'Moon_waxinggibbous.gif'
+        phase_image = 'Moon_waxinggibbous.png'
     if(phase == 0.5):
         phase_name='full'
-        phase_image = 'Moon_full.gif'
+        phase_image = 'Moon_full.png'
     if(0.5 < phase < 0.75):
         phase_name='waning gibbous'
-        phase_image = 'Moon_waninggibbous.gif'
+        phase_image = 'Moon_waninggibbous.png'
     if(phase == 0.75):
         phase_name='last quarter'
-        phase_image = 'Moon_lastquarter.gif'
+        phase_image = 'Moon_lastquarter.png'
     if(0.75 < phase < 1):
         phase_name='waning crescent'
-        phase_image = 'Moon_waningcrescent.gif'
+        phase_image = 'Moon_waningcrescent.png'
     if(phase == 1):
         phase_name='new moon'
-        phase_image = 'Moon_new.gif'
+        phase_image = 'Moon_new.png'
+
+    #Rotate the moon picture counterclockwise by (90 - lat_observatory).
+    rotation = (90 - observatory.lat.value);
 
     html = '<hr><div class="row"><div class="col-md-6">'
     html += f'Moon Phase at {midnight_utc} UTC<br>' #TODO:  UTC with 2 digit after ??
     html += f'Phase: {phase_name}<br>'
     html += f'Illumination: {fraction_illuminated_percentage}<br>'
     html += f'separation from moon to object during night: {np.min(moon_separation.arcminute):.3f} to {np.max(moon_separation.arcminute):.3f}' #TODO: round to 3 digits okay?
-    html += '</div><div class="col-md-6">'
-    html += f'<img src="/static/img/{phase_image}" width="96" height="96">'
-    html += '</div></div>'
+    html += '</div><div class="col-md-6"><span class="moon-container-square">'
+    html += f'<img src="/static/img/{phase_image}" width="96" height="96" style="transform: rotate({rotation}deg);">'
+    html += '</span></div></div>'
     #TODO: tilt based on latitude, where I show it on a larger black square
     #this is how it should look like: https://astronomy.stackexchange.com/questions/24711/how-does-the-moon-look-like-from-different-latitudes-of-the-earth
     return html

@@ -86,3 +86,12 @@ th.sortable:hover::after {
   justify-content: flex-end;
   display: flex;
 }
+
+.moon-container-square {
+  width: 136px; /* Adjust width as needed */
+  height: 136px; /* Adjust height as needed */
+  background-color: black;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
