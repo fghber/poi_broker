@@ -520,6 +520,7 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
                       </div>
                     </div>
                 <!-- </form> -->
+                <div id="spinner"></div> 
 
                 <span id="observing_output"></span>
 
@@ -661,6 +662,7 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
     console.log(dec);
     //clear output first
     $("#observing_output").html('');
+    showSpinner()
 
     let observing_plot_data_url = '/query_observing_plot?obs_loc=' + obs_loc + '&obs_date=' + obs_date + '&dobs_tz=' + obs_tz + '&ra=' + ra + '&dec=' + dec;
     //let observing_plot_data_url = '/query_observing_plot?obs_loc=Rubin%20Observatory&obs_date=2024-11-14&dobs_tz=option_utc&ra=101.28715533&dec=16.71611586';
@@ -677,6 +679,14 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
         // document.body.appendChild(script);
         $("#observing_output").html(data);
     });
+  }
+
+  function showSpinner() {
+    const spinner = document.getElementById("spinner");
+    spinner.className = "show";
+    setTimeout(() => {
+      spinner.className = spinner.className.replace("show", "");
+    }, 5000);
   }
 
 /*  function query_classification(ztf_object_id) {
@@ -739,11 +749,12 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
   }
 
   function json2crossmatchestable(json_obj) {
+    locus_id = json_obj[0]['locus_id'];
+    var header = "<h5>Locus ID: " + locus_id + "</h5>";
     var ctable = '<table class="table table-sm table-striped">';
-    ctable += '<thead><th>locus_id</th><th>catalog</th><th>object</th><th>ra_cat</th><th>dec_cat</th><th>separation(mas)</th></thead>';
+    ctable += '<thead><th>catalog</th><th>object</th><th>ra_cat</th><th>dec_cat</th><th>separation(mas)</th></thead>';
         for (let key in json_obj) {
           ctable += '<tr>';
-          ctable += `<td>${json_obj[key].locus_id}</td>`;
           ctable += `<td>${json_obj[key].catalog}</td>`;
           ctable += `<td>${json_obj[key].object}</td>`;
           ctable += `<td>${json_obj[key].ra_cat}</td>`;
@@ -752,7 +763,7 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
           ctable += '</tr>';
         }
         ctable += '</table>';
-        return ctable;
+        return header + ctable;
   }
 </script>
 
