@@ -596,7 +596,13 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
     query_crossmatches_table(locus_id);
     query_crossmatches_footer(locus_id, ztf_object_id, locus_ra, locus_dec);
     
+    //clear observing output
+    $("#observing_output").html('');
     //query_classification(ztf_object_id);
+  });
+
+  $("#myModal").on("hide.bs.modal", function () {
+    $("#observing_output").html('');
   });
 
   //TODO: Deprecated?
