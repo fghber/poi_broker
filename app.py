@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 from flask import (Flask, render_template, abort, jsonify, request, Response,
-                   redirect, url_for, logging, make_response)
+                   redirect, url_for, logging, make_response, Blueprint)
 import jinja2
 # if app.debug is not True:
 import logging
@@ -10,6 +10,7 @@ logging.basicConfig(handlers=[logging.FileHandler(filename="app.log",
                     format="%(asctime)s %(name)s:%(levelname)s:%(message)s", 
                     level=logging.INFO)
 from astropy.time import Time
+from astropy.coordinates import EarthLocation
 import re
 import json
 from flask_sqlalchemy import SQLAlchemy
@@ -24,10 +25,13 @@ from bokeh.models import Legend
 import pdb
 from pprint import pprint
 
+from observing_tool import observing_tool_bp
+
 app = Flask(__name__)
 #app.config.from_pyfile(config_filename)
-
 app.jinja_env.auto_reload = True
+# Register blueprints
+app.register_blueprint(observing_tool_bp)
 
 current_dirs_parent = os.path.dirname(os.getcwd())
 db_path = current_dirs_parent + '/_broker_db/ztf_alerts_stream.db'
@@ -222,79 +226,6 @@ class Gaiadr3_variability(db.Model):
     in_vari_microlensing = db.Column(db.Integer)
     in_vari_compact_companion = db.Column(db.Integer)
 
-#OLD:
-#class Features(db.Model):
-    #__tablename__ = 'featuretable'
-    #date = db.Column(db.Integer)
-    #candid = db.Column(db.Integer)
-    #objectId = db.Column(db.String, primary_key=True) #not an actual PK
-    #A_sf_g = db.Column(db.Float)
-    #gamma_sf_g = db.Column(db.Float)
-    #A_sf_r = db.Column(db.Float)
-    #gamma_sf_r = db.Column(db.Float)
-    #sigmaDRW_g = db.Column(db.Float)
-    #tauDRW_g = db.Column(db.Float)
-    #sigmaDRW_r = db.Column(db.Float)
-    #tauDRW_r = db.Column(db.Float)
-    #gr = db.Column(db.Float)
-    #ri = db.Column(db.Float)
-    #A_r = db.Column(db.Float)
-    #A_g = db.Column(db.Float)
-    #P = db.Column(db.Float)
-    #H1 = db.Column(db.Float)
-    #R21 = db.Column(db.Float)
-    #R31 = db.Column(db.Float)
-    #phi21 = db.Column(db.Float)
-    #phi31 = db.Column(db.Float)
-    #gamma1 = db.Column(db.Float)
-    #gamma2 = db.Column(db.Float)
-    #K = db.Column(db.Float)
-    #Q31 = db.Column(db.Float)
-    #p10 = db.Column(db.Float)
-    #p90 = db.Column(db.Float)
-
-#OLD:
-#class Classification(db.Model):
-    #__tablename__ = 'classificationtable'
-    #date = db.Column(db.Integer)
-    #candid = db.Column(db.Integer)
-    #objectId = db.Column(db.String, primary_key=True) #not an actual PK
-    #Simbad_name = db.Column(db.String)
-    #Simbad_objecttype = db.Column(db.String)
-    #PS1_RRL_P = db.Column(db.Float)
-    #PS1_RRL_helio_dist = db.Column(db.Float)
-    #AllWISE_name = db.Column(db.String)
-    #AllWISE_W1mag = db.Column(db.Float)
-    #AllWISE_W2mag = db.Column(db.Float)
-    #AllWISE_W3mag = db.Column(db.Float)
-    #AllWISE_W4mag = db.Column(db.Float)
-    #twoMASS_name = db.Column(db.String)
-    #twoMASS_angDist = db.Column(db.Float)
-    #twoMASS_Jmag = db.Column(db.Float)
-    #twoMASS_Hmag = db.Column(db.Float)
-    #twoMASS_Kmag = db.Column(db.Float)
-    #twoMASS_Qflg = db.Column(db.Float)
-    #twoMASS_Rflg = db.Column(db.Float)
-    #twoMASS_Aflg = db.Column(db.Float)
-    #ASASSN_name = db.Column(db.String)
-    #ASASSN_OtherNames = db.Column(db.String)
-    #ASASSN_amplitude = db.Column(db.Float)
-    #ASASSN_period = db.Column(db.Float)
-    #ASASSN_Type = db.Column(db.String)
-    #ASASSN_class_probability = db.Column(db.Float)
-    #ASASSN_Periodic = db.Column(db.Float)
-    #ASASSN_VClassified = db.Column(db.Float)
-    #NED_name = db.Column(db.String)
-    #NED_ra = db.Column(db.Float)
-    #NED_de = db.Column(db.Float) #TODO: Should be NED_dec instead
-    #NED_Type = db.Column(db.String)
-    #NED_separation_arcmin = db.Column(db.Float)
-    #NED_associated = db.Column(db.Float)
-    #VSX_OID = db.Column(db.String)
-    #VSX_Name = db.Column(db.String)
-    #VSX_V = db.Column(db.Integer)
-    #VSX_Type = db.Column(db.String)
-
 
 #v0: Access SQLite directly
 #from yourapplication.model import db
@@ -478,6 +409,9 @@ def start():
         print(request.query_string.decode('ascii'))
         print(re.sub('[&?]page=\\d+', '', request.query_string.decode('ascii')))
 
+        site_names = EarthLocation.get_site_names()
+        current_date = Time.now().datetime.date()
+
     return render_template(
         "main.html",
         total_queries=paginator.total,
@@ -486,7 +420,9 @@ def start():
         has_next=paginator.has_next,
         last_page=paginator.pages,
         query_string=re.sub('[&?]?page=\\d+', '', request.query_string.decode('ascii')), # ? b'' binary string
-        filter_warning = filter_warning_message
+        filter_warning = filter_warning_message,
+        observatories = site_names,
+        today_utc = current_date
     )
 
 @app.route('/help', methods=['GET'])
@@ -606,7 +542,6 @@ def get_locus_plot():
                  "attachment; filename=myplot.csv"})
 
 
-
 # import pandas as pd
 # from pathlib import Path
 # @app.route('/generate_lightcurve', methods=['GET'])
@@ -712,8 +647,8 @@ def query_featureplot_data():
                 value = getattr(row, feature)
                 #print([getattr(row, feature)])
                 y_coords += [value]
-        print(x_coords)
-        print(y_coords)
+        # print(x_coords)
+        # print(y_coords)
         pc = p.scatter(
             # [i for i in range(10)],
             # [random.randint(1, 50) for j in range(10)],
@@ -743,7 +678,7 @@ def query_featureplot_data():
  
     # Get Chart Components
     script, div = components(p)
-    print(div)
+    #print(div)
  
     # Return the components to the HTML template
     return f'{ div }{ script }'
@@ -826,160 +761,3 @@ def extract_filter(input_field, db_field, query, convert_callback):
         query = query.filter(db_field >= convert_callback(input_field[0]))
         query = query.filter(db_field <= convert_callback(input_field[1]))
     return query
-
-
-#import numpy as np
-#import matplotlib.pyplot as plt
-
-"""
-def generate_dcmag_lightcurve(dflc):
-
-	len_good = ( len(  dflc[dflc.isdiffpos.notnull() & (dflc.magnr>0) & (dflc.magpsf>0)] ) )
-	print('len_good: ',  len_good)
-	#len_good = ( len(  dflc[dflc.isdiffpos.notnull()] ) )
-	#print ('isdiffpos not null:', len_good)
-	#print( dflc[dflc.isdiffpos.notnull()])
-	
-	if(len_good>1):
-		
-		#print(dflc['distnr'])
-		#print('generate_dcmag_lightcurve')
-		#print(np.max(dflc['distnr']))
-		# confirm that the nearest reference source from ZTF is  coincident
-		if (np.max(dflc['distnr']<1.5)):
-			
-				
-			grp = dflc.groupby(['fid','field','rcid'])
-			#print('grp[magnr]')
-			#print(grp['magnr'])
-			
-			
-			#impute only possible if at min 2 for each fid,field
-			
-			#impute_magnr = grp['magnr'].agg(lambda x: np.median(x[np.isfinite(x)]))
-			try:
-				impute_magnr = grp['magnr'].agg(lambda x: np.median(x[pd.notnull(x)]))
-			
-			
-				#print('impute_magnr: ', impute_magnr)
-			#impute_sigmagnr = grp['sigmagnr'].agg(lambda x: np.median(x[np.isfinite(x)]))
-			
-				impute_sigmagnr = grp['sigmagnr'].agg(lambda x: np.median(x[pd.notnull(x)]))
-				
-				for idx, grpi in grp:
-					#w = np.isnan(grpi['magnr'])
-					
-					w = pd.isnull(grpi['magnr'])
-					
-					w2 = grpi[w].index
-					dflc.loc[w2,'magnr'] = impute_magnr[idx]
-					dflc.loc[w2,'sigmagnr'] = impute_sigmagnr[idx]
-					
-			except:
-				pass
-			
-			#print(impute_sigmagnr)
-
-			
-			dflc['sign'] = 2* (dflc['isdiffpos'] == 't') - 1
-
-			u = (10**(-0.4*dflc['magnr']) + dflc['sign'] * 10**(-0.4*dflc['magpsf'])).astype(np.float64)
-			
-			
-			dflc['dc_mag'] = -2.5 * np.log10(u)
-			dflc['dc_sigmag'] = np.sqrt(
-			(10**(-0.4*dflc['magnr'].astype(np.float64))* dflc['sigmagnr'].astype(np.float64)) **2. + 
-			(10**(-0.4*dflc['magpsf'].astype(np.float64)) * dflc['sigmapsf'].astype(np.float64))**2.) / u
-			dflc['dc_mag_ulim'] = -2.5 * np.log10(10**(-0.4*dflc['magnr'].astype(np.float64)) + 10**(-0.4*dflc['diffmaglim'].astype(np.float64)))
-			dflc['dc_mag_llim'] = -2.5 * np.log10(10**(-0.4*dflc['magnr'].astype(np.float64)) - 10**(-0.4*dflc['diffmaglim'].astype(np.float64)))
-			
-	return dflc	
-
-    
-def plot_lightcurve(dflc, lc_plot_folder, objectId):
-	len_good = ( len(  dflc[dflc.isdiffpos.notnull() & (dflc.magnr>0) & (dflc.magpsf>0)] ) )
-	#len_good = ( len(  dflc[dflc.isdiffpos.notnull()] ) )
-	##print ('isdiffpos not null:', len_good)
-	#print( dflc[dflc.isdiffpos.notnull()])
-	
-	if(len_good>1):
-		##print(dflc['distnr'])			
-		filter_color = {1:'green', 2:'red', 3:'gold'}
-		#if days_ago:
-			#now = Time.now().jd
-			#t = dflc.jd - now
-			#xlabel = 'Days Ago'
-		#else:
-			#t = dflc.jd
-			#xlabel = 'Time (JD)'
-		
-		t = dflc.jd - 2400000.5
-		
-
-		fig = plt.figure(figsize=(5.5,3))
-		
-		fig.subplots_adjust(left=0.13, right=0.95, top=0.92, bottom=0.17, hspace = 0.4)
-
-		#for fid, color in filter_color.items():
-			## plot detections in this filter:
-			#w = (dflc.fid == fid) & ~dflc.magpsf.isnull()
-			#if np.sum(w):
-				#plt.errorbar(t[w],dflc.loc[w,'dc_mag'], dflc.loc[w,'dc_sigmag'],fmt='.',color=color)
-			#wnodet = (dflc.fid == fid) & dflc.magpsf.isnull()
-			#if np.sum(wnodet):
-				#plt.scatter(t[wnodet],dflc.loc[wnodet,'dc_mag_ulim'], marker='v',color=color,alpha=0.25)
-				#plt.scatter(t[wnodet],dflc.loc[wnodet,'dc_mag_llim'], marker='^',color=color,alpha=0.25)
-		
-		
-		#print('plot_lightcurve')
-		#print(np.max(dflc['distnr']))
-		
-		
-		if (np.max(dflc['distnr']<1.5)):
-					
-						
-			for fid, color in filter_color.items():
-				# plot detections in this filter:
-				w = (dflc.fid == fid) & ~dflc.magpsf.isnull()
-				#print(color)
-				#print(w)
-				#print(np.sum(w))
-				if np.sum(w):
-				#	print('plot')
-					plt.errorbar(t[w],dflc.loc[w,'dc_mag'], dflc.loc[w,'dc_sigmag'],fmt='.',color=color)
-				wnodet = (dflc.fid == fid) & dflc.magpsf.isnull()
-				
-				#print(wnodet)
-				#print(np.sum(wnodet))
-				if np.sum(wnodet):
-				#	print('plot')
-					plt.scatter(t[wnodet],dflc.loc[wnodet,'dc_mag_ulim'], marker='v',color=color,alpha=0.25)
-					plt.scatter(t[wnodet],dflc.loc[wnodet,'dc_mag_llim'], marker='^',color=color,alpha=0.25)
-					
-					plt.ylabel('dc mag')		
-
-		else:
-			
-			for fid, color in filter_color.items():
-				# plot detections in this filter:
-				w = (dflc.fid == fid) & ~dflc.magpsf.isnull()
-				if np.sum(w):
-					plt.errorbar(t[w],dflc.loc[w,'magpsf'], dflc.loc[w,'sigmapsf'],fmt='.',color=color)
-				wnodet = (dflc.fid == fid) & dflc.magpsf.isnull()
-				if np.sum(wnodet):
-					plt.scatter(t[wnodet],dflc.loc[wnodet,'diffmaglim'], marker='v',color=color,alpha=0.25)
-				plt.ylabel('psf mag')		
-					
-		
-		plt.gca().invert_yaxis()
-
-		plt.xlabel('time (MJD)')
-		plt.ylabel('dc Magnitude')		
-		#pdb.set_trace()
-		lc_plot_fullpath = str(lc_plot_folder) + '/%s.png' %(objectId)
-		fig.savefig(lc_plot_fullpath,dpi = 100)
-		plt.close('all')
-		return lc_plot_fullpath
-	else:
-		return '/' + str(lc_plot_folder).replace('\\', '/') + '/not_enough_data_for_analysis.png'
-"""
