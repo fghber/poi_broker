@@ -1,5 +1,7 @@
 from flask import Blueprint, render_template, abort, request, make_response
 
+import matplotlib 
+matplotlib.use('agg') # OR 'SVG'
 import matplotlib.pyplot as plt
 from matplotlib import dates
 import io
