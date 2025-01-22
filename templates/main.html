@@ -305,7 +305,7 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
                     <p>
                       <br>
                       <span id="locus-id-label">Locus ID:&nbsp; </span><br>
-                      <span id="locus-ra-label">Locus Ra:&nbsp; </span><br>
+                      <span id="locus-ra-label">Locus RA:&nbsp; </span><br>
                       <span id="locus-dec-label">Locus Dec: </span><br>
                     </p>
                   </div>
@@ -507,11 +507,11 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
                     </div>
                     <div class="row">
                       <div class="col-md-4">
-                        <label for="">Ra:</label><br>
+                        <label for="">RA:</label>
                         <span id="obs_ra"></span>
                       </div>
                       <div class="col-md-4">
-                        <label for="">Dec:</label><br>
+                        <label for="">Dec:</label>
                         <span id="obs_dec"></span>
                       </div>
                       <div class="col-md-4">
@@ -566,7 +566,7 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
     // $(e.currentTarget).find('#object-id-label').html(objectId);
     $('body').find('#objectIdModalLabel').html(ztf_object_id); // modal title {# ! TODO: de-mess! #}
     $('#locus-id-label').html('Locus ID: '+ locus_id);
-    $('#locus-ra-label').html('Locus Ra: '+ locus_ra);
+    $('#locus-ra-label').html('Locus RA: '+ locus_ra);
     $('#locus-dec-label').html('Locus Dec: '+ locus_dec);
     $('#obs_ra').html(locus_ra);
     $('#obs_dec').html(locus_dec);
