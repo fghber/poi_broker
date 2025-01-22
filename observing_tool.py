@@ -88,14 +88,16 @@ def calc_observing_plot():
         #plt.margins(0.01, tight=True) #The default margins are rcParams["axes.xmargin"] (default: 0.05) and rcParams["axes.ymargin"] (default: 0.05).
         quantity_support()
         ax = plt.gca()
+        
         if(obs_tz == 'option_utc'):
             timetoplot = times_range_utc
-            ax.set_xlabel("Time starting {0} UTC]".format(min(timetoplot).datetime.date()))
+            ax.set_xlabel("Time starting {0} [UTC]".format(min(timetoplot).datetime.date()))
         else:
             timetoplot = times_range_zone
             utcoffset = tz.utcoffset(midnight_zone).total_seconds() / (60*60)
             ax.set_xlabel("Time starting {0} [{1}, UTC{2}]".format(min(timetoplot).datetime.date(), tz,f'{utcoffset:+.0f}'))
-
+        
+        
         # Format the time axis
         xlo, xhi = (timetoplot[0]), (timetoplot[-1])
         ax.set_xlim([xlo.plot_date, xhi.plot_date])
@@ -120,14 +122,19 @@ def calc_observing_plot():
         color="k",
         zorder=0,
         )
-
-        plt.scatter(
+                
+                
+        plt.plot(
             timetoplot.datetime,
-            moon_altazs.alt.value,s=1,c="lightblue")
+            moon_altazs.alt.value,c="lightblue", label="moon")
 
-        plt.scatter(
+        plt.plot(
             timetoplot.datetime,
-            object_altazs.alt.value,s=1,c="orange")
+            object_altazs.alt.value,c="orange", label="object")
+
+        plt.legend(bbox_to_anchor=(1.0, 1.1),ncol=2)
+        
+    
 
         plt.ylim(0, )
         plt.ylabel("Altitude [deg]")
@@ -287,14 +294,14 @@ def get_moon_phase_panel(observatory, midnight_utc, moon_separation):
         phase_name='new moon'
         phase_image = 'Moon_new.png'
 
-    #Rotate the moon picture counterclockwise by (90 - lat_observatory).
-    rotation = (90 - observatory.lat.value);
+    #Rotate the moon picture counterclockwise by (lat_observatory).
+    rotation = observatory.lat.value
 
     html = '<hr><div class="row"><div class="col-md-6">'
     html += f'Moon Phase at {midnight_utc} UTC<br>' #TODO:  UTC with 2 digit after ??
     html += f'Phase: {phase_name}<br>'
     html += f'Illumination: {fraction_illuminated_percentage}<br>'
-    html += f'separation from moon to object during night: {np.min(moon_separation.arcminute):.3f} to {np.max(moon_separation.arcminute):.3f}' #TODO: round to 3 digits okay?
+    html += f'separation from moon to object during night: {np.min(moon_separation.degree):.3f} to {np.max(moon_separation.degree):.3f} degree' #TODO: round to 3 digits okay?
     html += '</div><div class="col-md-6"><span class="moon-container-square">'
     html += f'<img src="/static/img/{phase_image}" width="96" height="96" style="transform: rotate({rotation}deg);">'
     html += '</span></div></div>'
@@ -379,6 +386,7 @@ def plot_finder_image(coord, survey='DSS', fov_radius=10*u.arcmin,
     wcs = WCS(hdu.header)
     
     plt.figure(figsize=(6.5,6.5))
+    #plt.subplots_adjust(right=0.4,left=1.0)
     #plt.margins(10)
     # Set up axes & plot styles if needed.
     if ax is None:
@@ -388,6 +396,9 @@ def plot_finder_image(coord, survey='DSS', fov_radius=10*u.arcmin,
     style_kwargs = dict(style_kwargs)
     style_kwargs.setdefault('cmap', 'Greys')
     style_kwargs.setdefault('origin', 'lower')
+    
+    
+    plt.subplots_adjust(left=0.2, bottom=0.1, right=0.95, top=0.9)
 
     
     
@@ -404,11 +415,15 @@ def plot_finder_image(coord, survey='DSS', fov_radius=10*u.arcmin,
     #lat.set_major_formatter('d.d')#('dd:mm')
     # https://docs.astropy.org/en/stable/visualization/wcsaxes/ticks_labels_grid.html
     
+    
     if log:
         image_data = np.log(hdu.data)
     else:
         image_data = hdu.data
     ax.imshow(image_data, **style_kwargs)
+    
+    
+    
 
     # Draw reticle
 #    if reticle:
@@ -430,7 +445,7 @@ def plot_finder_image(coord, survey='DSS', fov_radius=10*u.arcmin,
 #                   **reticle_style_kwargs)
 
     # Labels, title, grid
-    ax.set(xlabel='RA', ylabel='DEC')
+    ax.set(xlabel='RA', ylabel='Dec')
     #if target_name is not None:
     #    ax.set_title(target_name)
 #    ax.grid(grid)
