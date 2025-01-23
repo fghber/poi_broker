@@ -484,7 +484,7 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
                                 </select>
                             </div>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                           <label for="datetimepicker1">Date:</label>
                           <div class="input-group date" id="datetimepicker1" data-target-input="nearest">      
                                 <input type="text" class="form-control datetimepicker-input" data-target="#datetimepicker1" value="{{ today_utc }}" />
@@ -493,40 +493,34 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-2">
                             <label for="radioButtons">Time:</label><br>
                             <div class="btn-group btn-group-toggle" data-toggle="buttons" id="time_radios">
                                 <label class="btn btn-secondary active">
-                                    <input type="radio" name="options" id="option_utc" autocomplete="off" checked data-wat='utc'> UTC
+                                    <input type="radio" name="options" id="option_utc" autocomplete="off" checked> UTC
                                 </label>
                                 <label class="btn btn-secondary">
-                                    <input type="radio" name="options" id="option_local" autocomplete="off" data-wat='local'> Local
+                                    <input type="radio" name="options" id="option_local" autocomplete="off"> Local
                                 </label>
                             </div>
                         </div>
-                    </div>
-                    <div class="row">
-                      <div class="col-md-4">
-                        <label for="">RA:</label>
-                        <span id="obs_ra"></span>
-                      </div>
-                      <div class="col-md-4">
-                        <label for="">Dec:</label>
-                        <span id="obs_dec"></span>
-                      </div>
-                      <div class="col-md-4">
-                          <label for="">&nbsp;</label>
+                        <div class="col-md-3">
+                          <label for="">&nbsp;</label><br>
                           <button type="button" class="btn btn-primary" onclick="query_observing_plot()">Retrieve</button>
                       </div>
+                  </div>
+                  <div class="row">
+                    <div class="col-md-4">
+                      <label for="">RA:</label> <span id="obs_ra"></span>
                     </div>
+                    <div class="col-md-4">
+                      <label for="">Dec:</label> <span id="obs_dec"></span>
+                    </div>
+                  </div>
+
                 <!-- </form> -->
                 <div id="spinner"></div> 
-
-                <span id="observing_output"></span>
-
-
-
-                
+                <span id="observing_output"></span>                
                 </p>
               </div>
               <!-- <div role="tabpanel" class="tab-pane fade" id="classification" aria-labelledby="classification-tab">                
@@ -670,8 +664,8 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
     $("#observing_output").html('');
     showSpinner()
 
-    let observing_plot_data_url = '/query_observing_plot?obs_loc=' + obs_loc + '&obs_date=' + obs_date + '&dobs_tz=' + obs_tz + '&ra=' + ra + '&dec=' + dec;
-    //let observing_plot_data_url = '/query_observing_plot?obs_loc=Rubin%20Observatory&obs_date=2024-11-14&dobs_tz=option_utc&ra=101.28715533&dec=16.71611586';
+    let observing_plot_data_url = '/query_observing_plot?obs_loc=' + obs_loc + '&obs_date=' + obs_date + '&obs_tz=' + obs_tz + '&ra=' + ra + '&dec=' + dec;
+    //let observing_plot_data_url = '/query_observing_plot?obs_loc=Rubin%20Observatory&obs_date=2024-11-14&obs_tz=option_utc&ra=101.28715533&dec=16.71611586';
     console.log(observing_plot_data_url);
     $.ajax({
           url: observing_plot_data_url,
