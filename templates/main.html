@@ -596,6 +596,8 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
   });
 
   $("#myModal").on("hide.bs.modal", function () {
+    $("#crossmatches_table_output").html('');
+    $("#crossmatches_footer_output").html('');
     $("#observing_output").html('');
   });
 
