@@ -692,14 +692,32 @@ def query_crossmatches():
     crossmatches_query = db.session.query(Crossmatches)
     crossmatches_query = crossmatches_query.filter(Crossmatches.locus_id == locusId) #TODO: load only specific columns
     dict = result_to_dict(crossmatches_query.all())
-    print(dict)
     
     response = app.response_class(
-        response=json.dumps(dict), #TODO? array[] with single row when using BootstrapTable?
+        response=safe_serialize(dict, locusId), #TODO? array[] with single row when using BootstrapTable?
         status=200,
         mimetype='application/json'
     )
     return response
+
+def safe_serialize(obj, locusId):
+    try:
+        print(dict)
+        return json.dumps(obj)
+    except TypeError as e:
+        print(f"Serialization error: {e}")
+        # Return an error JSON
+        error_json = [{
+            'id': 0,
+            'locus_id': locusId,  # Use the actual locusId value
+            'catalog': str(e),    # Include the error message as a string
+            'object': '',
+            'ra_cat': 0,
+            'dec_cat': 0,
+            'separation': 0
+        }]
+        return json.dumps(error_json)
+    
 """
 #NOTE: #classification filter by objectId
 @app.route('/query_classification', methods=['GET'])

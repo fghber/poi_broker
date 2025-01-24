@@ -37,8 +37,8 @@ observing_tool_bp = Blueprint('observing_tool', __name__) # TODO: Maybe add a UR
 @observing_tool_bp.route('/query_observing_plot')
 def calc_observing_plot():
     
-    #http://localhost:5000/query_observing_plot?obs_loc=Rubin%20Observatory&obs_date=2024-11-14&dobs_tz=option_utc&ra=101.28715533&dec=16.71611586
-    #/query_observing_data?obs_loc=ALMA&obs_date=2025-01-13&dobs_tz=option_utc&ra=15.7574139&dec=16.215272799999994
+    #http://localhost:5000/query_observing_plot?obs_loc=Rubin%20Observatory&obs_date=2024-11-14&obs_tz=option_utc&ra=101.28715533&dec=16.71611586
+    #/query_observing_data?obs_loc=ALMA&obs_date=2025-01-13&obs_tz=option_utc&ra=15.7574139&dec=16.215272799999994
 
     obs_loc = request.args.get('obs_loc') #EarthLocation.of_site('Rubin Observatory')
     obs_date = request.args.get('obs_date')
