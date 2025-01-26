@@ -685,38 +685,47 @@ def query_featureplot_data():
 
 @app.route('/query_crossmatches', methods=['GET'])
 def query_crossmatches():
+    """Query crossmatches for a given locus id."""
     locusId = request.args.get('locusId') # locusname="ANT2018fywy2"
     print(locusId)
 
-    #query where locus id equals selected id
-    crossmatches_query = db.session.query(Crossmatches)
-    crossmatches_query = crossmatches_query.filter(Crossmatches.locus_id == locusId) #TODO: load only specific columns
-    dict = result_to_dict(crossmatches_query.all())
-    
-    response = app.response_class(
-        response=safe_serialize(dict, locusId), #TODO? array[] with single row when using BootstrapTable?
-        status=200,
-        mimetype='application/json'
-    )
-    return response
+    try:
+        #query all Crossmatches records from DB where locus id equals given id
+        crossmatches_query = db.session.query(Crossmatches)
+        crossmatches_query = crossmatches_query.filter(Crossmatches.locus_id == locusId)
+        dict = result_to_dict(crossmatches_query.all())
+        print(dict)
+
+        response = app.response_class(
+            response=safe_serialize(dict, locusId), #TODO? array[] with single row when using BootstrapTable?
+            status=200,
+            mimetype='application/json'
+        )
+        return response
+    except Exception as e:
+        logging.error(f"Error querying crossmatches: {e}", exc_info=True)
+        return Response(f"{e}", status=500) # Internal Server Error
 
 def safe_serialize(obj, locusId):
+    """Safely serialize a dictionary to JSON."""
     try:
         print(dict)
         return json.dumps(obj)
     except TypeError as e:
         print(f"Serialization error: {e}")
-        # Return an error JSON
-        error_json = [{
-            'id': 0,
-            'locus_id': locusId,  # Use the actual locusId value
-            'catalog': str(e),    # Include the error message as a string
-            'object': '',
-            'ra_cat': 0,
-            'dec_cat': 0,
-            'separation': 0
-        }]
-        return json.dumps(error_json)
+        return json.dumps(serialize_fallback(obj))
+   
+def serialize_fallback(obj):
+    """Fallback handler to make the object serializable by converting binary data to string."""
+    if isinstance(obj, bytes):
+        return obj.decode('utf-8')  # Convert binary to string
+    elif isinstance(obj, dict):
+        return {k: serialize_fallback(v) for k, v in obj.items()}  # Keep dict as-is and process its values
+    elif isinstance(obj, list):
+        return [serialize_fallback(v) for v in obj]  # Keep list as-is and process its elements
+    else:
+        return obj  # Return other types as-is
+
     
 """
 #NOTE: #classification filter by objectId
