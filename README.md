@@ -6,6 +6,9 @@ Incoming alerts will be processed, annotated, classified and forwarded.
 For a general overview of LSST Community Broker, see https://www.lsst.org/scientists/alert-brokers
 
 
+This repository contains the frontend (website) for the Point of Interest broker.
+The Point of Interest broker can be found at https://poibroker.uantof.cl/
+
 
 ## Motivation
  
