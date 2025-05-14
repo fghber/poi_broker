@@ -15,6 +15,9 @@
 The Point of Interest broker is a future <a href="https://www.lsst.org/scientists/alert-brokers">LSST alert broker</a>
 and currently a prototype with <a href="https://www.ztf.caltech.edu/">ZTF</a>.
 <br>
+It has the goal of collecting and analyzing variable star light curves.
+
+<br>
 We are ingesting alerts from the ZTF survey and processing them. We are providing information for observed astronomical objects, such as
 the complete light curve, changes in light curve parameters (features), cross-matches to observations from other surveys, and an observing planning tool.
 <br>
@@ -23,7 +26,12 @@ The Point of Interest broker is a downstream broker from <a href="https://antare
 We are ingesting that portion of alerts that is seen by ANTARES as a high-amplitude variable star (broker topic high_amplitude_variable_star_candidate_staging).
 <br><br>
 
-<h2>How do I lookup data in the Point of Interest broker?</h2>
+More on the general usage of brokers and how they work can be found at this website provided by the Vera C. Rubin Observatory:
+https://rubinobservatory.org/for-scientists/data-products/alerts-and-brokers
+<br><br>
+
+
+<h2>How do I look up data in the Point of Interest broker?</h2>
 You can look for the most recently observed objects from which we have received an alert. The table is automatically sorted to show the most recent 
 alert on top. <br>
 You can filter and sort alerts by any column provided. You can thus e.g. look up objects by their RA and Dec.

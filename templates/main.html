@@ -6,6 +6,15 @@
   
 <hr>
 <p>
+
+
+Welcome to the Point of Interest broker. <br>
+If you're unsure what a broker is, please take a look at our <a href="/static/help.html" title="help">Help</a> page.
+<br>
+<br>
+A quick intro to using the Point of Interest broker:
+<br>
+<br>
 The following table lists ZTF alerts in descending order by date. Use the arrow buttons for sorting and the filter fields for filtering the table. Click on a ztf_object_id to see 
 details about the object.<br>
 An object's (previous) alerts can be accessed by filtering for the ztf_object_id. See the <a href="/static/help.html" title="help">Help</a> page for descriptions of the table values and available filters.
@@ -705,36 +714,16 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
     });
   }*/
 
-  function query_crossmatches_table(locusId) {
-    // Validate input
-    if (!locusId) {
-      console.error('No locus_id provided to query_crossmatches_table');
-      return;
-    }
-
-    let backend_url = `/query_crossmatches?locusId=${locusId}`;
-    console.log('Querying crossmatches:', backend_url);
-    
+  function query_crossmatches_table(locus_id) {
+    let backend_url = `/query_crossmatches?locusId=${locus_id}`;
     $.ajax({
       type: 'GET',
       url: backend_url,
       dataType: 'json',
-      timeout: 10000, // 10 second timeout
-      success: function(response) {
-        try {
-          if (Array.isArray(response) && response.length > 0) {
-            $('#crossmatches_table_output').html(json2crossmatchestable(response));
-          }
-        } catch (err) {
-          console.error('Error processing crossmatches response:', err);
-          $('#crossmatches_table_output').html(`<div class="alert alert-danger">Error processing crossmatches data! ${err}</div>`);
-        }
-      },
-      error: function(xhr, status, error) {
-        console.error('Crossmatches query failed:', status, error);
-        $('#crossmatches_table_output').html(
-          `<div class="alert alert-danger">Failed to load crossmatches data for LocusID ${locusId}! ${error}: ${xhr.responseText}</div>`
-        );
+      complete: function(r){
+        console.log(r.responseText);
+        var json_obj = JSON.parse(r.responseText);
+        $('body').find('#crossmatches_table_output').html(json2crossmatchestable(json_obj));
       }
     });
   }
