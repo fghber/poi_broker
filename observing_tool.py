@@ -27,13 +27,12 @@ from timezonefinder import TimezoneFinder
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-observing_tool_bp = Blueprint('observing_tool', __name__) # TODO: Maybe add a URL prefix observing_tool/
+observing_tool_bp = Blueprint('observing_tool', __name__) # TODO: Perhaps add a URL prefix observing_tool/
 
 # @observing_tool_bp.route('/observatories')
 # def show():
 #     site_names = EarthLocation.get_site_names()
 
-# TODO: Add param for chosen observatory from list!
 @observing_tool_bp.route('/query_observing_plot')
 def calc_observing_plot():
     
@@ -170,8 +169,8 @@ def calc_observing_plot():
     #1: Create an observing plot
     obs_img = observing_plot()
 
-    #2: Create a finder chart
-    finder_img = plot_finder_image(stellar_object)
+    #2: Create a finder chart (obsolete: downloading fits files from NASA SkyView is too slow/does not work reliablely)
+    #finder_img = plot_finder_image(stellar_object)
 
     #3: Create Moon Panel
     moon_panel = ''
@@ -191,60 +190,10 @@ def calc_observing_plot():
     # target = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
 
     #return response
-    return f'<hr><div class="row"><div class="col-md-6"><img src="{obs_img}"></div><div class="col-md-6">&nbsp;&nbsp;&nbsp;<img src="{finder_img}"></div></div>{moon_panel}'
-
-    #Alternative Observing Plot using Bokeh
-    '''
-    p = figure(x_axis_type="datetime", title="Altitude vs Time", height=350, width=800)
-    p.xaxis.axis_label = "Time"
-    p.yaxis.axis_label = "Altitude [deg]"
-
-    if obs_tz == 'option_utc':
-        timetoplot = times_range_utc
-        p.xaxis.axis_label = "Time starting {0} UTC".format(min(timetoplot).datetime.date())
-    else:
-        timetoplot = times_range_zone
-        utcoffset = tz.utcoffset(midnight_zone).total_seconds() / (60*60)
-        p.xaxis.axis_label = "Time starting {0} [{1}, UTC{2}]".format(min(timetoplot).datetime.date(), tz, f'{utcoffset:+.0f}')
-
-    # Format the time axis
-    p.xaxis.formatter = DatetimeTickFormatter(hours="%H:%M")
-    p.xaxis.major_label_orientation = 30
-
-    x = np.append(timetoplot.datetime, timetoplot.datetime[::-1])
-    y = np.append([0] * len(timetoplot.datetime), [90] * len(timetoplot.datetime))
-    mask = np.append(sun_altazs.alt < -0 * u.deg, sun_altazs.alt[::-1] < -0 * u.deg)
-    p.patch(x[mask], y[mask], color="lightgrey", alpha=0.5, legend_label="Sun Altitude < 0 deg")
-
-    mask = np.append(sun_altazs.alt < -18 * u.deg, sun_altazs.alt[::-1] < -18 * u.deg)
-    p.patch(x[mask], y[mask], color="black", alpha=0.5, legend_label="Sun Altitude < -18 deg")
-
-    # Scatter plots for moon and object altitudes
-    p.circle(timetoplot.datetime, moon_altazs.alt.value, size=1, color="lightblue", legend_label="Moon Altitude")
-    p.circle(timetoplot.datetime, object_altazs.alt.value, size=1, color="orange", legend_label="Object Altitude")
-
-    # Set y-axis limits
-    p.y_range = Range1d(0, 90)
-
-    # Airmass ticks
-    airmass_ticks = np.array([1, 2, 3])
-    altitude_ticks = 90 - np.degrees(np.arccos(1/airmass_ticks))
-
-    # Secondary y-axis for airmass
-    p.extra_y_ranges = {"airmass": Range1d(start=0, end=90)}
-    p.add_layout(LinearAxis(y_range_name="airmass", axis_label="Airmass", major_label_overrides=dict(zip(altitude_ticks, map(str, airmass_ticks)))), 'right')
-
-    # Show grid
-    p.grid.grid_line_color = 'grey'
-    p.grid.grid_line_dash = 'dashed'
-    p.grid.grid_line_width = 0.5
-
-    # Option b: Generate script and div for embedding
-    script, div = components(p)
-    # Return the components to the HTML template
-    #print(f'{ div }{ script }')
-    return f'{ div }{ script }'
-    '''
+    return f'''<hr><div class="row">
+        <div class="col-md-7"><img src="{obs_img}"></div>
+        <div class="col-md-5">{moon_panel}</div>
+    </div>'''
 
 def get_moon_phase_panel(observatory, midnight_utc, moon_separation):
     #angle of the tilt of the Moon will be different as seen from different latitudes. 
@@ -297,14 +246,15 @@ def get_moon_phase_panel(observatory, midnight_utc, moon_separation):
     #Rotate the moon picture counterclockwise by (lat_observatory).
     rotation = observatory.lat.value
 
-    html = '<hr><div class="row"><div class="col-md-6">'
+    #html = '<div>'
+    html = '<span class="moon-container-square">'
+    html += f'<img src="/static/img/{phase_image}" width="96" height="96" style="transform: rotate({rotation}deg);">'
+    html += '</span><br>'
     html += f'Moon Phase at {midnight_utc} UTC<br>' #TODO:  UTC with 2 digit after ??
     html += f'Phase: {phase_name}<br>'
     html += f'Illumination: {fraction_illuminated_percentage}<br>'
-    html += f'separation from moon to object during night: {np.min(moon_separation.degree):.3f} to {np.max(moon_separation.degree):.3f} degree' #TODO: round to 3 digits okay?
-    html += '</div><div class="col-md-6"><span class="moon-container-square">'
-    html += f'<img src="/static/img/{phase_image}" width="96" height="96" style="transform: rotate({rotation}deg);">'
-    html += '</span></div></div>'
+    html += f'separation from moon <br>to object during night: {np.min(moon_separation.degree):.3f} to {np.max(moon_separation.degree):.3f} degree' #TODO: round to 3 digits okay?
+    #html += '</div>'
     #TODO: tilt based on latitude, where I show it on a larger black square
     #this is how it should look like: https://astronomy.stackexchange.com/questions/24711/how-does-the-moon-look-like-from-different-latitudes-of-the-earth
     return html
@@ -381,9 +331,9 @@ def plot_finder_image(coord, survey='DSS', fov_radius=10*u.arcmin,
     #print(position)
     #target_name = None if isinstance(target, SkyCoord) else target.name
 
-    #hdu = SkyView.get_images(position=position, coordinates=coordinates,survey=survey, radius=fov_radius)[0][0]
+    hdu = SkyView.get_images(position=position, coordinates=coordinates,survey=survey, radius=fov_radius)[0][0]
     # Use a multiprocessing to fetch the SkyView image with a timeout to handle the case where the request takes too long
-    hdu = fetch_skyview_with_timeout(position=position, coordinates=coordinates,survey=survey, radius=fov_radius)
+    #hdu = fetch_skyview_with_timeout(position=position, coordinates=coordinates,survey=survey, radius=fov_radius)
     if hdu:
         print("Image fetched successfully!")
     else:
@@ -484,7 +434,7 @@ def plot_finder_image(coord, survey='DSS', fov_radius=10*u.arcmin,
 
 
 import multiprocessing
-def fetch_skyview_with_timeout(position, coordinates, survey, radius, timeout=5):
+def fetch_skyview_with_timeout(position, coordinates, survey, radius, timeout=120):
     ctx = multiprocessing.get_context("spawn")  # More robust than "fork" on some platforms
     queue = ctx.Queue()
     proc = ctx.Process(target=fetch_image_worker,

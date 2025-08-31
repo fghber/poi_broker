@@ -481,8 +481,30 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
                   <p>
                   <!-- <br> -->
                   <!-- <form> -->
-
                     <div class="row">
+                      <div class="col-md-4">
+                        <label for="">RA:</label> <span id="obs_ra"></span>
+                      </div>
+                      <div class="col-md-4">
+                        <label for="">Dec:</label> <span id="obs_dec"></span>
+                      </div>
+                      <hr>
+                      <div class="col-md-12">
+                          <h5>Finder Chart</h5>
+                          <!-- Aladin Lite container at requested dimensions -->
+                          <div id="aladin-lite-div" style="width:700px;height:400px;"></div>
+                          <input id="DSS" type="radio" name="survey" value="P/DSS2/color" checked><label for="DSS">DSS color</label>
+                          <input id="DSS-blue" type="radio" name="survey" value="P/DSS2/blue"><label for="DSS-blue">DSS blue</label>
+                          <input id="2MASS" type="radio" name="survey" value="P/2MASS/color"><label for="2MASS">2MASS</label>
+                          <input id="allwise" type="radio" name="survey" value="P/allWISE/color"><label for="allwise">AllWISE</label>
+                          <input id="glimpse" type="radio" name="survey" value="P/GLIMPSE360"><label for="glimpse">GLIMPSE 360</label>
+                      </div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                      <div class="col-md-12">
+                        <h5>Observing Planning</h5>
+                      </div>
                         <div class="col-md-4">
                             <div class="form-group">
                                 <label for="obs_dropdown">Observatory:</label>
@@ -518,17 +540,9 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
                           <button type="button" class="btn btn-primary" onclick="query_observing_plot()">Retrieve</button>
                       </div>
                   </div>
-                  <div class="row">
-                    <div class="col-md-4">
-                      <label for="">RA:</label> <span id="obs_ra"></span>
-                    </div>
-                    <div class="col-md-4">
-                      <label for="">Dec:</label> <span id="obs_dec"></span>
-                    </div>
-                  </div>
 
                 <!-- </form> -->
-                <div id="spinner"></div> 
+                <!--<div id="spinner"></div>-->
                 <span id="observing_output"></span>                
                 </p>
               </div>
@@ -602,6 +616,18 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
     //clear observing output
     $("#observing_output").html('');
     //query_classification(ztf_object_id);
+
+    let aladin;
+    A.init.then(() => {
+        aladin = A.aladin("#aladin-lite-div", { survey: "P/DSS2/color", fov: 1.5, target: `${locus_ra} ${locus_dec}` });
+        $("input[name=survey]").change(function () {aladin.setImageSurvey($(this).val());});
+        var marker1 = A.marker(locus_ra, locus_dec, { popupTitle: "source", popupDesc: ztf_object_id });
+        var markerLayer = A.catalog({ color: "#800080" });
+        aladin.addCatalog(markerLayer);
+        markerLayer.addSources([marker1]);
+        aladin.addCatalog(A.catalogFromSimbad(`${locus_ra} ${locus_dec}`, 0.2, { shape: "plus", color: "#5d5", onClick: "showTable" }));
+        //aladin.addCatalog(A.catalogFromVizieR("234.7 8.9", 0.2, { shape: "square", sourceSize: 8, color: "red", onClick: "showPopup" }));
+    });
   });
 
   $("#myModal").on("hide.bs.modal", function () {
@@ -671,9 +697,11 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
     console.log(ra);
     const dec = $('#obs_dec').text();
     console.log(dec);
+    const ztfObjectId = $('body').find('#objectIdModalLabel').text();
+    console.log(ztfObjectId);
     //clear output first
     $("#observing_output").html('');
-    showSpinner()
+    //showSpinner()
 
     let observing_plot_data_url = '/query_observing_plot?obs_loc=' + obs_loc + '&obs_date=' + obs_date + '&obs_tz=' + obs_tz + '&ra=' + ra + '&dec=' + dec;
     //let observing_plot_data_url = '/query_observing_plot?obs_loc=Rubin%20Observatory&obs_date=2024-11-14&obs_tz=option_utc&ra=101.28715533&dec=16.71611586';
