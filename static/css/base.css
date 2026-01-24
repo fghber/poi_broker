@@ -96,8 +96,10 @@ th.sortable:hover::after {
   align-items: center;
 }
 
-
-
+.accent-heading {
+    border-left: 5px solid var(--primary);
+    padding-left: 15px;
+}
 
 #spinner {
   visibility: hidden;
@@ -140,3 +142,4 @@ th.sortable:hover::after {
 #spinner.show {
   visibility: visible;
 }
+
