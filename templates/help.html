@@ -1,129 +1,203 @@
 {% extends 'site.html' %}
 {% block content %}
-<div style="margin-top: 29px;"> 
-    <h1>Point of Interest Broker - Help Page</h1>
+<div class="container my-5">
+    <div class="row mb-5">
+        <div class="col-12 border-bottom pb-3">
+            <h1 class="display-4 text-primary">Point of Interest Broker</h1>
+            <p class="lead text-secondary">Analyzing variable star light curves for the astronomical community.</p>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12 bg-light p-3 rounded shadow-sm">
+            <h2 class="h3 mb-0 text-dark">Frequently Asked Questions</h2>
+        </div>
+    </div>
+
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body">
+            <h2 class="h4 accent-heading mb-3">What is the Point of Interest (POI) Broker?</h2>
+            <p>The Point of Interest broker is a future <a href="https://www.lsst.org/scientists/alert-brokers">LSST alert broker</a> currently operating as a prototype with <a href="https://www.ztf.caltech.edu/">ZTF</a>.</p>
+            <p>The POI broker aims to collect and analyze variable star light curves and how their properties evolve over time.<br>
+                We ingest alerts from the ZTF/LSST survey to provide:</p>
+            <ul class="mb-3">
+                <li>Complete light curves.</li>
+                <li>Changes in light curve parameters (features).</li>
+                <li>Cross-matches to other astronomical surveys.</li>
+                <li>An integrated observation planning tool.</li>
+            </ul>
+            
+            <p>
+                <strong>Technical:</strong> POI is a downstream broker from <a href="https://antares.noirlab.edu/">ANTARES</a>, specifically processing alerts identified as <code>high_amplitude_variable_star_candidate_staging</code>.
+            </p>
+            
+            <p class="mt-3">
+                More information on brokers is available at the 
+                <a href="https://rubinobservatory.org/for-scientists/data-products/alerts-and-brokers" class="font-weight-bold">
+                    Vera C. Rubin Observatory website
+                </a>.
+            </p>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12 bg-light p-3 rounded shadow-sm">
+            <h2 class="h3 mb-0 text-dark">User Guide & Reference</h2>
+        </div>
+    </div>
+
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body">
+            <h2 class="h4 accent-heading mb-4">Descriptions of Table Values</h2>
+            <div class="row text-monospace">
+                <div class="col-md-3 font-weight-bold text-primary">date</div>
+                <div class="col-md-9">The date of the alert.</div>
+                <hr class="w-100 my-2 d-none d-md-block">
+                
+                <div class="col-md-3 font-weight-bold text-primary">alert_id</div>
+                <div class="col-md-9">ZTF transient candidate, unique to an alert.</div>
+                <hr class="w-100 my-2 d-none d-md-block">
+                
+                <div class="col-md-3 font-weight-bold text-primary">ztf_object_id</div>
+                <div class="col-md-9">Unique ZTF identifier; appears in all alerts for this astronomical object.</div>
+                <hr class="w-100 my-2 d-none d-md-block">
+                
+                <div class="col-md-3 font-weight-bold text-primary">mjd</div>
+                <div class="col-md-9">Observation time at start of exposure (in Modified Julian Date).</div>
+                <hr class="w-100 my-2 d-none d-md-block">
+                
+                <div class="col-md-3 font-weight-bold text-primary">ant_passband</div>
+                <div class="col-md-9">Filter name (<code>g, R, i</code>) derived from ZTF <code>fid</code> (<code>1, 2, 3</code>).</div>
+                <hr class="w-100 my-2 d-none d-md-block">
+                
+                <div class="col-md-3 font-weight-bold text-primary">ra / dec</div>
+                <div class="col-md-9">Right Ascension and Declination (<code>J2000 deg</code>).</div>
+                <hr class="w-100 my-2 d-none d-md-block">
+                
+                <div class="col-md-3 font-weight-bold text-primary">ant_mag_corrected</div>
+                <div class="col-md-9">Magnitude from PSF-fit photometry measured from difference image, obtained from ANTARES <code>mag</code>.</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-6 mb-4">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <h2 class="h4 accent-heading mb-3">How do I look up data?</h2>
+                    <p>The main table displays the most recent alerts by default on top.<br>
+                        Filtering and sorting are available for all columns. You can refine your results using the following methods:</p>
+                    <ul>
+                        <li><strong>Search:</strong> Use the filter inputs at the top of each column.</li>
+                        <li><strong>Sort:</strong> Click column headers to toggle ascending/descending order.</li>
+                        <li><strong>Coordinates:</strong> Filter by <code>ra</code> and <code>dec</code> to find specific regions.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6 mb-4">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <h2 class="h4 accent-heading mb-3">Using Filters</h2>
+                    <p>Enter values in the column headers and click <strong>Filter</strong>.</p>
+                    Supported filter formats include:
+                    <ul>
+                        <li><strong>Exact Match:</strong> IDs or dates.</li>
+                        <li><strong>Ranges:</strong> Two numbers (e.g., <code>18.8 19.4</code>).</li>
+                        <li><strong>Thresholds:</strong> Use <code>&gt;18</code> or <code>&lt;18</code>.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body">
+            <h2 class="h4 accent-heading mb-3">Detailed Alert Views</h2>
+            <p>Click the <code>ztf_object_id</code> in a table row to view the alert detail page, which includes:</p>
+            <div class="row mt-3">
+                <div class="col-md-6">
+                    <ul>
+                        <li>Light curve plots.</li>
+                        <li>Thumbnails (cutout images)</li>
+                        <li>Calculated features over time (tabular data and visualizations).</li>
+                        <li>Observing planning (Finder Chart and Planning Tool by observatory location)</li>
+                        <li>Catalog Cross-matches of the object</li>
+                        <li>Classification</li>
+                    </ul>
+                </div>
+                <div class="col-md-6">
+                    <p class="mb-1 font-weight-bold">Thumbnails:</p>
+                    <p class="small text-muted">Each alert contains three cutouts showing a 1&times;1 arcmin area.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body">
+            <h2 class="h4 accent-heading mb-3">Observing Planning Tool</h2>
+              <p>The observing planning tool assists with planning follow-up observations. Users can choose from a list of observatories, <i>or enter their own</i>.<br>
+                It includes a display of the moon's position according to the latitude of the observer.</p>            
+        </div>
+    </div>
+
+
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body">
+            <h2 class="h4 accent-heading mb-3">Light Curve Features</h2>
+            <p>Features are derived properties of light curves.<br>
+            Depending on the number of observations, certain features may be excluded from calculation if the data is insufficient (i.e., too few observations).<br>
+            The display is restricted to features computed for the current light curve.</p>
+
+            <p>As Point of Interest operates as a downstream broker for ANTARES, we utilize the features calculated by ANTARES. While ANTARES persists only the most recent set of features corresponding to the latest alert (calculated for the light curve with all the current alerts), POI maintains a history of the features.<br>
+            This means, once there is a new alert for a particular object, we are adding its current set of features. This history allows for tracking how features change over time.</p>
+        </div>
+    </div>
+
+
+    <div class="row mb-4">
+        <div class="col-12 bg-light p-3 rounded shadow-sm">
+            <h2 class="h3 mb-0 text-dark">Further Information</h2>
+        </div>
+    </div>
+
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body">
+            <h2 class="h4 accent-heading mb-3">What other brokers are out there?</h2>
+            <p>Several groups are developing brokers to process the ZTF/LSST alert stream:</p>
+            <div class="row">
+                <div class="col-sm-6">
+                    <p class="font-weight-bold mb-1">Full-Stream Alert Brokers</p>
+                    <ul class="small">
+                        <li>Alerce</li>
+                        <li>AMPEL</li>
+                        <li>ANTARES</li>
+                        <li>Babamul</li>
+                        <li>Fink</li>
+                        <li>Lasair</li>
+                        <li>Pitt-Google</li>
+                    </ul>
+                </div>
+                <div class="col-sm-6">
+                    <p class="font-weight-bold mb-1">Downstream Alert Brokers</p>
+                    <ul class="small">
+                        <li>SNAPS</li>
+                        <li>POI: Variables</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body">
+            <h2 class="h4 accent-heading mb-3">How do I cite the Point of Interest broker?</h2>
+            <p>A paper is forthcoming. In the meantime, please mention the <strong>Point of Interest Broker</strong> in your paper acknowledgements.</p>
+        </div>
+    </div>
+
 </div>
-
-<br><br>
-    
-       <div class="header"> 
-        <h1>Frequently Asked Questions</h1>
-    </div>
-
-
-<h2>What is the Point of Interest (POI) Broker?</h2>
-The Point of Interest broker is a future <a href="https://www.lsst.org/scientists/alert-brokers">LSST alert broker</a>
-and currently a prototype with <a href="https://www.ztf.caltech.edu/">ZTF</a>.
-<br>
-It has the goal of collecting and analyzing variable star light curves.
-
-<br>
-We are ingesting alerts from the ZTF survey and processing them. We are providing information for observed astronomical objects, such as
-the complete light curve, changes in light curve parameters (features), cross-matches to observations from other surveys, and an observing planning tool.
-<br>
-A bit more technical information:
-The Point of Interest broker is a downstream broker from <a href="https://antares.noirlab.edu/">ANTARES</a>.
-We are ingesting that portion of alerts that is seen by ANTARES as a high-amplitude variable star (broker topic high_amplitude_variable_star_candidate_staging).
-<br><br>
-
-More on the general usage of brokers and how they work can be found at this website provided by the Vera C. Rubin Observatory:
-https://rubinobservatory.org/for-scientists/data-products/alerts-and-brokers
-<br><br>
-
-
-<h2>How do I look up data in the Point of Interest broker?</h2>
-You can look for the most recently observed objects from which we have received an alert. The table is automatically sorted to show the most recent 
-alert on top. <br>
-You can filter and sort alerts by any column provided. You can thus e.g. look up objects by their RA and Dec.
-<br><br>
-
-<h2>How do I cite the Point of Interest broker?</h2>
-A paper will be out soon. In the meanwhile, please mention us in the acknowledgements of your paper.
-<br><br>
-
-<h2>What other brokers are out there?</h2>
-There are several other groups developing brokers to process the ZTF alert stream. 
-The full list of brokers is as follows:<br><br>
-
-
-Rubin Observatory Full-Stream Alert Brokers
-   <ul>
-    <li>Alerce
-    <li>AMPEL
-    <li>ANTARES
-    <li>Babamul
-    <li>Fink
-    <li>Lasair
-    <li>Pitt-Google
-   </ul>
-   
-Rubin Observatory Downstream Alert Brokers
-   <ul>
-    <li>SNAPS
-    <li>POI: Variables
-   </ul>
-
-   
-   <br>
-    <div class="header"> 
-        <h1>How do I use the Point of Interest broker?</h1>
-    </div>
-    
-    
-
-
-    <h2>Descriptions of Table Values</h2>
-    <ul>
-        <li>date: The date of the alert</li>
-        <li>alert_id: ZTF transient candidate, unique to an alert</li>
-        <li>ztf_object_id: ZTF identifier for this astronomical object, unique to an astronomical object, appears in all alerts for this object</li>
-        <li>mjd: observation time at start of exposure, given in Julian date</li>
-        <li>ant_passband: Filter name (g, R, i) derived from ZTF fid (1, 2, 3)</li>
-        <li>ra: Right Ascension of candidate; J2000 [deg]</li>
-        <li>dec: Declination of candidate; J2000 [deg]</li>
-        <li>ant_mag_corrected: Magnitude from PSF-fit photometry measured from difference image, obtained from ANTARES [mag]</li>
-    </ul>
-
-    <h2>Available Filters</h2>
-    <ul>
-        <li>You can filter the columns by entering values and then click the "Filter" button.</li>
-        <li>You can enter a specific value for the columns date, candid, objectId. You can also enter ranges in fields such as "magpf",  Enter one of the following:</li>
-        <ol>
-            <li>>18</li>
-            <li><18</li>
-            <li>18.8 19.4</li>
-        </ol>
-        <li>You can also filter the columns by clicking the sort indicators to sort in either ascending or descending order. </li>
-    </ul>
-    
-    
-    
-    <h2>Viewing details of a single alert</h2>
-    Clicking on the ztf_object_id of an alert in the main table will bring you to that alert’s detail page.<br>
-    Here you can see a plot of the light curve, thumbnails (cutout images), calculated features including how they change over time, an observing planning tool, a cross-match to other 
-    surveys and classification.<br>
-    <br>
-    
-    
-    <h3>Thumbnails</h3>
-    The three cutouts are taken from the alert and display the 1x1 arcmin area surrounding the alert.<br><br>
-    
-
-    <h3>Observing Planning Tool</h3>
-    The observing planning tool assists with planning folow-up observations. Users can chose from a list of observatories, or enter their own.
-    The moon is displayed according to the latitute of the observer.<br><br>
-    
-    
-    
-    <h3>Light Curve Features</h3>
-Light curve features are derived properties of light curves.<br>
-Depending on the number of observations, some features might not be calculated (i.e.: too few observations).<br>
-Only features which can be calculated for this light curve are displayed.<br>
-As Point of Interest is a downstream broker from ANTARES, we are reusing the features calculated by ANTARES.
-Differently to ANTARES which stores only the most recent set of features, calculated for the light curve with all the current alerts,
-we keep a history of the features. This means, once there is a new alert for a particular object, we are adding its current set of features. <br>
-This allows to track how features change over time.
-
-
-
 {% endblock %}
