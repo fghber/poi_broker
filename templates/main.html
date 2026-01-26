@@ -292,10 +292,6 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
                 <a class="nav-link" id="features-tab" data-toggle="tab" href="#features" role="tab" aria-controls="features"
                   aria-selected="false">Features</a>
               </li>
-              <!-- <li class="nav-item">
-                <a class="nav-link" id="classification-tab" data-toggle="tab" href="#classification" role="tab" aria-controls="classification"
-                  aria-selected="false">Classification</a>
-              </li> -->
               <li class="nav-item">
                 <a class="nav-link" id="observing-tab" data-toggle="tab" href="#observing" role="tab" aria-controls="observing"
                   aria-selected="false">Observing Planning Tool</a>
@@ -303,6 +299,10 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
               <li class="nav-item">
                 <a class="nav-link" id="crossmatches-tab" data-toggle="tab" href="#crossmatches" role="tab" aria-controls="crossmatches"
                   aria-selected="false">Catalog cross-matches</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" id="classification-tab" data-toggle="tab" href="#classification" role="tab" aria-controls="classification"
+                  aria-selected="false">Classification</a>
               </li>
             </ul>
           </ul>
@@ -546,18 +546,17 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
                 <span id="observing_output"></span>                
                 </p>
               </div>
-              <!-- <div role="tabpanel" class="tab-pane fade" id="classification" aria-labelledby="classification-tab">                
-                <p>
-                  <br>
-                  <span>Classification: </span>
-                </p>
-                <span id="classification_output"></span>
-              </div> -->
               <div role="tabpanel" class="tab-pane fade" id="crossmatches" aria-labelledby="crossmatches-tab">                
                 <p>
                   <br>
-                <span id="crossmatches_table_output"></span><br>
-                <span id="crossmatches_footer_output"></span>
+                    <span id="crossmatches_table_output"></span><br>
+                    <span id="crossmatches_footer_output"></span>
+                </p>
+              </div>
+              <div role="tabpanel" class="tab-pane fade" id="classification" aria-labelledby="classification-tab">                
+                <p>
+                  <br>
+                  <span class="ml-8" id="classification_output"></span><br>
                 </p>
               </div>
           </div>
@@ -612,6 +611,8 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
 
     query_crossmatches_table(locus_id);
     query_crossmatches_footer(locus_id, ztf_object_id, locus_ra, locus_dec);
+
+    query_classification(candid);
     
     //clear observing output
     $("#observing_output").html('');
@@ -634,6 +635,7 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
     $("#crossmatches_table_output").html('');
     $("#crossmatches_footer_output").html('');
     $("#observing_output").html('');
+    $("#classification_output").html('');
   });
 
   //TODO: Deprecated?
@@ -728,20 +730,15 @@ An object's (previous) alerts can be accessed by filtering for the ztf_object_id
     }, 5000);
   }
 
-/*  function query_classification(ztf_object_id) {
-    var backend_url = '/query_classification?objectId='+ ztf_object_id;
+  function query_classification(alertId) {
+    let classification_data_url = '/query_classification?alertId=' + alertId;
     $.ajax({
-      type: 'GET',
-      url: backend_url,
-      dataType: 'json',
-      complete: function(r){
-        console.log(r.responseText);
-        var json_obj = JSON.parse(r.responseText);
-        $('body').find('#classification_output').html(json2table(json_obj));
-      }
+          url: classification_data_url,
+          cache: false
+    }).done(function(data) {
+        $("#classification_output").html(data);
     });
-  }*/
-
+  }
   function query_crossmatches_table(locusId) {
     // Validate input
     if (!locusId) {

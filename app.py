@@ -26,12 +26,14 @@ import pdb
 from pprint import pprint
 
 from observing_tool import observing_tool_bp
+from classification import classification_bp
 
 app = Flask(__name__)
 #app.config.from_pyfile(config_filename)
 app.jinja_env.auto_reload = True
 # Register blueprints
 app.register_blueprint(observing_tool_bp)
+app.register_blueprint(classification_bp)
 
 current_dirs_parent = os.path.dirname(os.getcwd())
 db_path = current_dirs_parent + '/_broker_db/ztf_alerts_stream.db'
