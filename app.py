@@ -1,7 +1,6 @@
-import os
-from datetime import datetime
 from flask import (Flask, render_template, abort, jsonify, request, Response,
                    redirect, url_for, logging, make_response, Blueprint)
+from flask_login import LoginManager, login_required, current_user
 import jinja2
 # if app.debug is not True:
 import logging
@@ -16,6 +15,8 @@ import json
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import inspect
 #import orm
+from . import db
+from .models import Ztf, Crossmatches
 
 from bokeh.embed import components
 from bokeh.plotting import figure
@@ -25,251 +26,12 @@ from bokeh.models import Legend
 import pdb
 from pprint import pprint
 
-from observing_tool import observing_tool_bp
-from classification import classification_bp
+from .helpers import object_as_dict, result_to_dict
 
-app = Flask(__name__)
-#app.config.from_pyfile(config_filename)
-app.jinja_env.auto_reload = True
-# Register blueprints
-app.register_blueprint(observing_tool_bp)
-app.register_blueprint(classification_bp)
-
-current_dirs_parent = os.path.dirname(os.getcwd())
-db_path = current_dirs_parent + '/_broker_db/ztf_alerts_stream.db'
-db_uri = 'sqlite:///{}'.format(db_path)
+main_blueprint = Blueprint('main', __name__)
 
 
-#TODO: Move to .env o.Ae.
-app.config.update(
-    DEBUG=True,
-    TESTING=True,
-    TEMPLATES_AUTO_RELOAD=True,
-    SQLALCHEMY_DATABASE_URI=db_uri,
-    SQLALCHEMY_TRACK_MODIFICATIONS=False
-)
-#SQLALCHEMY_DATABASE_URI='sqlite:///ztf_alerts_stream.db',
-
-#TODO: Move to module
-def object_as_dict(obj):
-    return {c.key: getattr(obj, c.key)
-            for c in inspect(obj).mapper.column_attrs}
-
-def result_to_dict(query_results):
-    def to_dict(obj):
-        return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}    
-    return [to_dict(result) for result in query_results]
-
-# Example usage:
-# results = session.query(MyModel).all()
-# json_output = convert_to_json(results)
-# print(json_output)
-
-
-db = SQLAlchemy(app)
-class Ztf(db.Model):
-    __tablename__ = 'featuretable'
-    #id = db.Column(db.Integer, primary_key=True)
-    date_alert_mjd = db.Column(db.Float, primary_key=True)
-    alert_id = db.Column(db.String, primary_key=True)
-    ztf_object_id = db.Column(db.String)
-    locus_id = db.Column(db.String, primary_key=True)
-    locus_ra = db.Column(db.Float)
-    locus_dec = db.Column(db.Float)
-    ant_mag_corrected = db.Column(db.Float)
-    ant_passband = db.Column(db.String)
-    feature_amplitude_magn_r = db.Column(db.Float)
-    feature_anderson_darling_normal_magn_r = db.Column(db.Float)
-    feature_beyond_1_std_magn_r = db.Column(db.Float)
-    feature_beyond_2_std_magn_r = db.Column(db.Float)
-    feature_cusum_magn_r = db.Column(db.Float)
-    feature_eta_e_magn_r = db.Column(db.Float)
-    feature_inter_percentile_range_2_magn_r = db.Column(db.Float)
-    feature_inter_percentile_range_10_magn_r = db.Column(db.Float)
-    feature_inter_percentile_range_25_magn_r = db.Column(db.Float)
-    feature_kurtosis_magn_r = db.Column(db.Float)
-    feature_linear_fit_slope_magn_r = db.Column(db.Float)
-    feature_linear_fit_slope_sigma_magn_r = db.Column(db.Float)
-    feature_linear_fit_reduced_chi2_magn_r = db.Column(db.Float)
-    feature_linear_trend_magn_r = db.Column(db.Float)
-    feature_linear_trend_sigma_magn_r = db.Column(db.Float)
-    feature_magnitude_percentage_ratio_40_5_magn_r = db.Column(db.Float)
-    feature_magnitude_percentage_ratio_20_5_magn_r = db.Column(db.Float)
-    feature_maximum_slope_magn_r = db.Column(db.Float)
-    feature_mean_magn_r = db.Column(db.Float)
-    feature_median_absolute_deviation_magn_r = db.Column(db.Float)
-    feature_percent_amplitude_magn_r = db.Column(db.Float)
-    feature_percent_difference_magnitude_percentile_5_magn_r = db.Column(db.Float)
-    feature_percent_difference_magnitude_percentile_10_magn_r = db.Column(db.Float)
-    feature_median_buffer_range_percentage_10_magn_r = db.Column(db.Float)
-    feature_median_buffer_range_percentage_20_magn_r = db.Column(db.Float)
-    feature_period_0_magn_r = db.Column(db.Float)
-    feature_period_s_to_n_0_magn_r = db.Column(db.Float)
-    feature_period_1_magn_r = db.Column(db.Float)
-    feature_period_s_to_n_1_magn_r = db.Column(db.Float)
-    feature_period_2_magn_r = db.Column(db.Float)
-    feature_period_s_to_n_2_magn_r = db.Column(db.Float)
-    feature_period_3_magn_r = db.Column(db.Float)
-    feature_period_s_to_n_3_magn_r = db.Column(db.Float)
-    feature_period_4_magn_r = db.Column(db.Float)
-    feature_period_s_to_n_4_magn_r = db.Column(db.Float)
-    feature_periodogram_amplitude_magn_r = db.Column(db.Float)
-    feature_periodogram_beyond_2_std_magn_r = db.Column(db.Float)
-    feature_periodogram_beyond_3_std_magn_r = db.Column(db.Float)
-    feature_periodogram_standard_deviation_magn_r = db.Column(db.Float)
-    feature_chi2_magn_r = db.Column(db.Float)
-    feature_skew_magn_r = db.Column(db.Float)
-    feature_standard_deviation_magn_r = db.Column(db.Float)
-    feature_stetson_k_magn_r = db.Column(db.Float)
-    feature_weighted_mean_magn_r = db.Column(db.Float)
-    feature_anderson_darling_normal_flux_r = db.Column(db.Float)
-    feature_cusum_flux_r = db.Column(db.Float)
-    feature_eta_e_flux_r = db.Column(db.Float)
-    feature_excess_variance_flux_r = db.Column(db.Float)
-    feature_kurtosis_flux_r = db.Column(db.Float)
-    feature_mean_variance_flux_r = db.Column(db.Float)
-    feature_chi2_flux_r = db.Column(db.Float)
-    feature_skew_flux_r = db.Column(db.Float)
-    feature_stetson_k_flux_r = db.Column(db.Float)
-    feature_amplitude_magn_g = db.Column(db.Float)
-    feature_anderson_darling_normal_magn_g = db.Column(db.Float)
-    feature_beyond_1_std_magn_g = db.Column(db.Float)
-    feature_beyond_2_std_magn_g = db.Column(db.Float)
-    feature_cusum_magn_g = db.Column(db.Float)
-    feature_eta_e_magn_g = db.Column(db.Float)
-    feature_inter_percentile_range_2_magn_g = db.Column(db.Float)
-    feature_inter_percentile_range_10_magn_g = db.Column(db.Float)
-    feature_inter_percentile_range_25_magn_g = db.Column(db.Float)
-    feature_kurtosis_magn_g = db.Column(db.Float)
-    feature_linear_fit_slope_magn_g = db.Column(db.Float)
-    feature_linear_fit_slope_sigma_magn_g = db.Column(db.Float)
-    feature_linear_fit_reduced_chi2_magn_g = db.Column(db.Float)
-    feature_linear_trend_magn_g = db.Column(db.Float)
-    feature_linear_trend_sigma_magn_g = db.Column(db.Float)
-    feature_magnitude_percentage_ratio_40_5_magn_g = db.Column(db.Float)
-    feature_magnitude_percentage_ratio_20_5_magn_g = db.Column(db.Float)
-    feature_maximum_slope_magn_g = db.Column(db.Float)
-    feature_mean_magn_g = db.Column(db.Float)
-    feature_median_absolute_deviation_magn_g = db.Column(db.Float)
-    feature_percent_amplitude_magn_g = db.Column(db.Float)
-    feature_percent_difference_magnitude_percentile_5_magn_g = db.Column(db.Float)
-    feature_percent_difference_magnitude_percentile_10_magn_g = db.Column(db.Float)
-    feature_median_buffer_range_percentage_10_magn_g = db.Column(db.Float)
-    feature_median_buffer_range_percentage_20_magn_g = db.Column(db.Float)
-    feature_period_0_magn_g = db.Column(db.Float)
-    feature_period_s_to_n_0_magn_g = db.Column(db.Float)
-    feature_period_1_magn_g = db.Column(db.Float)
-    feature_period_s_to_n_1_magn_g = db.Column(db.Float)
-    feature_period_2_magn_g = db.Column(db.Float)
-    feature_period_s_to_n_2_magn_g = db.Column(db.Float)
-    feature_period_3_magn_g = db.Column(db.Float)
-    feature_period_s_to_n_3_magn_g = db.Column(db.Float)
-    feature_period_4_magn_g = db.Column(db.Float)
-    feature_period_s_to_n_4_magn_g = db.Column(db.Float)
-    feature_periodogram_amplitude_magn_g = db.Column(db.Float)
-    feature_periodogram_beyond_2_std_magn_g = db.Column(db.Float)
-    feature_periodogram_beyond_3_std_magn_g = db.Column(db.Float)
-    feature_periodogram_standard_deviation_magn_g = db.Column(db.Float)
-    feature_chi2_magn_g = db.Column(db.Float)
-    feature_skew_magn_g = db.Column(db.Float)
-    feature_standard_deviation_magn_g = db.Column(db.Float)
-    feature_stetson_k_magn_g = db.Column(db.Float)
-    feature_weighted_mean_magn_g = db.Column(db.Float)
-    feature_anderson_darling_normal_flux_g = db.Column(db.Float)
-    feature_cusum_flux_g = db.Column(db.Float)
-    feature_eta_e_flux_g = db.Column(db.Float)
-    feature_excess_variance_flux_g = db.Column(db.Float)
-    feature_kurtosis_flux_g = db.Column(db.Float)
-    feature_mean_variance_flux_g = db.Column(db.Float)
-    feature_chi2_flux_g = db.Column(db.Float)
-    feature_skew_flux_g = db.Column(db.Float)
-    feature_stetson_k_flux_g = db.Column(db.Float)
-
-    # @property
-    # def ra(self):
-    #     ra = shape.to_shape(self.location).x
-    #     if ra < 0:
-    #         ra = ra + 360
-    #     return ra
-    # @property
-    # def dec(self):
-    #     return shape.to_shape(self.location).y
-
-    def __str__(self):
-        return self.ztf_object_id
-
-class Crossmatches(db.Model):
-    __tablename__ = 'crossmatches'
-    id = db.Column(db.Integer, primary_key=True)
-    locus_id = db.Column(db.String)
-    catalog = db.Column(db.String)
-    object = db.Column(db.String)
-    ra_cat = db.Column(db.Float)
-    dec_cat = db.Column(db.Float)
-    separation = db.Column(db.Float)
-
-class Gaiadr3_variability(db.Model):
-    __tablename__ = 'gaiadr3_variability'
-    source_id = db.Column(db.Integer, primary_key=True) #ot a real PK
-    ra = db.Column(db.Float)
-    dec = db.Column(db.Float)
-    phot_g_mean_mag = db.Column(db.Float)
-    phot_rp_mean_mag = db.Column(db.Float)
-    in_vari_classification_result = db.Column(db.Integer)
-    in_vari_rrlyrae = db.Column(db.Integer)
-    in_vari_cepheid = db.Column(db.Integer)
-    in_vari_planetary_transit = db.Column(db.Integer)
-    in_vari_short_timescale = db.Column(db.Integer)
-    in_vari_long_period_variable = db.Column(db.Integer)
-    in_vari_eclipsing_binary = db.Column(db.Integer)
-    in_vari_rotation_modulation = db.Column(db.Integer)
-    in_vari_ms_oscillator = db.Column(db.Integer)
-    in_vari_agn = db.Column(db.Integer)
-    in_vari_microlensing = db.Column(db.Integer)
-    in_vari_compact_companion = db.Column(db.Integer)
-
-
-#v0: Access SQLite directly
-#from yourapplication.model import db
-#db.init_app(app)
-#from db_access import db
-#import db_access
-#v1: Access SQLite via SQLAlchemy -> flask-sqlalchemy
-
-#Jinja Filter
-@app.template_filter('astro_filter')
-def astro_filter(str):
-    if (str == "g"):
-        return "g"
-    elif (str == "R"): #TODO?
-        return "R"
-    elif (str == "i"):
-        return "i"
-    else:
-         return ""
-
-@app.template_filter('mag_filter')
-def mag_filter(num):
-    if num: 
-        return round(num,3)
-    # else:
-    #     return ''
-
-@app.template_filter('format_mjd_readable')
-def format_mjd_readable(value):
-    #return (value / 86400000) + 40587
-    jdate = value+2400000.5
-    t = Time(jdate, format='jd')
-    #return t.isot #in UTC
-    dt = datetime.fromisoformat(t.isot) # ISO 8601 string in UTC
-    return  dt.strftime('%Y-%m-%d %H:%M:%S')
-
-# Example usage:
-value = 58000  # Example MJD value
-print(format_mjd_readable(value))
-
-
-@app.route('/', methods=['GET', 'POST'])
+@main_blueprint.route('/', methods=['GET', 'POST'])
 def start():
     #app.logger.info('Info')
     #app.logger.warning('Warn')
@@ -427,19 +189,26 @@ def start():
         today_utc = current_date
     )
 
-@app.route('/help', methods=['GET'])
+@main_blueprint.route('/help', methods=['GET'])
 def help():
     return render_template(
         "help.html"
     )
 
-@app.route('/contact', methods=['GET'])
+@main_blueprint.route('/contact', methods=['GET'])
 def contact():
     return render_template(
         "contact.html"
     )
 
-@app.route('/query_lightcurve_data', methods=['GET'])
+@main_blueprint.route('/profile')
+@login_required
+def profile():
+    return render_template(
+        'profile.html', name=current_user.name
+    )
+
+@main_blueprint.route('/query_lightcurve_data', methods=['GET'])
 def query_lightcurve_data():
     locusId = request.args.get('locusId')
 
@@ -525,7 +294,7 @@ def query_lightcurve_data():
     </html>
     '''
 
-@app.route("/locus_plot_csv")
+@main_blueprint.route("/locus_plot_csv")
 def get_locus_plot():
     locusId = request.args.get('locusId')
     #query where locus id equals selected id
@@ -544,33 +313,8 @@ def get_locus_plot():
                  "attachment; filename=myplot.csv"})
 
 
-# import pandas as pd
-# from pathlib import Path
-# @app.route('/generate_lightcurve', methods=['GET'])
-# def generate_lightcurve():
-#     #objectId = request.args.get('objectId')
-#     objectId = request.args.get('ztf_object_id')
-#     print('objectId: ', objectId)
-#     #generate lightcurve, store it on the server
-#     my_file = Path('static/_ZTF_lightcurves_concat/'+objectId+'.csv')
-#     lc_plot_uri = '/static/img/_ZTF_lc_plots/'+objectId+'.png' #expected result path
-#     if my_file.is_file():
-#         df = pd.read_csv(my_file)
-#         foldername = Path("static/img/_ZTF_lc_plots")
-        
-#         dflc = generate_dcmag_lightcurve(df)
-#         lc_plot_uri = plot_lightcurve(dflc, foldername, objectId)
-#     else:
-#         lc_plot_uri = '/static/img/_ZTF_lc_plots/missing_file.png' #missing CSV #TODO: This shoud work now as handled in JS CsvExists(), TEST!
-#     #print('/static/img/_ZTF_lc_plots/'+objectId+'.png')
-#     print(lc_plot_uri)
-#     response = make_response(lc_plot_uri, 200)
-#     response.mimetype = "text/plain"
-#     return response
-
-
 #NOTE: Features are filter by objectId & candid
-@app.route('/query_features', methods=['GET'])
+@main_blueprint.route('/query_features', methods=['GET'])
 def query_features():
     #objectId = request.args.get('objectId')
     #objectId = request.args.get('ztf_object_id')
@@ -592,7 +336,7 @@ def query_features():
     return response
 
 
-@app.route('/query_featureplot_data', methods=['GET'])
+@main_blueprint.route('/query_featureplot_data', methods=['GET'])
 def query_featureplot_data():
     locusId = request.args.get('locusId')
     selected_features = request.args.get('features')
@@ -685,7 +429,7 @@ def query_featureplot_data():
     # Return the components to the HTML template
     return f'{ div }{ script }'
 
-@app.route('/query_crossmatches', methods=['GET'])
+@main_blueprint.route('/query_crossmatches', methods=['GET'])
 def query_crossmatches():
     """Query crossmatches for a given locus id."""
     locusId = request.args.get('locusId') # locusname="ANT2018fywy2"
@@ -708,85 +452,9 @@ def query_crossmatches():
         logging.error(f"Error querying crossmatches: {e}", exc_info=True)
         return Response(f"{e}", status=500) # Internal Server Error
 
-def safe_serialize(obj, locusId):
-    """Safely serialize a dictionary to JSON."""
-    try:
-        print(dict)
-        return json.dumps(obj)
-    except TypeError as e:
-        print(f"Serialization error: {e}")
-        return json.dumps(serialize_fallback(obj))
-   
-def serialize_fallback(obj):
-    """Fallback handler to make the object serializable by converting binary data to string."""
-    if isinstance(obj, bytes):
-        return obj.decode('utf-8')  # Convert binary to string
-    elif isinstance(obj, dict):
-        return {k: serialize_fallback(v) for k, v in obj.items()}  # Keep dict as-is and process its values
-    elif isinstance(obj, list):
-        return [serialize_fallback(v) for v in obj]  # Keep list as-is and process its elements
-    else:
-        return obj  # Return other types as-is
 
-    
-"""
-#NOTE: #classification filter by objectId
-@app.route('/query_classification', methods=['GET'])
-def query_classification():
-    #objectId = request.args.get('objectId')
-    objectId = request.args.get('ztf_object_id')
-    print('objectId: ', objectId)
-
-    feature_query = db.session.query(Classification)
-    feature_query = feature_query.filter(Classification.objectId == objectId)
-    data = object_as_dict(feature_query.first())
-    
-    response = app.response_class(
-        response=json.dumps(data),
-        status=200,
-        mimetype='application/json'
-    )
-    return response
-"""
-
-if __name__ == '__main__':
-    app.run(debug=True) #uses flask debugger
+#if __name__ == '__main__':
+#    app.run(debug=True) #uses flask debugger
 #    app.run(use_debugger=False, use_reloader=False, passthrough_errors=True) #disable flask debuger and use external debugger instead
 
-# Helper
-def extract_numbers(text):
-    #number with optional deciaml point
-    regex = r"[<>]?[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))"
-    matches = re.findall(regex, text)
-    if len(matches) < 1:
-        return None
-    elif len(matches) == 1:
-        return [matches[0]]
-    else:
-        return list(map(lambda m: m.replace('>', '').replace('<', ''), matches[0:2]))
-         #TODO: we either want to remove </> or add them if missing to be consistent (TBD)
 
-def extract_float_filter(input_field, db_field, query):
-    float_func = lambda x: float(x)
-    return extract_filter(input_field, db_field, query, float_func)
-
-def extract_int_filter(input_field, db_field, query):
-    int_func = lambda x: int(x)
-    return extract_filter(input_field, db_field, query, int_func)
-
-def extract_filter(input_field, db_field, query, convert_callback):
-    #pdb.set_trace()
-    if len(input_field) == 1:
-        if '>' in input_field[0]:
-            query = query.filter(db_field >= convert_callback(input_field[0].replace('>', '')))
-        elif '<' in input_field[0]:
-            query = query.filter(db_field <= convert_callback(input_field[0].replace('<', '')))
-        else:
-            query = query.filter(db_field == convert_callback(input_field[0]))
-    else: #2 inputs
-        input_field.sort()  #REM: Ensure >min <max order
-        print(input_field[0])
-        print(input_field[1])
-        query = query.filter(db_field >= convert_callback(input_field[0]))
-        query = query.filter(db_field <= convert_callback(input_field[1]))
-    return query

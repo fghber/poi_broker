@@ -27,15 +27,13 @@ After downloading the package, within the folder `_web_frontend` install all req
 `pip3 install -r requirements.txt`
 
 
-start the web app from the terminal with 
+Start the web app from the terminal **outside** of the folder `poi_boker` that cointains this code with 
 
-`flask run`
+`flask --app "poi_broker:create_app()" run --debug`
 
-or `flask --app app run --debug` to start in debug mode (alternatively, `export FLASK_DEBUG=1` in the terminal https://stackoverflow.com/questions/17309889/how-to-debug-a-flask-app)
-(optionally, install the flask-debugtoolbar https://www.askpython.com/python-modules/flask/flask-debug-mode)
 
-In the web browser, enter
-`http://127.0.0.1:5000/`
+In the web browser, enter `http://127.0.0.1:5000/` to view the front-ent.
+
 In case the website isn't displayed: do a
 
 `cat app.log`
@@ -43,4 +41,4 @@ In case the website isn't displayed: do a
 in your terminal window to see the correct URL
 
 
-Also, inspect the browser developer console (F12) to see if there are any JS errors, ie. a missmatching bokeh.min.js version.
+Also, inspect the browser developer console (F12) to see if there are any JavaScript errors, ie. a missmatching bokeh.min.js version.

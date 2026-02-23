@@ -7,9 +7,9 @@ from bokeh.colors import RGB
 from bokeh.embed import components
 from sqlalchemy import text
 
-classification_bp = Blueprint('classification', __name__) # TODO: Perhaps add a URL prefix classification/
+classification_blueprint = Blueprint('classification', __name__) # TODO: Perhaps add a URL prefix classification/
 
-@classification_bp.route('/query_classification')
+@classification_blueprint.route('/query_classification')
 def classification_plot():
 
     alertId = request.args.get('alertId')

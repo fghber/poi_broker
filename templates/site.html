@@ -16,15 +16,47 @@
       <div class="collapse navbar-collapse" id="navbarsExampleDefault">
         <ul class="navbar-nav ml-auto">
           <li class="nav-item">
-            <a class="nav-link active" href="/help">Help</a>
+              <a class="nav-link" href="{{ url_for('main.start') }}">
+                  Home
+              </a>
           </li>
           <li class="nav-item">
-            <a class="nav-link active" href="/contact">Contact</a>
+            <a class="nav-link" href="{{ url_for('main.help') }}">Help</a>
           </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('main.contact') }}">Contact</a>
+          </li>
+          {% if current_user.is_authenticated %}
+          <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('main.profile') }}">
+                  Profile
+              </a>
+          </li>
+          {% else %}
+          <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('auth.login') }}">
+                  Login
+              </a>
+          </li>
+          <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('auth.signup') }}">
+                  Sign Up
+              </a>
+          </li>
+          {% endif %}
+
+          {% if current_user.is_authenticated %}
+          <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('auth.logout') }}">
+                  Logout
+              </a>
+          </li>
+          {% endif %}
         </ul>
       </div>
     </div>
   </nav>
+
 
   <main role="main" class="container-fluid" style="margin-bottom: 60px;"> <!-- NOTE: Margin bottom in accordance with footer height -->
 
@@ -37,7 +69,7 @@
   <footer class="footer">
     <div class="container-fluid">
       <p>
-        Copyright © 2020 <a href="https://techfreaq.de">Nina Hernitschek</a> and development team. All rights reserved.
+        Copyright © 2026 <a href="https://techfreaq.de">Nina Hernitschek</a> and development team. All rights reserved.
         Fork me <a href="https://github.com/" title="source code">on Github</a>
       </p>
     </div>

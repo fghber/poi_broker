@@ -27,13 +27,13 @@ from timezonefinder import TimezoneFinder
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-observing_tool_bp = Blueprint('observing_tool', __name__) # TODO: Perhaps add a URL prefix observing_tool/
+observing_tool_blueprint = Blueprint('observing_tool', __name__) # TODO: Perhaps add a URL prefix observing_tool/
 
-# @observing_tool_bp.route('/observatories')
+# @observing_tool.route('/observatories')
 # def show():
 #     site_names = EarthLocation.get_site_names()
 
-@observing_tool_bp.route('/query_observing_plot')
+@observing_tool_blueprint.route('/query_observing_plot')
 def calc_observing_plot():
     
     #http://localhost:5000/query_observing_plot?obs_loc=Rubin%20Observatory&obs_date=2024-11-14&obs_tz=option_utc&ra=101.28715533&dec=16.71611586
