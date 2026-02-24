@@ -27,7 +27,7 @@ After downloading the package, within the folder `_web_frontend` install all req
 `pip3 install -r requirements.txt`
 
 
-Start the web app from the terminal **outside** of the folder `poi_boker` that cointains this code with 
+Start the web app from the terminal from the **project root** (the folder that **contains** the _sub-folder_ `poi_boker`) with 
 
 `flask --app "poi_broker:create_app()" run --debug`
 
