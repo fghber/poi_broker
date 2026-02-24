@@ -10,6 +10,7 @@ import smtplib
 import socket
 import logging
 from email.message import EmailMessage
+from email_validator import validate_email, EmailNotValidError
 
 logger = logging.getLogger(__name__)
 auth_blueprint = Blueprint('auth', __name__)
@@ -20,13 +21,19 @@ def login():
 
 @auth_blueprint.route('/login', methods=['POST'])
 def login_post():
-    email = request.form.get('email')
+    email_input = request.form.get('email')
     password = request.form.get('password')
     remember = True if request.form.get('remember') else False
 
-    if email is None or password is None:
+    if email_input is None or password is None:
         flash('Please provide an email and a password and try again.')
         return redirect(url_for('auth.login')) # reload the page
+
+    # Normalize email for lookup (no deliverability check on login)
+    email = normalize_email(email_input, check_deliverability=False)
+    if not email:
+        flash('Please provide a valid email address and try again.')
+        return redirect(url_for('auth.login'))
 
     user = User.query.filter_by(email=email).first()
 
@@ -48,21 +55,32 @@ def login_post():
 def signup():
     return render_template('signup.html')
 
-#TODO: use proper email verification func instead of regex
-import re
-def _validate_email(email):
-    """Validate email format (simple regex)."""
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
+def normalize_email(email: str, check_deliverability: bool = False) -> str | None:
+    """
+    Validates and normalizes an email address for correct syntax.
+    Returns the normalized email if valid, None otherwise.
+    Uses email_validator for RFC 5321 compliance and domain normalization.
+    
+    Args:
+        email: Email address to validate and normalize.
+        check_deliverability: If True, verify MX records (use for account creation as per email_validator docs).
+                             If False, skip MX checks (use for login/lookups).
+    """
+    try:
+        valid = validate_email(email, check_deliverability=check_deliverability)
+        return valid.email
+    except EmailNotValidError:
+        return None
 
 @auth_blueprint.route('/signup', methods=['POST'])
 def signup_post():
-    email = request.form.get('email', '').strip()
+    email_input = request.form.get('email', '').strip()
     name = request.form.get('name', '').strip()
     password = request.form.get('password', '').strip()
 
-    # Validate email format
-    if not email or not _validate_email(email):
+    # Validate and normalize email (check deliverability for new accounts)
+    email = normalize_email(email_input, check_deliverability=True)
+    if not email:
         flash('Invalid email address.')
         return redirect(url_for('auth.signup'))
     
@@ -147,8 +165,12 @@ def forgot_password():
 
 @auth_blueprint.route('/forgot-password', methods=['POST'])
 def forgot_password_post():
-    email = request.form.get('email')
-    user = User.query.filter_by(email=email).first()
+    email_input = request.form.get('email')
+    
+    # Normalize email for lookup (no deliverability check on password reset)
+    email = normalize_email(email_input, check_deliverability=False) if email_input else None
+    
+    user = User.query.filter_by(email=email).first() if email else None
     
     if user:
         # Generate reset token
