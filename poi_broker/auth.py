@@ -178,8 +178,12 @@ def forgot_password_post():
         user.reset_token_expires = datetime.now(timezone.utc) + timedelta(hours=1)
         db.session.commit()
         
-        # Send email with reset link (implement email sending)
-        send_email(f"Reset your password using the following link: {url_for('auth.reset_password', token=user.reset_token, _external=True)}", email)
+        # Send email with reset link and expiration time
+        send_email(
+            f"Reset your password using the following link: {url_for('auth.reset_password', token=user.reset_token, _external=True)}", 
+            email,
+            expire_time=user.reset_token_expires
+        )
         flash('Password reset link sent to your email')
     
     return redirect(url_for('auth.login'))
@@ -226,11 +230,15 @@ def reset_password_post(token):
     return redirect(url_for('auth.login'))
 
 
-def send_email(message, to_email=None, subject=None, html_text=None, from_email=None):
+def send_email(message, to_email=None, subject=None, html_text=None, from_email=None, expire_time=None):
     """
     Send a multipart email (plain text + optional HTML).
     Backwards-compatible: legacy calls use send_email(message, email).
     Prefer setting SMTP env vars: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM.
+    
+    Args:
+        expire_time: Optional datetime when the link/token expires. If provided, displays 
+                     expiration time in the email body.
     """
     # Backwards compatibility: if called as send_email(message, email)
     if to_email is None:
@@ -242,10 +250,14 @@ def send_email(message, to_email=None, subject=None, html_text=None, from_email=
 
     # If no explicit HTML provided, create a simple HTML version
     if html_text is None:
+        expire_section = ""
+        if expire_time:
+            expire_section = f"<p><strong>Expires:</strong> {expire_time.isoformat()} UTC</p>"
+        
         html_text = (
             "<html><body>"
             f"<h3>{subject}</h3>"
-            f"<p><strong>Time:</strong> {datetime.now(timezone.utc).isoformat()} UTC</p>" # TODO: Only makes sense if expire time is included in the message, otherwise could be confusing. Maybe add an optional expire_time param to this func and only show if provided?
+            f"{expire_section}"
             f"<hr><pre style='white-space:pre-wrap'>{plain_text}</pre>"
             "</body></html>"
         )

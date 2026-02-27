@@ -28,7 +28,6 @@ from .helpers import object_as_dict, result_to_dict
 logger = logging.getLogger(__name__)
 main_blueprint = Blueprint('main', __name__)
 
-
 @main_blueprint.route('/', methods=['GET', 'POST'])
 def start():
     #app.logger.info('Info')
@@ -171,7 +170,7 @@ def start():
         #print(request.query_string.decode('ascii'))
         #print(re.sub('[&?]page=\\d+', '', request.query_string.decode('ascii')))
 
-        site_names = EarthLocation.get_site_names()
+        site_names = EarthLocation.get_site_names() #c locacions are only retrieved once, then internally cached bt astropy
         current_date = Time.now().datetime.date()
 
     return render_template(
