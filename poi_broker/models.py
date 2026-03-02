@@ -175,25 +175,25 @@ class Crossmatches(db.Model):
     dec_cat = db.Column(db.Float)
     separation = db.Column(db.Float)
 
-class Gaiadr3_variability(db.Model):
-    __tablename__ = 'gaiadr3_variability'
-    source_id = db.Column(db.Integer, primary_key=True) #ot a real PK
-    ra = db.Column(db.Float)
-    dec = db.Column(db.Float)
-    phot_g_mean_mag = db.Column(db.Float)
-    phot_rp_mean_mag = db.Column(db.Float)
-    in_vari_classification_result = db.Column(db.Integer)
-    in_vari_rrlyrae = db.Column(db.Integer)
-    in_vari_cepheid = db.Column(db.Integer)
-    in_vari_planetary_transit = db.Column(db.Integer)
-    in_vari_short_timescale = db.Column(db.Integer)
-    in_vari_long_period_variable = db.Column(db.Integer)
-    in_vari_eclipsing_binary = db.Column(db.Integer)
-    in_vari_rotation_modulation = db.Column(db.Integer)
-    in_vari_ms_oscillator = db.Column(db.Integer)
-    in_vari_agn = db.Column(db.Integer)
-    in_vari_microlensing = db.Column(db.Integer)
-    in_vari_compact_companion = db.Column(db.Integer)
+# class Gaiadr3_variability(db.Model):
+#     __tablename__ = 'gaiadr3_variability'
+#     source_id = db.Column(db.Integer, primary_key=True) #ot a real PK
+#     ra = db.Column(db.Float)
+#     dec = db.Column(db.Float)
+#     phot_g_mean_mag = db.Column(db.Float)
+#     phot_rp_mean_mag = db.Column(db.Float)
+#     in_vari_classification_result = db.Column(db.Integer)
+#     in_vari_rrlyrae = db.Column(db.Integer)
+#     in_vari_cepheid = db.Column(db.Integer)
+#     in_vari_planetary_transit = db.Column(db.Integer)
+#     in_vari_short_timescale = db.Column(db.Integer)
+#     in_vari_long_period_variable = db.Column(db.Integer)
+#     in_vari_eclipsing_binary = db.Column(db.Integer)
+#     in_vari_rotation_modulation = db.Column(db.Integer)
+#     in_vari_ms_oscillator = db.Column(db.Integer)
+#     in_vari_agn = db.Column(db.Integer)
+#     in_vari_microlensing = db.Column(db.Integer)
+#     in_vari_compact_companion = db.Column(db.Integer)
 
 """
 

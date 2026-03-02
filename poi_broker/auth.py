@@ -7,7 +7,6 @@ import secrets
 from datetime import datetime, timedelta, timezone
 import os
 import smtplib
-import socket
 import logging
 from email.message import EmailMessage
 from email_validator import validate_email, EmailNotValidError

@@ -1,13 +1,14 @@
 import os
 from pathlib import Path
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta
 import logging
-from functools import lru_cache
 from flask import (Flask, app, render_template, abort, jsonify, request, Response,
                    redirect, url_for, make_response, Blueprint, flash)
 from flask_login import LoginManager, login_required, current_user
 from flask_wtf.csrf import CSRFProtect, CSRFError
-from werkzeug.middleware.proxy_fix import ProxyFix
+
+
+#from werkzeug.middleware.profiler import ProfilerMiddleware
 #import jinja2
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import inspect
@@ -19,35 +20,22 @@ db = SQLAlchemy()
 login_manager = LoginManager()
 csrf = CSRFProtect()
 
-@lru_cache(maxsize=8192)
-def _format_mjd_cached(mjd_value: float) -> str:
-    jdate = mjd_value + 2400000.5
-    dt = Time(jdate, format='jd', scale='utc').to_datetime(timezone=UTC) 
-    #t = Time(jdate, format='jd')
-    #dt = datetime.fromisoformat(t.isot) # ISO 8601 string in UTC
-    return  dt.strftime('%Y-%m-%d %H:%M:%S')
-
-
 def create_app():
     app = Flask(__name__)
-    #app.config.from_pyfile(config_filename)
-    app.jinja_env.auto_reload = True
     
-    # Enable ProxyFix to trust headers from NGINX reverse proxy
-    # This ensures url_for(..., _external=True) uses the correct X-Forwarded-* headers
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
     """
-    Make sure your NGINX site config passes the correct headers:
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $server_name;
-    }
-    """
+    # Set up profiling middleware (only in development mode)
+    profile_dir = "profiler_output"
+    os.makedirs(profile_dir, exist_ok=True)
 
+    # Wrap the app with ProfilerMiddleware
+    app.wsgi_app = ProfilerMiddleware(
+        app.wsgi_app,
+        profile_dir=profile_dir,  # Save .prof files here
+        restrictions=[30],        # Show top 30 functions in console
+        sort_by=("cumulative",)   # Sort by cumulative time
+    )
+    """
     logging.basicConfig(handlers=[logging.FileHandler(filename="app.log", 
                                                  encoding='utf-8', mode='a+')],
                     format="%(asctime)s %(name)s:%(levelname)s:%(message)s", 
@@ -85,6 +73,25 @@ def create_app():
         SESSION_COOKIE_HTTPONLY = True,  # Prevent XSS
         SESSION_COOKIE_SAMESITE = 'Lax'  # CSRF protection
     )
+
+    if app.debug is True:
+        app.jinja_env.auto_reload = True
+    else:
+        # Enable ProxyFix to trust headers from NGINX reverse proxy in production
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        # This ensures url_for(..., _external=True) uses the correct X-Forwarded-* headers
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+        """
+        NOTE: Make sure the NGINX site config passes the correct headers:
+        location / {
+            proxy_pass http://127.0.0.1:8000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Host $server_name;
+        }
+        """
     
     # Initialize extensions with app
     db.init_app(app)
@@ -110,37 +117,10 @@ def create_app():
     
     # Set login_view AFTER blueprint registration to ensure the endpoint exists
     login_manager.login_view = 'auth.login'
-
-    # Register Jinja filters
-    @app.template_filter('astro_filter')
-    def astro_filter(str):
-        if (str == "g"):
-            return "g"
-        elif (str == "R"): #TODO?
-            return "R"
-        elif (str == "i"):
-            return "i"
-        else:
-            return ""
-
-    @app.template_filter('mag_filter')
-    def mag_filter(num):
-        if num: 
-            return round(num,3)
-        # else:
-        #     return ''
-
-    @app.template_filter('format_mjd_readable')
-    def format_mjd_readable(value):
-        if value is None:
-            return ''
-        
-        try:
-            mjd_value = float(value)
-            return _format_mjd_cached(mjd_value, True) # Use Astropy for accurate conversion?
-        except (TypeError, ValueError, OverflowError):
-            return ''
     
+    # Global error handler for CSRF errors raised by Flask-WTF
+    #TODO: Make sure that CSRFError is being caught—test it by intentionally sending a request with a missing or invalid CSRF token to verify the handler triggers correctly. 
+    #      If it doesn't, you may need to check that CSRF validation is actually being enforced on your forms (e.g., {{ csrf_token() }} in templates, or @csrf.protect decorators on routes).
     @app.errorhandler(CSRFError)
     def handle_csrf_error(error):
         flash('Your form session expired or is invalid. Please reload this page and submit again. If this is a reset link, request a new one.', 'danger')

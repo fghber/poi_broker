@@ -1,17 +1,15 @@
-from flask import (Flask, render_template, abort, jsonify, request, Response,
-                   redirect, url_for, logging, make_response, Blueprint, current_app)
-from flask_login import LoginManager, login_required, current_user
-import jinja2
-# if app.debug is not True:
+from flask import (render_template, abort, jsonify, request, Response,
+                   redirect, url_for, make_response, Blueprint, current_app)
+from flask_login import login_required, current_user
 import logging
+from functools import lru_cache
+from datetime import UTC
 from astropy.time import Time
 from astropy.coordinates import EarthLocation
 import re
 import json
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import inspect
-#import orm
-from .helpers import extract_numbers, extract_float_filter, safe_serialize
+
+from .helpers import extract_numbers, extract_dates, extract_float_filter, extract_mjd_filter, safe_serialize, object_as_dict, result_to_dict
 from . import db
 from .models import Ztf, Crossmatches, User, Favorite, FavoriteGroup
 
@@ -20,13 +18,18 @@ from bokeh.plotting import figure
 from bokeh.models import Legend
 
 #debug/set_trace breakpoints
-import pdb
-from pprint import pprint
-
-from .helpers import object_as_dict, result_to_dict
+# import pdb
+# from pprint import pprint
 
 logger = logging.getLogger(__name__)
 main_blueprint = Blueprint('main', __name__)
+
+@lru_cache(maxsize=8192)
+def _format_mjd_cached(mjd_value: float) -> str:
+    jdate = mjd_value + 2400000.5
+    dt = Time(jdate, format='jd', scale='utc').to_datetime(timezone=UTC) # Convert to timezone-aware datetime in UTC
+    return  dt.strftime('%Y-%m-%d %H:%M:%S')
+
 
 @main_blueprint.route('/', methods=['GET', 'POST'])
 def start():
@@ -37,25 +40,30 @@ def start():
     #pdb.set_trace()
     page = request.args.get('page', 1, type=int)
 
-    data = []
     filter_warning_message = ''
     if request.method == 'GET':
         query = db.session.query(Ztf)
         # Return alerts with a brightness greater than the given value. Ex: ?magpsf=17,18 (range:17-18)
+
+        if request.args.get('date'):
+            date_input = extract_dates(request.args.get('date'))
+            if date_input:
+                query = extract_mjd_filter(date_input, Ztf.date_alert_mjd, query)
+            else:
+                filter_warning_message += 'Date filter cannot be applied - Enter a valid 8-digit integer date of the form yyyymmdd, e.g. "20201207", or range, e.g., "20201207 20201209". You can filter the columns by entering values and then click the "Filter" button.'
         
         if request.args.get('date_alert_mjd'):
             date_input = extract_numbers(request.args.get('date_alert_mjd'))
+            print(date_input)
             if date_input != None:
                 query = extract_float_filter(date_input, Ztf.date_alert_mjd, query)
             else:
                 filter_warning_message += 'Date filter cannot be applied - Enter a valid 8-digit integer date of the form yyyymmdd, e.g. "20201207", or range, e.g., "20201207 20201209". You can filter the columns by entering values and then click the "Filter" button.'
 
         if request.args.get('alert_id'):
-            candid_input = extract_numbers(request.args.get('alert_id'))
-            if candid_input != None:
-                query = query.filter(Ztf.alert_id == int(request.args.get('alert_id')))
-            else:
-                 filter_warning_message += 'Candid filter cannot be applied - Enter a valid integer, e.g. "1436374650315010006". You can filter the columns by entering values and then click the "Filter" button.'
+            candid_input = f"ztf_candidate:{request.args.get('alert_id')}"
+            print(candid_input)
+            query = query.filter(Ztf.alert_id == candid_input) # a range filter does not work with the alert_id string field. Only exact match are possible with the current format
 
         if request.args.get('ztf_object_id'):
             query = query.filter(Ztf.ztf_object_id == request.args.get('ztf_object_id'))
@@ -70,12 +78,14 @@ def start():
         #if request.args.get('filter'):
             #query = query.filter(Ztf.filter == int(request.args.get('filter'))) # 1:g, 2:r, 3:i
         if request.args.get('ant_passband'):
-            query = query.filter(Ztf.ant_passband == request.args.get('ant_passband')) # g, R, i
+            ant_passband = request.args.get('ant_passband')
+            query = query.filter(Ztf.ant_passband == ant_passband) # g, R, i
 
 
         if request.args.get('locus_id'):
             query = query.filter(Ztf.locus_id == request.args.get('locus_id'))
 
+        # ! TODO: filter is not working
         if request.args.get('locus_ra'):
             ra_input = extract_numbers(request.args.get('locus_ra'))
             if ra_input != None:
@@ -83,6 +93,7 @@ def start():
             else:
                 filter_warning_message += 'Ra filter cannot be applied - Enter a valid number, e.g., "118.61421", or range, e.g., "80 90". You can filter the columns by entering values and then click the "Filter" button.'
 
+        # ! TODO: filter is not working
         if request.args.get('locus_dec'):
             dec_input = extract_numbers(request.args.get('locus_dec'))
             if dec_input != None:
@@ -90,6 +101,7 @@ def start():
             else:
                 filter_warning_message += 'Dec filter cannot be applied - Enter a valid number, e.g., "-20.02131", or range, e.g., "18.8 19.4". You can filter the columns by entering values and then click the "Filter" button.'
 
+        # TODO: Add ant_mag corrected filtering (currently not possible because the column is not indexed and would be too slow to filter on the entire dataset without an index)
         #if request.args.get('magpsf'):
             #magpsf_input = extract_numbers(request.args.get('magpsf'))
             #if magpsf_input != None:
@@ -180,7 +192,8 @@ def start():
         page=paginator.page,
         has_next=paginator.has_next,
         last_page=paginator.pages,
-        query_string=re.sub('[&?]?page=\\d+', '', request.query_string.decode('ascii')), # ? b'' binary string
+        #TODO: Pagination query-string re.sub may leave a trailing & in edge cases. TODO:TEST
+        query_string=re.sub('[&?]?page=\\d+|&$', '', request.query_string.decode('ascii')), # ? b'' binary string 
         filter_warning = filter_warning_message,
         observatories = site_names,
         today_utc = current_date
@@ -374,10 +387,11 @@ def api_favorite_groups_delete(group_id):
     return jsonify({'status': 'ok'})
 
 
-
 @main_blueprint.route('/query_lightcurve_data', methods=['GET'])
 def query_lightcurve_data():
     locusId = request.args.get('locusId')
+    if not locusId:
+        return Response('Missing locusId', status=400)
 
     #query where locus id equals selected id
     lightcurve_query = db.session.query(Ztf)
@@ -446,29 +460,20 @@ def query_lightcurve_data():
  
     # Return the components to the HTML template
     return f'{ div }{ script }'
-
-    return f'''
-    <html lang="en">
-        <head>
-            <script src="https://cdn.bokeh.org/bokeh/release/bokeh-2.3.3.min.js"></script>
-            <title>Bokeh Charts</title>
-        </head>
-        <body>
-            <h1>Add Graphs to Flask apps using Python library - Bokeh</h1>
-            { div }
-            { script }
-        </body>
-    </html>
-    '''
+    # NOTE: Make sure a matching bokeh js version is loaded in header of the displaying page, e.g. 
+    # <script src="https://cdn.bokeh.org/bokeh/release/bokeh-3.6.1.min.js"></script>
 
 @main_blueprint.route("/locus_plot_csv")
 def get_locus_plot():
     locusId = request.args.get('locusId')
-    #query where locus id equals selected id
+    if not locusId:
+        return Response('Missing locusId', status=400)
+    
     lightcurve_query = db.session.query(Ztf)
     lightcurve_query = lightcurve_query.filter(Ztf.locus_id == locusId) #TODO: load only specific columns
     data = lightcurve_query.all()
     csv = 'locus_id,date_alert_mjd,ant_mag_corrected\n'
+
     #prepare x and y coordinates of rows matched by locus_id
     for row in data:
         if (row.date_alert_mjd != None and row.ant_mag_corrected != None):
@@ -483,15 +488,12 @@ def get_locus_plot():
 #NOTE: Features are filter by objectId & candid
 @main_blueprint.route('/query_features', methods=['GET'])
 def query_features():
-    #objectId = request.args.get('objectId')
-    #objectId = request.args.get('ztf_object_id')
-    #candid = request.args.get('candid')
     alert_id = request.args.get('alert_id')
-    #print('objectId: %s; candid: %s' % ('', alert_id))
+    if not alert_id:
+        return Response('Missing alert_id', status=400)
 
     feature_query = db.session.query(Ztf)
-    #feature_query = feature_query.filter(Ztf.objectId == objectId)
-    feature_query = feature_query.filter(Ztf.alert_id == 'ztf_candidate:'+alert_id)
+    feature_query = feature_query.filter(Ztf.alert_id == 'ztf_candidate:' + alert_id)
     data = object_as_dict(feature_query.first())
     #print(data)
     
@@ -506,7 +508,9 @@ def query_features():
 @main_blueprint.route('/query_featureplot_data', methods=['GET'])
 def query_featureplot_data():
     locusId = request.args.get('locusId')
-    selected_features = request.args.get('features')
+    if not locusId:
+        return Response('Missing locusId', status=400)
+    selected_features = request.args.get('features') 
     #default selected feature list
     feature_list = ['feature_amplitude_magn_r',
         'feature_anderson_darling_normal_magn_r',
@@ -555,16 +559,14 @@ def query_featureplot_data():
         x_coords = []
         y_coords = []
         for row in data:
-            if (row.date_alert_mjd != None and row.ant_mag_corrected != None):
-                x_coords += [row.date_alert_mjd]
-                value = getattr(row, feature)
-                #print([getattr(row, feature)])
-                y_coords += [value]
-        # print(x_coords)
-        # print(y_coords)
+            #NOTE: Only if we have a date anda  magnitude value for the row, we can work with a feature value
+            if (row.date_alert_mjd is not None and row.ant_mag_corrected is not None): 
+                value = getattr(row, feature, None)
+                if value is not None:
+                    x_coords += [row.date_alert_mjd]
+                    y_coords += [value]
+
         pc = p.scatter(
-            # [i for i in range(10)],
-            # [random.randint(1, 50) for j in range(10)],
             x_coords,
             y_coords,
             size=5,
@@ -599,18 +601,18 @@ def query_featureplot_data():
 @main_blueprint.route('/query_crossmatches', methods=['GET'])
 def query_crossmatches():
     """Query crossmatches for a given locus id."""
-    locusId = request.args.get('locusId') # locusname="ANT2018fywy2"
-    print(locusId)
+    locusId = request.args.get('locusId') # ex: locusname="ANT2018fywy2"
+    if not locusId:
+        return Response('Missing locusId', status=400)
 
     try:
         #query all Crossmatches records from DB where locus id equals given id
         crossmatches_query = db.session.query(Crossmatches)
         crossmatches_query = crossmatches_query.filter(Crossmatches.locus_id == locusId)
-        dict = result_to_dict(crossmatches_query.all())
-        #print(dict)
+        crossmatches_list = result_to_dict(crossmatches_query.all())
 
         response = current_app.response_class(
-            response=safe_serialize(dict), #TODO? array[] with single row when using BootstrapTable?
+            response=safe_serialize(crossmatches_list), #TODO? array[] with single row when using BootstrapTable?
             status=200,
             mimetype='application/json'
         )
@@ -619,9 +621,32 @@ def query_crossmatches():
         logging.error(f"Error querying crossmatches: {e}", exc_info=True)
         return Response(f"{e}", status=500) # Internal Server Error
 
+# Register Jinja filters
+@main_blueprint.app_template_filter('astro_filter')
+def astro_filter(str):
+    if (str == "g"):
+        return "g"
+    elif (str == "R"): #TODO?
+        return "R"
+    elif (str == "i"):
+        return "i"
+    else:
+        return ""
 
-#if __name__ == '__main__':
-#    app.run(debug=True) #uses flask debugger
-#    app.run(use_debugger=False, use_reloader=False, passthrough_errors=True) #disable flask debuger and use external debugger instead
+@main_blueprint.app_template_filter('mag_filter')
+def mag_filter(num):
+    if num: 
+        return round(num,3)
+    # else:
+    #     return ''
 
-
+@main_blueprint.app_template_filter('format_mjd_readable')
+def format_mjd_readable(value):
+    if value is None:
+        return ''
+    
+    try:
+        mjd_value = float(value)
+        return _format_mjd_cached(mjd_value) # Use Astropy for accurate conversion
+    except (TypeError, ValueError, OverflowError):
+        return ''

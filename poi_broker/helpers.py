@@ -1,6 +1,7 @@
 from sqlalchemy import inspect
 import re
 import json
+from astropy.time import Time
 
 # Helper for converting SQLAlchemy objects to dictionaries
 def object_as_dict(obj):
@@ -26,6 +27,21 @@ def extract_numbers(text):
         return list(map(lambda m: m.replace('>', '').replace('<', ''), matches[0:2]))
          #TODO: we either want to remove </> or add them if missing to be consistent (TBD)
 
+def extract_dates(text) -> list[str]:
+    #date in yyyymmdd format, with optional > or < for filtering
+    regex = r"[<>]?\d{8}"
+    matches = re.findall(regex, text)
+    if len(matches) < 1:
+        regex_iso = r"[<>]?\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2})?"
+        matches = re.findall(regex_iso, text)
+
+    if len(matches) < 1:
+        return []
+    elif len(matches) == 1:
+        return [matches[0]]
+    else:
+        return list(map(lambda m: m.replace('>', '').replace('<', ''), matches[0:2]))
+
 def extract_float_filter(input_field, db_field, query):
     float_func = lambda x: float(x)
     return extract_filter(input_field, db_field, query, float_func)
@@ -34,21 +50,31 @@ def extract_int_filter(input_field, db_field, query):
     int_func = lambda x: int(x)
     return extract_filter(input_field, db_field, query, int_func)
 
-def extract_filter(input_field, db_field, query, convert_callback):
+def extract_mjd_filter(input_field, db_field, query):
+    mjd_func = lambda x: Time(x, format='iso', scale='utc').mjd
+    return extract_filter(input_field, db_field, query, mjd_func, offset_mjd=1.0/(3600*24)) # 1 second
+
+def extract_filter(input_field, db_field, query, convert_callback, offset_mjd = 0.0):
     #pdb.set_trace()
     if len(input_field) == 1:
         if '>' in input_field[0]:
-            query = query.filter(db_field >= convert_callback(input_field[0].replace('>', '')))
+            query = query.filter(db_field >= convert_callback(input_field[0].replace('>', '')) - offset_mjd)
         elif '<' in input_field[0]:
-            query = query.filter(db_field <= convert_callback(input_field[0].replace('<', '')))
+            query = query.filter(db_field <= convert_callback(input_field[0].replace('<', '')) + offset_mjd)
         else:
-            query = query.filter(db_field == convert_callback(input_field[0]))
+            lower_bound = convert_callback(input_field[0]) - offset_mjd
+            upper_bound = convert_callback(input_field[0]) + offset_mjd
+            query = query.filter(db_field >= lower_bound)
+            query = query.filter(db_field <= upper_bound)
+            # org: 61056.12116899993
+            # clc: 61056.12116898148
+
     else: #2 inputs
         input_field.sort()  #REM: Ensure >min <max order
-        print(input_field[0])
-        print(input_field[1])
-        query = query.filter(db_field >= convert_callback(input_field[0]))
-        query = query.filter(db_field <= convert_callback(input_field[1]))
+        lower_bound = convert_callback(input_field[0]) - offset_mjd #1 day in MJD
+        upper_bound = convert_callback(input_field[1]) + offset_mjd
+        query = query.filter(db_field >= lower_bound)
+        query = query.filter(db_field <= upper_bound)
     return query
 
 # Helper function for safe serialization

@@ -13,16 +13,14 @@ classification_blueprint = Blueprint('classification', __name__) # TODO: Perhaps
 def classification_plot():
 
     alertId = request.args.get('alertId')
-
-    # load values from the SQLite 'classification' table using SQL (no model required)
     if not alertId:
         return 'Missing alertId'
 
     candId = "ztf_candidate:" + alertId
-
+    # load values from the SQLite 'classification' table using SQL (no model required)
     # local import to avoid circular import at module import time
     from . import db
-
+    # We are using SQLAlchemy's text() which should handle parameterization safely
     sql = text("""
         SELECT p_cvnova, p_e, p_lpv, p_puls,
                p_periodic_other, p_quas, p_sn, p_yso
