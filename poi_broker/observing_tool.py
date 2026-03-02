@@ -20,8 +20,7 @@ from astropy.time import Time
 import astropy.units as u
 from astropy.wcs import WCS
 
-import matplotlib.pyplot as plt
-from astroquery.skyview import SkyView
+#from astroquery.skyview import SkyView
 
 from timezonefinder import TimezoneFinder
 from datetime import datetime
@@ -134,7 +133,6 @@ def calc_observing_plot():
         plt.legend(bbox_to_anchor=(1.0, 1.1),ncol=2)
         
     
-
         plt.ylim(0, )
         plt.ylabel("Altitude [deg]")
         ax.set_ylim(0,90)
@@ -259,7 +257,7 @@ def get_moon_phase_panel(observatory, midnight_utc, moon_separation):
     #this is how it should look like: https://astronomy.stackexchange.com/questions/24711/how-does-the-moon-look-like-from-different-latitudes-of-the-earth
     return html
 
-
+'''
 def plot_finder_image(coord, survey='DSS', fov_radius=10*u.arcmin,
                       log=False, ax=None, grid=False, reticle=False,
                       style_kwargs=None, reticle_style_kwargs=None):
@@ -381,7 +379,6 @@ def plot_finder_image(coord, survey='DSS', fov_radius=10*u.arcmin,
     ax.imshow(image_data, **style_kwargs)
     
     
-    
 
     # Draw reticle
 #    if reticle:
@@ -464,3 +461,4 @@ def fetch_image_worker(queue, position, coordinates, survey, radius):
         queue.put(hdu)  # Send result back
     except Exception as e:
         queue.put(e)
+'''
