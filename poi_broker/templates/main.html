@@ -1,0 +1,1074 @@
+{% extends 'site.html' %}
+{% block content %}
+<div class="row">
+  <div class="col-md-12">
+    <button class="btn btn-outline-primary btn-sm mb-3 mt-1" type="button" data-toggle="collapse" data-target="#poiWelcomeContent" aria-expanded="true" aria-controls="poiWelcomeContent">
+      Toggle Introduction
+    </button>
+    <div class="collapse" id="poiWelcomeContent">
+
+      <p>
+        Welcome to the Point of Interest broker. <br>
+        If you're unsure what a broker is, please take a look at our <a href="/help" title="help">Help</a> page.
+        <br>
+        <br>
+        A quick intro to using the Point of Interest broker:
+        <br>
+        <br>
+        The following table lists ZTF alerts in descending order by date. Use the arrow buttons for sorting and the filter
+        fields for filtering the table. Click on a ztf_object_id to see
+        details about the object.<br>
+        An object's (previous) alerts can be accessed by filtering for the ztf_object_id. See the <a href="/help"
+          title="help">Help</a> page for descriptions of the table values and available filters.
+      </p>
+      <hr>
+    </div>
+  </div>
+</div>
+<!-- This is our general Bootstrap alert div -->
+{% if filter_warning |length > 0 %}
+<div class="alert alert-warning" role="alert">
+  {{ filter_warning }}
+</div>
+{% endif %}
+<form method="GET" action="/" id="filter_form">
+  <div class="row">
+    
+    <div class="col-md-12">
+      <div class="responsive">
+        <div class="row">
+        <div class="col-md-3 mt-2">
+          <div class="justify-content-start">&nbsp;<b>Rows:</b> {{total_queries}}</div> 
+        </div> 
+        <div class="col-md-6">
+        <div class="justify-content-center">
+          <p>
+          <!-- TODO: Pagination: arg_str not implemented {{ arg_str }}& -->
+          <!-- e.g. ?sort_value=date_alert_mjd&sort_order=desc&ztf_object_id=&alert_id=&time__gt=2021-02-28&time__lt=&time__since=&jd__gt=&jd__lt=&filter=&cone=&objectcone=&objectidps=&ra__gt=&ra__lt=&dec__gt=&dec__lt=&l__gt=&l__lt=&b__gt=&b__lt=&magpsf__gte=&magpsf__lte=&sigmapsf__lte=&magap__gte=&magap__lte=&distnr__gte=&distnr__lte=&deltamaglatest__gte=&deltamaglatest__lte=&deltamagref__gte=&deltamagref__lte=&elong__lte=&nbad__lte=&rb__gte=&drb__gte=&classtar__gte=&classtar__lte=&fwhm__lte= -->
+          <!-- <div class="col"> -->
+          <!-- Buttons are disabled via CSS based on page no. and has_next -->
+          <a href="/?{{ query_string }}&page=1" class="btn btn-primary {% if page == 1 %}disabled{% endif %}"><i class="fa fa-step-backward" aria-hidden="true"></i> First</a>
+          <a href="/?{{ query_string }}&page={{ page - 1 }}" class="btn btn-primary {% if page == 1 %}disabled{% endif %}"><i class="fa fa-caret-left fa-lg" title="Filter" aria-label="Previous"></i> Prev</a>
+          <a href="/?{{ query_string }}&page={{ page + 1 }}" class="btn btn-primary {% if has_next == False %}disabled{% endif %}">Next <i class="fa fa-caret-right fa-lg" title="Next" aria-label="Next"></i></a>  
+          <a href="/?{{ query_string }}&page={{ last_page }}" class="btn btn-primary {% if has_next == False %}disabled{% endif %}">Last <i class="fa fa-step-forward" aria-hidden="true"></i></a>
+          <!-- </div>
+          <div class="col-md-4">&nbsp;xxxxxx</div> -->
+          </p>
+        </div>
+        </div>
+
+            <!-- Side Panel -->
+        <div class="col-md-3">
+          <div class="d-flex justify-content-end">
+          <!-- TODO: Style/pad insted -->
+          <button type="submit" class="btn btn-primary">
+            <i class="fa fa-filter fa-lg" title="Filter" aria-label="Filter"></i> Filter
+          </button>
+          <!-- <a href="/" class="btn btn-secondary">
+          <span class="fa-stack fa-lg">
+            <i class="fa fa-filter fa-stack-1x" style="font-size:22px" aria-hidden="true"></i>
+            <i class="fa fa-ban fa-stack-2x text-danger" style="-webkit-text-stroke: 1px background-color;"
+              aria-hidden="true"></i>
+          </span></a> -->
+          <a href="/" class="btn btn-danger">
+            <i class="fa fa-close fa-lg" title="Clear" aria-label="Clear"></i> Clear
+          </a>
+        </div>
+        </div>
+      <!--{# TODO: HTML Validation: Some id's are duplicated, etc https://validator.w3.org/nu/ #}-->
+        <div class="row">
+
+          <!--{# <div class="form-row">
+              <div class="col">
+                <label for="time__gt">time (lower)</label>
+                <input type="date" class="form-control form-control-sm" id="time__gt" name="time__gt" value="{{ request.args.time__gt }}" placeholder="Lower">
+              </div>
+              <div class="col">
+                <label for="time__gt">time (upper)</label>
+                <input type="date" class="form-control form-control-sm" id="time__lt" name="time__lt" value="{{ request.args.time__lt }}" placeholder="Upper">
+              </div>
+            </div>
+      
+            <div class="form-row">
+              <div class="col">
+                <label for="time__since">time since</label>
+                <input type="number" step="any" class="form-control form-control-sm" id="time__since" name="time__since" value="{{ request.args.time__since }}" placeholder="seconds">
+              </div>
+            </div>
+
+          <div class="form-group">
+              <label for="cone">Cone Search</label>
+              <input type="text" class="form-control form-control-sm" id="cone" name="cone" value="{{ request.args.cone }}">
+              <small class="form-text text-muted">Format: ra,dec,radius in degrees.</small>
+            </div>
+
+           <div class="form-group">
+              <label for="objectcone">Cone Search (object)</label>
+              <input type="text" class="form-control form-control-sm" id="cone" name="objectcone" value="{{ request.args.objectcone }}">
+              <small class="form-text text-muted">
+                Format: Object name,radius in degrees. Object name lookups via <a href="https://simbad2k.lco.global" title="Simbad2k">Simbad2k</a>.
+              </small>
+            </div>
+      
+            <div class="form-group">
+              <label for="objectidps">Nearby Objects</label>
+              <input type="text" class="form-control form-control-sm" id="objectidps" name="objectidps" value="{{ request.args.objectidps }}">
+              <small class="form-text text-muted">ID from PS1 catalog.</small>
+            </div>
+
+          <div id="equatorial_coords">
+              <p>Equatorial Coords ra & dec</p>    
+
+            </div>
+
+          <div id="galactic_coords">
+              <p>Galactic Coords</p>
+              <label for="l__gt">l</label>
+              <div class="form-row">
+                <div class="col">
+                  <input type="number" step="any" class="form-control form-control-sm" id="l__gt" name="l__gt" value="{{ request.args.l__gt }}" placeholder="Lower">
+                </div>
+                <div class="col">
+                   <input type="number" step="any" class="form-control form-control-sm" id="l__lt" name="l__lt" value="{{ request.args.l__lt }}" placeholder="Upper">
+                </div>
+              </div>
+      
+              <label for="b__gt">b</label>
+              <div class="form-row">
+                <div class="col">
+                  <input type="number" step="any" class="form-control form-control-sm" id="b__gt" name="b__gt" value="{{ request.args.b__gt }}" placeholder="Lower">
+                </div>
+                <div class="col">
+                   <input type="number" step="any" class="form-control form-control-sm" id="b__lt" name="b__lt" value="{{ request.args.b__lt }}" placeholder="Upper">
+                </div>
+              </div>
+            </div>  <div class="form-group">
+              <label for="sigmapsf__lte">sigmapsf &lt;= </label>
+              <input type="number" step="any" class="form-control form-control-sm" id="sigmapsf__lte" name="sigmapsf__lte" value="{{ request.args.sigmapsf__lte }}">
+            </div> #}-->
+        </div>
+
+        <table class="table table-sm table-striped table-hover table-auto">
+          <thead>
+            <tr class="sticky-top" style="background-color: #073642"> <!-- TODO! date vs date_alert_mjd sortable?!  -->
+              <th class="sortable" id="date" title='Enter a specific date or enter a range, and click the "Filter" button.  Value ranges can be entered like: >20201208, <20201210, or 20201207 20201209'>date (UTC)</th>
+              <th class="sortable" id="alert_id" title='Enter a specific alert_id, and click the "Filter" button.'>alert_id</th>
+              <th class="sortable" id="ztf_object_id" title='Enter a specific ztf_object_id, and click the "Filter" button.'>ztf_object_id</th>
+              <th class="" id="date_alert_mjd" title='*Julian Date - Enter a specific *jd or enter a range, and click the "Filter" button.  Value ranges can be entered like: >2459190.85, <2459190.85, or  2459190.84 2459190.86'>mjd</th>
+              <th title='ZTF filter g,r,i - Select a ant_passband filter, and click the "Filter" button.'>ant passband</th>
+              <th class="sortable" id="locus_id" title='Enter a specific locus_id, and click the "Filter" button.'>locus_id</th>
+              <th class="sortable" id="locus_ra" title='Right ascension degrees - Enter a specific ra or enter a range, and click the "Filter" button.  Value ranges can be entered like: >85, <85, or  80 90'>ra</th>
+              <th class="sortable" id="locus_dec" title='Declination degrees - Enter a specific dec or enter a range, and click the "Filter" button.  Value ranges can be entered like: >18, <18, or  18.8 19.4'>dec</th>
+              <th class="" id="ant_mag_corrected" title='Point-spread function (PSF) magnitude - Enter a specific mag or enter a range, and click the "Filter" button.  Value ranges can be entered like: >18, <18, or  18.8 19.4'>ant_mag corrected</th>
+              <!-- <th class="sortable" id="magap" title='Aperture magnitude - Enter a specific magap or enter a range, and click the "Filter" button.  Value ranges can be entered like: >18, <18, or  18.8 19.4'>magap</th> -->
+            </tr>
+
+            <!-- <form method="POST" action="/"> -->
+            <tr>
+              <th>
+                <!-- <div class="form-group"> -->
+                <!-- <label for="date">date</label> -->
+                <input type="text" class="form-control form-control-sm" id="date" name="date"
+                  value="{{ request.args.date_alert_mjd }}">
+                <!-- </div> -->
+              </th>
+              <th>
+                <!-- <div class="form-group"> -->
+                <!-- <label for="alert_id">alert_id</label> -->
+                <input type="text" class="form-control form-control-sm" id="alert_id" name="alert_id"
+                  value="{{ request.args.alert_id }}">
+                <!-- </div> -->
+              </th>
+              <th>
+                <!-- <div class="form-group"> -->
+                <!-- <label for="ztf_object_id">ztf_object_id</label> -->
+                <input type="text" class="form-control form-control-sm" id="ztf_object_id" name="ztf_object_id"
+                  value="{{ request.args.ztf_object_id }}">
+                <!-- </div> -->
+              </th>
+              <th>
+                <!-- <label for="jd">jd</label> -->
+                <input type="text" class="form-control form-control-sm" id="date_alert_mjd" name="date_alert_mjd" 
+                  value="{{ request.args.date_alert_mjd }}"> <!-- TODO: not sortable?! -->
+              </th>
+              <th>
+                <!-- <div class="form-group"> -->
+                <!-- <label for="filter">Filter</label> -->
+                <!-- <input type="text" class="form-control form-control-sm" id="ztf_object_id" name="ztf_object_id"
+                  value="{{ request.args.ant_passband }}"> -->
+                  <select id="ant_passband" name="ant_passband" class="form-control form-control-sm"
+                  sytle="select.form-control {padding: 2px;}" value="{{ request.args.ant_passband }}">
+                  <option value="" sytle="padding-right:0" {% if not request.args.ant_passband in ['g', 'i', 'R'] %} selected {% endif %}>
+                  </option>
+                  <option value="g" sytle="padding-right:0" {% if request.args.ant_passband=='g' %} selected {% endif %}>g
+                  </option>
+                  <option value="R" sytle="padding-right:0" {% if request.args.ant_passband=='R' %} selected {% endif %}>R
+                  </option>
+                  <option value="i" sytle="padding-right:0" {% if request.args.ant_passband=='i' %} selected {% endif %}>i
+                  </option>
+                </select>
+                <!-- </div> -->
+              </th>
+              <th>
+                <!-- <label for="ra">ra</label> -->
+                <input type="text" class="form-control form-control-sm" id="locus_id" name="locus_id" 
+                  value="{{ request.args.locus_id }}">
+              </th>              
+              <th>
+                <!-- <label for="ra">ra</label> -->
+                <input type="text" class="form-control form-control-sm" id="locus_ra" name="locus_ra" 
+                  value="{{ request.args.locus_ra }}">
+              </th>
+              <th>
+                <!-- <label for="dec">dec</label> -->
+                <input type="text" class="form-control form-control-sm" id="locus_dec" name="locus_dec"
+                  value="{{ request.args.locus_dec }}">
+              </th>
+              <th>
+                <!-- <label for="magpsf">magpsf</label> -->
+                <input type="text" class="form-control form-control-sm" id="magpsf" name="magpsf"
+                  value="{{ request.args.magpsf }}"> <!-- TODO -->
+              </th>
+            </tr>
+            <!-- /form> -->
+            <!-- <button type="submit" class="btn btn-primary"><i class="fa fa-filter" aria-hidden="true"></i> Filter</button>
+            <a href="/" class="btn btn-secondary">Reset</a> -->
+
+          </thead>
+          <tbody>
+
+            {% for alert in table %}
+            <tr>
+              <!-- <td><a href="/{#{ alert.lco_id }}/" title="{{ alert.lco_id }}">{{ alert.lco_id }#}</a></td> -->
+              <td>{{ alert.date_alert_mjd|format_mjd_readable }}</td>
+              <td>{{ alert.alert_id | replace('ztf_candidate:','') }}</td>
+              <td>
+                <a href="#myModal" data-toggle="modal" data-target="#objectIdModal" 
+                  data-object-id="{{ alert.ztf_object_id }}" 
+                  data-date="{{ alert.date }}" #TODO: not date, but date_alert_mjd, and format it to a human readable date in the modal with JS
+                  data-candid="{{ alert.alert_id }}"
+                  data-locusid="{{ alert.locus_id }}"
+                  data-locusra="{{ alert.locus_ra }}"
+                  data-locusdec="{{ alert.locus_dec }}">{{ alert.ztf_object_id }}</a>
+              </td>
+              <td>{{ alert.date_alert_mjd }}</td>
+              <td>{{ alert.ant_passband | astro_filter }}</td>
+              <td>{{ alert.locus_id  }}</td>
+              <td>{{ '%.5f'|format(alert.locus_ra) }}</td>
+              <td>{{ '%.5f'|format(alert.locus_dec) }}</td>
+              <td>{{ alert.ant_mag_corrected | mag_filter }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</form>
+
+<!-- Modal -->
+<div class="modal fade" id="objectIdModal" tabindex="-1" role="dialog" aria-labelledby="objectIdModalLabel" 
+  aria-hidden="true">
+  <div class="modal-dialog modal-xl" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="objectIdModalLabel">Modal title</h5>
+        <button type="button" class="btn btn-outline-danger fav ml-4" aria-pressed="false" title="Favorite">
+          <i class="fa fa-heart" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+    <!-- ?NOTE: When a new modal is opened the last selected tab is shown, this is intended -->
+      <div class="modal-body">
+        <div role="tabpanel">
+          <!-- Nav tabs -->
+          <ul class="nav nav-tabs" role="tablist">
+              <li class="nav-item">
+                <a class="nav-link active" id="overview-tab" data-toggle="tab" href="#overview" role="tab" aria-controls="overview"
+                  aria-selected="true">Locus Lightcurve</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" id="thumbnails-tab" data-toggle="tab" href="#thumbnails" role="tab" aria-controls="thumbnails"
+                  aria-selected="false">Thumbnails</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" id="features-tab" data-toggle="tab" href="#features" role="tab" aria-controls="features"
+                  aria-selected="false">Features</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" id="observing-tab" data-toggle="tab" href="#observing" role="tab" aria-controls="observing"
+                  aria-selected="false">Observing Planning Tool</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" id="crossmatches-tab" data-toggle="tab" href="#crossmatches" role="tab" aria-controls="crossmatches"
+                  aria-selected="false">Catalog cross-matches</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" id="classification-tab" data-toggle="tab" href="#classification" role="tab" aria-controls="classification"
+                  aria-selected="false">Classification</a>
+              </li>
+            </ul>
+          </ul>
+          <!-- Tab panes -->
+          <div class="tab-content" id="objectIdModalTabContent">
+              <div role="tabpanel" class="tab-pane fade show active" id="overview" aria-labelledby="overview-tab">
+                <div class="row">
+                  <div class="col-md-6">
+                    <p>
+                      <br>
+                      <span id="locus-id-label">Locus ID:&nbsp; </span><br>
+                      <span id="locus-ra-label">Locus RA:&nbsp; </span><br>
+                      <span id="locus-dec-label">Locus Dec: </span><br>
+                    </p>
+                  </div>
+                  <div class="col-md-6">
+                    <div style="position:relative; min-height:100px;" class="container">
+                      <div style="position:absolute; bottom:0; right:0;" class="block">
+                        <a class="btn" id="btn_locus_csv" href="#"><i class="fa fa-download" ></i> Download Lightcurve as CSV</a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div id="locus-plot"></div>
+              </div>
+              <div role="tabpanel" class="tab-pane fade" id="thumbnails" aria-labelledby="thumbnails-tab">   
+                <p>
+                  <br>
+                  <span>Alert Thumbnails from ZTF, vertically flipped: </span>
+                </p>
+                <div style="height: 200px; max-height: 200px;">
+                  <div  class="d-flex h-100" style="gap: 10px;">
+                    <div class="base-image-container">
+                      <div style="position: relative; height: 200px; width: 200px;">
+                        Science<br>
+                        <img id="thumbnail-1" src="" class="w-100" style="max-height: 200px; max-width: 200px; z-index: 1; position: absolute; transform: scaleY(-1);">
+                      </div>
+                    </div>
+                    <div class="base-image-container">
+                      <div style="position: relative; height: 200px; width: 200px;">
+                        Template<br>
+                        <img id="thumbnail-2" src="https://storage.googleapis.com/antares-production-ztf-stamps/candid2514207965515010010_ref.fits.png" class="w-100" style="max-height: 200px; max-width: 200px; z-index: 1; position: absolute; transform: scaleY(-1);">
+                      </div>
+                    </div>
+                    <div class="base-image-container">
+                      <div style="position: relative; height: 200px; width: 200px;">
+                        Difference<br>
+                        <img id="thumbnail-3" src="https://storage.googleapis.com/antares-production-ztf-stamps/candid2514207965515010010_pid2514207965515_targ_diff.fits.png" class="w-100" style="max-height: 200px; max-width: 200px; z-index: 1; position: absolute; transform: scaleY(-1);">
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div role="tabpanel" class="tab-pane fade" id="features" aria-labelledby="features-tab">   
+                <p>
+                  <br>
+                  <span>Features: </span>
+                  <!--# https://www.npmjs.com/package/@nobleclem/jquery-multiselect -->
+                  <select name="basic[]" multiple="multiple" class="3col active">
+                    <option value="feature_amplitude_magn_r">feature_amplitude_magn_r</option>
+                    <option value="feature_anderson_darling_normal_magn_r">feature_anderson_darling_normal_magn_r</option>
+                    <option value="feature_beyond_1_std_magn_r">feature_beyond_1_std_magn_r</option>
+                    <option value="feature_beyond_2_std_magn_r">feature_beyond_2_std_magn_r</option>
+                    <option value="feature_cusum_magn_r">feature_cusum_magn_r</option>
+                    <option value="feature_eta_e_magn_r">feature_eta_e_magn_r</option>
+                    <option value="feature_inter_percentile_range_2_magn_r">feature_inter_percentile_range_2_magn_r</option>
+                    <option value="feature_inter_percentile_range_10_magn_r">feature_inter_percentile_range_10_magn_r</option>
+                    <option value="feature_inter_percentile_range_25_magn_r">feature_inter_percentile_range_25_magn_r</option>
+                    <option value="feature_kurtosis_magn_r">feature_kurtosis_magn_r</option>
+                    <option value="feature_linear_fit_slope_magn_r">feature_linear_fit_slope_magn_r</option>
+                    <option value="feature_linear_fit_slope_sigma_magn_r">feature_linear_fit_slope_sigma_magn_r</option>
+                    <option value="feature_linear_fit_reduced_chi2_magn_r">feature_linear_fit_reduced_chi2_magn_r</option>
+                    <option value="feature_linear_trend_magn_r">feature_linear_trend_magn_r</option>
+                    <option value="feature_linear_trend_sigma_magn_r">feature_linear_trend_sigma_magn_r</option>
+                    <option value="feature_magnitude_percentage_ratio_40_5_magn_r">feature_magnitude_percentage_ratio_40_5_magn_r</option>
+                    <option value="feature_magnitude_percentage_ratio_20_5_magn_r">feature_magnitude_percentage_ratio_20_5_magn_r</option>
+                    <option value="feature_maximum_slope_magn_r">feature_maximum_slope_magn_r</option>
+                    <option value="feature_mean_magn_r">feature_mean_magn_r</option>
+                    <option value="feature_median_absolute_deviation_magn_r">feature_median_absolute_deviation_magn_r</option>
+                    <option value="feature_percent_amplitude_magn_r">feature_percent_amplitude_magn_r</option>
+                    <option value="feature_percent_difference_magnitude_percentile_5_magn_r">feature_percent_difference_magnitude_percentile_5_magn_r</option>
+                    <option value="feature_percent_difference_magnitude_percentile_10_magn_r">feature_percent_difference_magnitude_percentile_10_magn_r</option>
+                    <option value="feature_median_buffer_range_percentage_10_magn_r">feature_median_buffer_range_percentage_10_magn_r</option>
+                    <option value="feature_median_buffer_range_percentage_20_magn_r">feature_median_buffer_range_percentage_20_magn_r</option>
+                    <option value="feature_period_0_magn_r">feature_period_0_magn_r</option>
+                    <option value="feature_period_s_to_n_0_magn_r">feature_period_s_to_n_0_magn_r</option>
+                    <option value="feature_period_1_magn_r">feature_period_1_magn_r</option>
+                    <option value="feature_period_s_to_n_1_magn_r">feature_period_s_to_n_1_magn_r</option>
+                    <option value="feature_period_2_magn_r">feature_period_2_magn_r</option>
+                    <option value="feature_period_s_to_n_2_magn_r">feature_period_s_to_n_2_magn_r</option>
+                    <option value="feature_period_3_magn_r">feature_period_3_magn_r</option>
+                    <option value="feature_period_s_to_n_3_magn_r">feature_period_s_to_n_3_magn_r</option>
+                    <option value="feature_period_4_magn_r">feature_period_4_magn_r</option>
+                    <option value="feature_period_s_to_n_4_magn_r">feature_period_s_to_n_4_magn_r</option>
+                    <option value="feature_periodogram_amplitude_magn_r">feature_periodogram_amplitude_magn_r</option>
+                    <option value="feature_periodogram_beyond_2_std_magn_r">feature_periodogram_beyond_2_std_magn_r</option>
+                    <option value="feature_periodogram_beyond_3_std_magn_r">feature_periodogram_beyond_3_std_magn_r</option>
+                    <option value="feature_periodogram_standard_deviation_magn_r">feature_periodogram_standard_deviation_magn_r</option>
+                    <option value="feature_chi2_magn_r">feature_chi2_magn_r</option>
+                    <option value="feature_skew_magn_r">feature_skew_magn_r</option>
+                    <option value="feature_standard_deviation_magn_r">feature_standard_deviation_magn_r</option>
+                    <option value="feature_stetson_k_magn_r">feature_stetson_k_magn_r</option>
+                    <option value="feature_weighted_mean_magn_r">feature_weighted_mean_magn_r</option>
+                    <option value="feature_anderson_darling_normal_flux_r">feature_anderson_darling_normal_flux_r</option>
+                    <option value="feature_cusum_flux_r">feature_cusum_flux_r</option>
+                    <option value="feature_eta_e_flux_r">feature_eta_e_flux_r</option>
+                    <option value="feature_excess_variance_flux_r">feature_excess_variance_flux_r</option>
+                    <option value="feature_kurtosis_flux_r">feature_kurtosis_flux_r</option>
+                    <option value="feature_mean_variance_flux_r">feature_mean_variance_flux_r</option>
+                    <option value="feature_chi2_flux_r">feature_chi2_flux_r</option>
+                    <option value="feature_skew_flux_r">feature_skew_flux_r</option>
+                    <option value="feature_stetson_k_flux_r">feature_stetson_k_flux_r</option>
+                    <option value="feature_amplitude_magn_g">feature_amplitude_magn_g</option>
+                    <option value="feature_anderson_darling_normal_magn_g">feature_anderson_darling_normal_magn_g</option>
+                    <option value="feature_beyond_1_std_magn_g">feature_beyond_1_std_magn_g</option>
+                    <option value="feature_beyond_2_std_magn_g">feature_beyond_2_std_magn_g</option>
+                    <option value="feature_cusum_magn_g">feature_cusum_magn_g</option>
+                    <option value="feature_eta_e_magn_g">feature_eta_e_magn_g</option>
+                    <option value="feature_inter_percentile_range_2_magn_g">feature_inter_percentile_range_2_magn_g</option>
+                    <option value="feature_inter_percentile_range_10_magn_g">feature_inter_percentile_range_10_magn_g</option>
+                    <option value="feature_inter_percentile_range_25_magn_g">feature_inter_percentile_range_25_magn_g</option>
+                    <option value="feature_kurtosis_magn_g">feature_kurtosis_magn_g</option>
+                    <option value="feature_linear_fit_slope_magn_g">feature_linear_fit_slope_magn_g</option>
+                    <option value="feature_linear_fit_slope_sigma_magn_g">feature_linear_fit_slope_sigma_magn_g</option>
+                    <option value="feature_linear_fit_reduced_chi2_magn_g">feature_linear_fit_reduced_chi2_magn_g</option>
+                    <option value="feature_linear_trend_magn_g">feature_linear_trend_magn_g</option>
+                    <option value="feature_linear_trend_sigma_magn_g">feature_linear_trend_sigma_magn_g</option>
+                    <option value="feature_magnitude_percentage_ratio_40_5_magn_g">feature_magnitude_percentage_ratio_40_5_magn_g</option>
+                    <option value="feature_magnitude_percentage_ratio_20_5_magn_g">feature_magnitude_percentage_ratio_20_5_magn_g</option>
+                    <option value="feature_maximum_slope_magn_g">feature_maximum_slope_magn_g</option>
+                    <option value="feature_mean_magn_g">feature_mean_magn_g</option>
+                    <option value="feature_median_absolute_deviation_magn_g">feature_median_absolute_deviation_magn_g</option>
+                    <option value="feature_percent_amplitude_magn_g">feature_percent_amplitude_magn_g</option>
+                    <option value="feature_percent_difference_magnitude_percentile_5_magn_g">feature_percent_difference_magnitude_percentile_5_magn_g</option>
+                    <option value="feature_percent_difference_magnitude_percentile_10_magn_g">feature_percent_difference_magnitude_percentile_10_magn_g</option>
+                    <option value="feature_median_buffer_range_percentage_10_magn_g">feature_median_buffer_range_percentage_10_magn_g</option>
+                    <option value="feature_median_buffer_range_percentage_20_magn_g">feature_median_buffer_range_percentage_20_magn_g</option>
+                    <option value="feature_period_0_magn_g">feature_period_0_magn_g</option>
+                    <option value="feature_period_s_to_n_0_magn_g">feature_period_s_to_n_0_magn_g</option>
+                    <option value="feature_period_1_magn_g">feature_period_1_magn_g</option>
+                    <option value="feature_period_s_to_n_1_magn_g">feature_period_s_to_n_1_magn_g</option>
+                    <option value="feature_period_2_magn_g">feature_period_2_magn_g</option>
+                    <option value="feature_period_s_to_n_2_magn_g">feature_period_s_to_n_2_magn_g</option>
+                    <option value="feature_period_3_magn_g">feature_period_3_magn_g</option>
+                    <option value="feature_period_s_to_n_3_magn_g">feature_period_s_to_n_3_magn_g</option>
+                    <option value="feature_period_4_magn_g">feature_period_4_magn_g</option>
+                    <option value="feature_period_s_to_n_4_magn_g">feature_period_s_to_n_4_magn_g</option>
+                    <option value="feature_periodogram_amplitude_magn_g">feature_periodogram_amplitude_magn_g</option>
+                    <option value="feature_periodogram_beyond_2_std_magn_g">feature_periodogram_beyond_2_std_magn_g</option>
+                    <option value="feature_periodogram_beyond_3_std_magn_g">feature_periodogram_beyond_3_std_magn_g</option>
+                    <option value="feature_periodogram_standard_deviation_magn_g">feature_periodogram_standard_deviation_magn_g</option>
+                    <option value="feature_chi2_magn_g">feature_chi2_magn_g</option>
+                    <option value="feature_skew_magn_g">feature_skew_magn_g</option>
+                    <option value="feature_standard_deviation_magn_g">feature_standard_deviation_magn_g</option>
+                    <option value="feature_stetson_k_magn_g">feature_stetson_k_magn_g</option>
+                    <option value="feature_weighted_mean_magn_g">feature_weighted_mean_magn_g</option>
+                    <option value="feature_anderson_darling_normal_flux_g">feature_anderson_darling_normal_flux_g</option>
+                    <option value="feature_cusum_flux_g">feature_cusum_flux_g</option>
+                    <option value="feature_eta_e_flux_g">feature_eta_e_flux_g</option>
+                    <option value="feature_excess_variance_flux_g">feature_excess_variance_flux_g</option>
+                    <option value="feature_kurtosis_flux_g">feature_kurtosis_flux_g</option>
+                    <option value="feature_mean_variance_flux_g">feature_mean_variance_flux_g</option>
+                    <option value="feature_chi2_flux_g">feature_chi2_flux_g</option>
+                    <option value="feature_skew_flux_g">feature_skew_flux_g</option>
+                    <option value="feature_stetson_k_flux_g">feature_stetson_k_flux_g</option>
+                </select>  
+
+                  <div id="feature-plot"></div>
+                </p>
+                <!-- select feature_anderson_darling_normal_magn_r, feature_amplitude_magn_g, date_alert_mjd, locus_id from featuretable 
+                  WHERE locus_id LIKE 'ANT2018gj4my' ORDER BY date_alert_mjd -->
+                <span id="features_table_output"></span>
+              </div>
+              <div role="tabpanel" class="tab-pane fade" id="observing" aria-labelledby="observing-tab">                
+
+                  <p>
+                  <!-- <br> -->
+                  <!-- <form> -->
+                    <div class="row">
+                      <div class="col-md-4">
+                        <label for="">RA:</label> <span id="obs_ra"></span>
+                      </div>
+                      <div class="col-md-4">
+                        <label for="">Dec:</label> <span id="obs_dec"></span>
+                      </div>
+                      <hr>
+                      <div class="col-md-12">
+                          <h5>Finder Chart</h5>
+                          <!-- Aladin Lite container at requested dimensions -->
+                          <div id="aladin-lite-div" style="width:700px;height:400px;"></div>
+                          <input id="DSS" type="radio" name="survey" value="P/DSS2/color" checked><label for="DSS">DSS color</label>
+                          <input id="DSS-blue" type="radio" name="survey" value="P/DSS2/blue"><label for="DSS-blue">DSS blue</label>
+                          <input id="2MASS" type="radio" name="survey" value="P/2MASS/color"><label for="2MASS">2MASS</label>
+                          <input id="allwise" type="radio" name="survey" value="P/allWISE/color"><label for="allwise">AllWISE</label>
+                          <input id="glimpse" type="radio" name="survey" value="P/GLIMPSE360"><label for="glimpse">GLIMPSE 360</label>
+                      </div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                      <div class="col-md-12">
+                        <h5>Observing Planning</h5>
+                      </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label for="obs_dropdown">Observatory:</label>
+                                <select class="form-control" id="obs_dropdown">
+                                  {% for obs in observatories %}
+                                  <option>{{ obs }}</option>
+                                  {% endfor %}                                    
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                          <label for="datetimepicker1">Date:</label>
+                          <div class="input-group date" id="datetimepicker1" data-target-input="nearest">      
+                                <input type="text" class="form-control datetimepicker-input" data-target="#datetimepicker1" value="{{ today_utc }}" />
+                                <div class="input-group-append" data-target="#datetimepicker1">
+                                    <div class="input-group-text"><i class="fa fa-calendar"></i></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="radioButtons">Time:</label><br>
+                            <div class="btn-group btn-group-toggle" data-toggle="buttons" id="time_radios">
+                                <label class="btn btn-secondary active">
+                                    <input type="radio" name="options" id="option_utc" autocomplete="off" checked> UTC
+                                </label>
+                                <label class="btn btn-secondary">
+                                    <input type="radio" name="options" id="option_local" autocomplete="off"> Local
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                          <label for="">&nbsp;</label><br>
+                          <button type="button" class="btn btn-primary" onclick="query_observing_plot()">Retrieve</button>
+                      </div>
+                  </div>
+
+                <!-- </form> -->
+                <!--<div id="spinner"></div>-->
+                <span id="observing_output"></span>                
+                </p>
+              </div>
+              <div role="tabpanel" class="tab-pane fade" id="crossmatches" aria-labelledby="crossmatches-tab">                
+                <p>
+                  <br>
+                    <span id="crossmatches_table_output"></span><br>
+                    <span id="crossmatches_footer_output"></span>
+                </p>
+              </div>
+              <div role="tabpanel" class="tab-pane fade" id="classification" aria-labelledby="classification-tab">                
+                <p>
+                  <br>
+                  <span class="ml-8" id="classification_output"></span><br>
+                </p>
+              </div>
+          </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% include 'common_js.html' %}
+<script>
+  // Handle favorite button clicks
+  $(document).on('click', '.fav', function (e) {
+    const btn = $(this);
+    const pressed = btn.attr('aria-pressed') === 'true';
+    btn.attr('aria-pressed', (!pressed).toString());
+    btn.toggleClass('active', !pressed);
+
+    // Send AJAX to persist state for logged in user
+    $.ajax({
+      type: 'POST',
+      url: '/api/favorite',
+      contentType: 'application/json',
+      headers: {
+        'X-CSRFToken': $('meta[name="csrf-token"]').attr('content')
+      },
+      data: JSON.stringify({
+        "locusId": $('#locus-id-label').text().replace('Locus ID: ', ''),
+        "fav": !pressed
+      }),
+      success: function(response) {
+        console.log('Favorite saved:', response);
+      },
+      error: function(xhr, status, error) {
+        console.error('Failed to save favorite:', xhr.status, error);
+        if (xhr.status === 401) {
+          console.warn('Not authenticated - favorite not saved');
+        }
+      }
+    });
+  });
+
+
+  //triggered when modal is about to be shown
+  $('#objectIdModal').on('show.bs.modal', function(e) {
+    //get data-id attribute of the clicked element and populate text box
+    var ztf_object_id = $(e.relatedTarget).data('object-id');
+    var candid = $(e.relatedTarget).data('candid').replace("ztf_candidate:", "");
+    //var date = $(e.relatedTarget).data('date');
+    var locus_id = $(e.relatedTarget).data('locusid');
+    var locus_ra = $(e.relatedTarget).data('locusra');
+    var locus_dec = $(e.relatedTarget).data('locusdec');
+    // $(e.currentTarget).find('#object-id-label').html(objectId);
+    $('body').find('#objectIdModalLabel').html(ztf_object_id); // modal title {# ! TODO: de-mess! #}
+    $('#locus-id-label').html('Locus ID: '+ locus_id);
+    $('#locus-ra-label').html('Locus RA: '+ locus_ra);
+    $('#locus-dec-label').html('Locus Dec: '+ locus_dec);
+    $('#obs_ra').html(locus_ra);
+    $('#obs_dec').html(locus_dec);
+    //$('body').find('span[name="date-label"]').html("Date: " + date); //{# ! TODO: de-mess! #}
+    $('#thumbnail-1').attr("src", "https://storage.googleapis.com/antares-production-ztf-stamps/candid"+candid+"_pid"+candid.substring(0,13)+"_targ_sci.fits.png");
+    $('#thumbnail-2').attr("src", "https://storage.googleapis.com/antares-production-ztf-stamps/candid"+candid+"_ref.fits.png");
+    $('#thumbnail-3').attr("src", "https://storage.googleapis.com/antares-production-ztf-stamps/candid"+candid+"_pid"+candid.substring(0,13)+"_targ_diff.fits.png");
+    //$('body').find('img[name="object-id-image"]').attr("src", "/static/img/_ZTF_lc_plots/"+ztf_object_id+".png");
+    //var csvUrl = "CsvExists('/static/_ZTF_lightcurves_concat/"+ztf_object_id+".csv')";
+    //$('body').find('img[name="object-id-image"]').attr("onerror", csvUrl);
+    //$('body').find('img[name="object-id-plot"]').attr("src", "/static/img/_ZTF_cutouts/"+date+"/"+ztf_object_id+"_"+alert_id+".png"); //NOTE: alert_id was candid
+    //$('body').find('img[name="object-id-plot"]').attr("onerror", "this.src='/static/img/_ZTF_lc_plots/missing_file.png';");
+    //update URL Of download button
+    $('#btn_locus_csv').attr('href', '/locus_plot_csv?locusId='+locus_id);
+    query_features_table(candid);
+    query_locusplot(locus_id);
+    //set selected & reload UI:
+    let default_features = ['feature_amplitude_magn_r',
+        'feature_anderson_darling_normal_magn_r',
+        'feature_beyond_1_std_magn_r',
+        'feature_beyond_2_std_magn_r',
+        'feature_cusum_magn_r'];
+    $('select[multiple].active.3col').val(default_features);
+    $('select[multiple].active.3col').multiselect('reload');
+    query_featureplot(locus_id, default_features.join(','));
+
+    query_crossmatches_table(locus_id);
+    query_crossmatches_footer(locus_id, ztf_object_id, locus_ra, locus_dec);
+
+    query_classification(candid);
+    
+    //clear observing output
+    $("#observing_output").html('');
+    //query_classification(ztf_object_id);
+
+    let aladin;
+    A.init.then(() => {
+        aladin = A.aladin("#aladin-lite-div", { survey: "P/DSS2/color", fov: 1.5, target: `${locus_ra} ${locus_dec}` });
+        $("input[name=survey]").change(function () {aladin.setImageSurvey($(this).val());});
+        var marker1 = A.marker(locus_ra, locus_dec, { popupTitle: "source", popupDesc: ztf_object_id });
+        var markerLayer = A.catalog({ color: "#800080" });
+        aladin.addCatalog(markerLayer);
+        markerLayer.addSources([marker1]);
+        aladin.addCatalog(A.catalogFromSimbad(`${locus_ra} ${locus_dec}`, 0.2, { shape: "plus", color: "#5d5", onClick: "showTable" }));
+        //aladin.addCatalog(A.catalogFromVizieR("234.7 8.9", 0.2, { shape: "square", sourceSize: 8, color: "red", onClick: "showPopup" }));
+    });
+
+    //retrieve current fav state on load
+    fetch(`/api/favorite?locusId=${locus_id}`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.fav !== undefined) {
+          $('.fav[aria-pressed]').attr('aria-pressed', data.fav);
+          $('.fav[aria-pressed]').toggleClass('active', data.fav);
+        }
+      }); 
+  });
+
+  $("#myModal").on("hide.bs.modal", function () {
+    $("#crossmatches_table_output").html('');
+    $("#crossmatches_footer_output").html('');
+    $("#observing_output").html('');
+    $("#classification_output").html('');
+  });
+
+  //TODO: Deprecated?
+  function query_locusplot(locus_id) {
+    let lightcurve_data_url = '/query_lightcurve_data?locusId=' + locus_id;
+    $.ajax({
+          url: lightcurve_data_url,
+          cache: false
+    }).done(function(data) {
+        // const divPosition = data.search("</div>");
+        // document.getElementById("locus-plot").innerHTML = data.substring(0,divPosition);//
+        // const scriptPosition = data.search("(?<=<script type=\"text/javascript\">)");
+        // var script = document.createElement('script');
+        // script.innerHTML = data.substring(scriptPosition, data.length-10);
+        // document.body.appendChild(script);
+        $("#locus-plot").html(data);
+    });
+  }
+
+  function query_features_table(alert_id) {
+    let backend_url = `/query_features?alert_id=${alert_id}`;
+    //alert(backend_url);
+    $.ajax({
+      type: 'GET',
+      url: backend_url,
+      dataType: 'json',
+      complete: function(r){
+        //console.log(r.responseText);
+        var json_obj = JSON.parse(r.responseText);
+        $('body').find('#features_table_output').html(json2featurestable(json_obj));
+      }
+    });
+  }
+
+  function query_featureplot(locus_id, selected_features) {
+    //console.log(selected_features);
+
+    let featureplot_data_url = '/query_featureplot_data?locusId=' + locus_id + '&features=' + selected_features;
+    $.ajax({
+          url: featureplot_data_url,
+          cache: false
+    }).done(function(data) {
+        // const divPosition = data.search("</div>");
+        // document.getElementById("locus-plot").innerHTML = data.substring(0,divPosition);//
+        // const scriptPosition = data.search("(?<=<script type=\"text/javascript\">)");
+        // var script = document.createElement('script');
+        // script.innerHTML = data.substring(scriptPosition, data.length-10);
+        // document.body.appendChild(script);
+        $("#feature-plot").html(data);
+    });
+  }
+
+  function query_observing_plot() {
+    const obs_loc = document.querySelector('#obs_dropdown option:checked').value;
+    console.log(obs_loc);
+    const obs_date = $('#datetimepicker1 > input')[0].value;
+    console.log(obs_date);
+    const obs_tz = document.querySelector('#time_radios input[name="options"]:checked').id;
+    console.log(obs_tz);
+    const ra = $('#obs_ra').text();
+    console.log(ra);
+    const dec = $('#obs_dec').text();
+    console.log(dec);
+    const ztfObjectId = $('body').find('#objectIdModalLabel').text();
+    console.log(ztfObjectId);
+    //clear output first
+    $("#observing_output").html('');
+    //showSpinner()
+
+    let observing_plot_data_url = '/query_observing_plot?obs_loc=' + obs_loc + '&obs_date=' + obs_date + '&obs_tz=' + obs_tz + '&ra=' + ra + '&dec=' + dec;
+    //let observing_plot_data_url = '/query_observing_plot?obs_loc=Rubin%20Observatory&obs_date=2024-11-14&obs_tz=option_utc&ra=101.28715533&dec=16.71611586';
+    console.log(observing_plot_data_url);
+    $.ajax({
+          url: observing_plot_data_url,
+          cache: false
+    }).done(function(data) {
+        // const divPosition = data.search("</div>");
+        // document.getElementById("locus-plot").innerHTML = data.substring(0,divPosition);//
+        // const scriptPosition = data.search("(?<=<script type=\"text/javascript\">)");
+        // var script = document.createElement('script');
+        // script.innerHTML = data.substring(scriptPosition, data.length-10);
+        // document.body.appendChild(script);
+        $("#observing_output").html(data);
+    });
+  }
+
+  function showSpinner() {
+    const spinner = document.getElementById("spinner");
+    spinner.className = "show";
+    setTimeout(() => {
+      spinner.className = spinner.className.replace("show", "");
+    }, 5000);
+  }
+
+  function query_classification(alertId) {
+    let classification_data_url = '/query_classification?alertId=' + alertId;
+    $.ajax({
+          url: classification_data_url,
+          cache: false
+    }).done(function(data) {
+        $("#classification_output").html(data);
+    });
+  }
+  function query_crossmatches_table(locusId) {
+    // Validate input
+    if (!locusId) {
+      console.error('No locus_id provided to query_crossmatches_table');
+      return;
+    }
+
+    let backend_url = `/query_crossmatches?locusId=${locusId}`;
+    console.log('Querying crossmatches:', backend_url);
+    
+    $.ajax({
+      type: 'GET',
+      url: backend_url,
+      dataType: 'json',
+      timeout: 10000, // 10 second timeout
+      success: function(response) {
+        try {
+          if (Array.isArray(response) && response.length > 0) {
+            $('#crossmatches_table_output').html(json2crossmatchestable(response));
+          }
+        } catch (err) {
+          console.error('Error processing crossmatches response:', err);
+          $('#crossmatches_table_output').html(`<div class="alert alert-danger">Error processing crossmatches data! ${err}</div>`);
+        }
+      },
+      error: function(xhr, status, error) {
+        console.error('Crossmatches query failed:', status, error);
+        $('#crossmatches_table_output').html(
+          `<div class="alert alert-danger">Failed to load crossmatches data for LocusID ${locusId}! ${error}: ${xhr.responseText}</div>`
+        );
+      }
+    });
+  }
+
+  function query_crossmatches_footer(locus_id, ztf_object_id, locus_ra, locus_dec) {
+    var footer = `<p>This object can also be found in:</p>
+                  Alert brokers:
+                  <ul><li>ALeRCE <a href="https://alerce.online/object/${ztf_object_id}" target="_blank">https://alerce.online/object/${ztf_object_id}</a></li>
+                  <li>ANTARES <a href="https://antares.noirlab.edu/loci/${locus_id}" target="_blank">https://antares.noirlab.edu/loci/${locus_id}</a></li></ul>
+                  External Services:
+                  <ul><li><a href="https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query?objstr=${locus_ra}${locus_dec > 0 ? '+' : ''}${locus_dec}+&catalog=ztf_objects_dr5&mission=irsa&radius=1" target="_blank">IPAC</a></li>
+                  <li><a href="http://simbad.u-strasbg.fr/simbad/sim-coo?Coord=${locus_ra}%2C${locus_dec}&CooFrame=FK5&CooEpoch=2000&CooEqui=2000&CooDefinedFrames=none&Radius=2&Radius.unit=arcsec&submit=submit+query&CoordList=" target="_blank">SIMBAD</a></li>
+                  <li><a href="https://ztf.snad.space/search/${locus_ra}%20${locus_dec}/1" target="_blank">SNAD</a></li>
+                  <li><a href="https://www.wis-tns.org/search?&ra=${locus_ra}&decl=${locus_dec}&radius=1&coords_unit=arcsec" target="_blank">TNS</a></li>
+                  <li><a href="https://vizier.cds.unistra.fr/viz-bin/VizieR-4?-ref=VIZ600f5483a73e&-to=-4c%3DGo%21b&-from=-1&-this=-4c%3DGo%21&%2F%2Fc=${locus_ra}${locus_dec > 0 ? '+' : ''}${locus_dec}-out.max=50&%2F%2FCDSportal=http%3A%2F%2Fcdsportal.u-strasbg.fr%2FStoreVizierData.html&-out.form=HTML+Table&-out.add=_r&-out.add=_RAJ%2C_DEJ&%2F%2Foutaddvalue=default&-sort=_r&-order=I&-oc.form=sexa&-nav=key%3Ac%3D184.4669870191518+30.116833377497727%26pos%3A184.4669870191518+30.116833377497727%28+++2+arcsec+J2000%29%26HTTPPRM%3A&-c=184.4669870191518+30.116833377497727&-c.eq=J2000&-c.r=++2&-c.u=arcsec&-c.geom=r&-source=&-meta.ucd=2&-meta=1&-meta.foot=1&-usenav=1&-bmark=GET" target="_blank">VizieR</a></li></ul>
+                  `;
+    $('body').find('#crossmatches_footer_output').html(footer);
+  }
+
+  
+  //feature_table specific as of now
+  function json2featurestable(json_obj) {
+    var stable = '<table class="table table-sm table-striped">';
+        for (let key in json_obj) {
+          if (json_obj[key] != null && key.startsWith('feature_')) {
+            let value = json_obj[key];
+            //console.log(key, value);
+            //fstring += key + ': ' + value + '<br>';
+            stable += `<tr><td>${key}</td><td>${value}</td></tr>`;
+          }
+        }
+        stable += '</table>';
+        return stable;
+  }
+
+  function json2crossmatchestable(json_obj) {
+    locus_id = json_obj[0]['locus_id'];
+    var header = "<h5>Locus ID: " + locus_id + "</h5>";
+    var ctable = '<table class="table table-sm table-striped">';
+    ctable += '<thead><th>catalog</th><th>object</th><th>ra_cat</th><th>dec_cat</th><th>separation(mas)</th></thead>';
+        for (let key in json_obj) {
+          ctable += '<tr>';
+          ctable += `<td>${json_obj[key].catalog}</td>`;
+          ctable += `<td>${json_obj[key].object}</td>`;
+          ctable += `<td>${json_obj[key].ra_cat}</td>`;
+          ctable += `<td>${json_obj[key].dec_cat}</td>`;
+          ctable += `<td>${json_obj[key].separation.toPrecision(3)}</td>`;
+          ctable += '</tr>';
+        }
+        ctable += '</table>';
+        return header + ctable;
+  }
+</script>
+
+<script>
+    $(document).ready(function () {
+      //wire-up up/down sort indicator functionality
+      var $sortable = $('.sortable');
+      $sortable.on('click', function () {
+        var $this = $(this);
+        var id = $this.attr('id');
+        //console.log(id);
+        var asc = $this.hasClass('asc');
+        var desc = $this.hasClass('desc');
+        //clear the table sort indicator of the clicked item
+        $sortable.removeClass('asc').removeClass('desc');
+
+        if ('URLSearchParams' in window) {
+            var searchParams = new URLSearchParams(window.location.search);
+            //first, clear all sort__ URL params
+            searchParams.forEach(function(value, key) {
+              console.log(key, value);
+              if(key.startsWith("sort__")) {
+                searchParams.delete(key);
+              }
+            });
+
+          if (desc || (!asc && !desc)) {
+            $this.addClass('asc');
+            //console.log('sort asc');
+            searchParams.set("sort__"+id, "asc");
+            window.location.search = searchParams.toString();
+          } else {
+            $this.addClass('desc');
+            //console.log('sort desc');
+            searchParams.set("sort__"+id, "desc");
+            window.location.search = searchParams.toString();
+          }
+        }
+      });
+
+      //adhere to sort order provided in URL params
+      if ('URLSearchParams' in window) {
+            var searchParams = new URLSearchParams(window.location.search);
+            searchParams.forEach(function(value, key) {
+              console.log(value, key);
+              if(key.startsWith('sort__')) {
+                //extract target #id
+                $id = $('#'+key.substring(6)); //search target th
+                var asc = $id.hasClass('asc');
+                var desc = $id.hasClass('desc');
+                $sortable.removeClass('asc').removeClass('desc');
+                $id.addClass(value);
+              }
+            });
+          }
+    });
+
+    function UrlExists(url, cb) {
+      jQuery.ajax({
+          url: url,
+          dataType: 'text',
+          type: 'GET',
+          complete: function (xhr) {
+              if (typeof cb === 'function')
+                  cb.apply(this, [xhr.status]);
+          }
+      });
+  }
+
+  function CsvExists(csv_url) {
+    UrlExists(csv_url, function (status) {
+      if (status === 200) {
+          // if the corresponding csv is available generate plot
+          generate_lightcurveJS();
+      } else if (status === 404) {
+          //alert('No CSV')
+          $('body').find('img[name="object-id-image"]').attr("src", "/static/img/_ZTF_lc_plots/missing_file.png")
+      } else {
+          // Execute code if status doesn't match above
+          alert('Something did not work..');
+      }
+    });
+  }
+
+ function generate_lightcurveJS() {
+    var objectId = $('body').find('#objectIdModalLabel').text();
+    var backend_url = '/generate_lightcurve?objectId='+ objectId;
+    //alert(backend_url);
+
+    $.ajax({
+      type: 'GET',
+      url: backend_url,
+      dataType: 'text',
+      complete: function(r){
+        //alert(r.responseText);
+        $('body').find('img[name="object-id-image"]').attr("src", r.responseText);//or trigger loading image again since the url should be the same but image was simply missing
+      }
+    });
+  }
+</script>
+
+<script>
+  $(function () {
+      $('select[multiple].active.3col').multiselect({
+          columns: 2,
+          placeholder: 'Select Features to Plot',
+          search: true,
+          maxSelected: 10,
+          searchOptions: {
+              'default': 'Search Features'
+          },
+          selectAll: false, 
+          onControlClose: function (element) {
+              console.log($('select[multiple].active.3col').val());
+              let locusId = $('#locus-id-label').text().replace('Locus ID: ', '');
+              console.log(locusId);
+              let new_selected_features = $('select[multiple].active.3col').val();
+              query_featureplot(locusId, new_selected_features.join(','));
+          },
+          onOptionClick: function( element, option ) {
+              var maxSelect = 10;
+
+              // too many selected, deselect this option
+              if( $(element).val().length > maxSelect ) {
+                  if( $(option).is(':checked') ) {
+                      var thisVals = $(element).val();
+
+                      thisVals.splice(
+                          thisVals.indexOf( $(option).val() ), 1
+                      );
+
+                      $(element).val( thisVals );
+
+                      $(option).prop( 'checked', false ).closest('li')
+                          .toggleClass('selected');
+                  }
+              }
+              // max select reached, disable non-checked checkboxes
+              else if( $(element).val().length == maxSelect ) {
+                  $(element).next('.ms-options-wrap')
+                      .find('li:not(.selected)').addClass('disabled')
+                      .find('input[type="checkbox"]')
+                          .attr( 'disabled', 'disabled' );
+              }
+              // max select not reached, make sure any disabled
+              // checkboxes are available
+              else {
+                  $(element).next('.ms-options-wrap')
+                      .find('li.disabled').removeClass('disabled')
+                      .find('input[type="checkbox"]')
+                          .removeAttr( 'disabled' );
+              }
+          }
+      });
+
+    // https://getdatepicker.com/6/options
+    const datetimepicker1 = new tempusDominus.TempusDominus(document.getElementById('datetimepicker1'), {
+      localization: {
+        locale: 'utc', //NaN?
+        format: 'yyyy-MM-dd',
+      },
+      display: {
+      icons: {
+        type: 'icons', //fa v4.7 icons
+        time: 'fa fa-clock-o',
+        date: 'fa fa-calendar-o',
+        up: 'fa fa-arrow-up',
+        down: 'fa fa-arrow-down',
+        previous: 'fa fa-chevron-left',
+        next: 'fa fa-chevron-right',
+        today: 'fa fa-calendar-check-o',
+        clear: 'fa fa-trash',
+        close: 'fa fa-times'
+      },
+      sideBySide: false,
+      calendarWeeks: false,
+      viewMode: 'calendar',
+      toolbarPlacement: 'bottom',
+      keepOpen: false,
+      buttons: {
+        today: false,
+        clear: false,
+        close: false
+      },
+      components: {
+        calendar: true,
+        date: true,
+        month: false,
+        year: false,
+        decades: false,
+        clock: false,
+        hours: false,
+        minutes: false,
+        seconds: false,
+      },
+      inline: false,
+      theme: 'light'
+    },
+    useCurrent: true
+    });
+  });
+</script>
+
+{% endblock %}

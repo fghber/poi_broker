@@ -1,0 +1,292 @@
+{% extends 'site.html' %}
+
+{% block content %}
+<div class="row justify-content-center mt-4">
+    <div class="col-md-8 col-lg-6">
+
+        <div class="card text-center">
+            <div class="card-body">
+
+                <!-- Avatar -->
+                <div class="mb-3">
+                    <i class="fa fa-user-circle fa-5x text-secondary"></i>
+                </div>
+
+                <!-- Greeting -->
+                <h3 class="card-title mb-1">
+                    Welcome, {{ name }}!
+                </h3>
+
+                <p class="text-muted mb-4">
+                    This is your profile page
+                </p>
+
+                <!-- Profile details -->
+                <ul class="list-group list-group-flush text-left mb-4">
+                    <li class="list-group-item">
+                        <i class="fa fa-envelope mr-2 text-muted"></i>
+                        {{ current_user.email if current_user else "—" }}
+                    </li>
+                </ul>
+
+                <!-- Actions -->
+                <div class="d-flex justify-content-between">
+                    <a href="{{ url_for('main.start') }}" class="btn btn-outline-secondary">
+                        <i class="fa fa-home"></i> Home
+                    </a>
+
+                    <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-danger">
+                        <i class="fa fa-sign-out"></i> Logout
+                    </a>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Favorites card -->
+        <div class="card mt-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Your Favorites</span>
+                <button class="btn btn-sm btn-outline-primary" id="newGroupBtn">
+                    <i class="fa fa-plus"></i> New Group
+                </button>
+            </div>
+
+            <!-- Groups tabs -->
+            <ul class="nav nav-tabs" id="favoriteTabs" role="tablist">
+                <li class="nav-item">
+                    <a class="nav-link active" id="tab-all" data-toggle="tab" href="#panel-all" role="tab">
+                        Ungrouped <span class="badge badge-secondary ml-1" id="count-all">0</span>
+                    </a>
+                </li>
+                <li class="nav-item" id="groupTabsContainer">
+                    <!-- Tabs for groups injected here by JS -->
+                </li>
+            </ul>
+
+            <!-- Tab content -->
+            <div class="tab-content" id="favoritePanels">
+                <div class="tab-pane fade show active" id="panel-all" role="tabpanel">
+                    <ul class="list-group list-group-flush" id="list-all">
+                        <li class="list-group-item text-muted text-center py-3">Loading...</li>
+                    </ul>
+                </div>
+                <!-- Group panels injected here by JS -->
+            </div>
+
+        </div>
+
+    </div>
+</div>
+
+<!-- Modal for moving favorite to group -->
+<div class="modal fade" id="moveToGroupModal" tabindex="-1" role="dialog" aria-labelledby="moveToGroupModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="moveToGroupModalLabel">Move to Group</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p id="moveToGroupText"></p>
+                <div class="form-group">
+                    <label for="groupSelect">Select Group:</label>
+                    <select class="form-control" id="groupSelect">
+                        <option value="null">Ungrouped</option>
+                        <!-- Options injected by JS -->
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmMoveBtn">Move</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% include 'common_js.html' %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    let allGroups = [];
+    let currentFavId = null;
+
+    const newGroupBtn = document.getElementById('newGroupBtn');
+    newGroupBtn.addEventListener('click', function () {
+        const name = prompt('Enter group name:');
+        if (!name || !name.trim()) return;
+        
+        fetch('/api/favorite-groups', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            },
+            body: JSON.stringify({ name: name.trim() })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error: ' + data.error);
+            } else {
+                loadGroups();
+            }
+        })
+        .catch(e => console.error(e));
+    });
+
+    function loadGroups() {
+        fetch('/api/favorite-groups')
+            .then(r => r.json())
+            .then(data => {
+                allGroups = data.groups || [];
+                const tabsContainer = document.getElementById('groupTabsContainer');
+                const panelsContainer = document.getElementById('favoritePanels');
+                tabsContainer.innerHTML = '';
+
+                // Update group select in modal
+                const groupSelect = document.getElementById('groupSelect');
+                groupSelect.innerHTML = '<option value="null">Ungrouped</option>';
+                allGroups.forEach(group => {
+                    if (group.id !== null) {
+                        const option = document.createElement('option');
+                        option.value = group.id;
+                        option.textContent = group.name;
+                        groupSelect.appendChild(option);
+                    }
+                });
+
+                allGroups.forEach(group => {
+                    if (group.id === null) return; // skip "Ungrouped" in tabs
+                    
+                    const tabLi = document.createElement('li');
+                    tabLi.className = 'nav-item';
+                    tabLi.innerHTML = `
+                        <a class="nav-link" id="tab-group-${group.id}" data-toggle="tab" href="#panel-group-${group.id}" role="tab">
+                            ${group.name} <span class="badge badge-secondary ml-1">${group.count}</span>
+                            <button class="btn btn-xs btn-link text-danger ml-2 delete-group-btn" data-id="${group.id}" style="font-size:0.8em">×</button>
+                        </a>
+                    `;
+                    tabsContainer.appendChild(tabLi);
+
+                    const panel = document.createElement('div');
+                    panel.className = 'tab-pane fade';
+                    panel.id = `panel-group-${group.id}`;
+                    panel.innerHTML = `<ul class="list-group list-group-flush" id="list-group-${group.id}"><li class="list-group-item text-muted text-center py-3">Loading...</li></ul>`;
+                    panelsContainer.appendChild(panel);
+
+                    loadFavorites(group.id);
+                });
+
+                // Update counts
+                document.getElementById('count-all').textContent = allGroups.find(g => g.id === null)?.count || 0;
+                loadFavorites(null); // Load "All" tab
+            })
+            .catch(e => console.error(e));
+    }
+
+    function loadFavorites(groupId) {
+        const url = groupId === null ? '/api/favorites?groupId=null' : `/api/favorites?groupId=${groupId}`;
+        const listId = groupId === null ? 'list-all' : `list-group-${groupId}`;
+
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                const favs = data.favorites || [];
+                const listEl = document.getElementById(listId);
+                if (favs.length === 0) {
+                    listEl.innerHTML = '<li class="list-group-item text-muted text-center py-3">No favorites yet.</li>';
+                } else {
+                    listEl.innerHTML = favs.map(fav => `
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <a href="{{ url_for('main.start') }}?locus_id=${fav.locusId}">${fav.locusId}</a>
+                            <div>
+                                <button class="btn btn-sm btn-outline-info move-fav-btn mr-2" data-fav-id="${fav.id}" data-locus="${fav.locusId}" title="Move to group">
+                                    <i class="fa fa-external-link"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger remove-fav-btn" data-locus="${fav.locusId}">remove</button>
+                            </div>
+                        </li>
+                    `).join('');
+                }
+            })
+            .catch(e => console.error(e));
+    }
+
+    // Event delegation for remove and move buttons
+    document.addEventListener('click', function (e) {
+        if (e.target.classList.contains('remove-fav-btn')) {
+            const locus = e.target.dataset.locus;
+            fetch('/api/favorite', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                },
+                body: JSON.stringify({ locusId: locus, fav: false })
+            })
+            .then(() => loadGroups())
+            .catch(e => console.error(e));
+        }
+
+        if (e.target.classList.contains('move-fav-btn') || e.target.closest('.move-fav-btn')) {
+            const btn = e.target.closest('.move-fav-btn');
+            currentFavId = btn.dataset.favId;
+            const locus = btn.dataset.locus;
+            document.getElementById('moveToGroupText').textContent = `Move "${locus}" to:`;
+            $('#moveToGroupModal').modal('show');
+        }
+
+        if (e.target.classList.contains('delete-group-btn')) {
+            const groupId = e.target.dataset.id;
+            if (!confirm('Delete this group? (Favorites will become ungrouped.)')) return;
+            fetch(`/api/favorite-groups/${groupId}`, { 
+                method: 'DELETE',
+                headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content') }
+            })
+                .then(() => loadGroups())
+                .catch(e => console.error(e));
+        }
+    });
+
+    // Confirm move button
+    document.getElementById('confirmMoveBtn').addEventListener('click', function () {
+        const groupId = document.getElementById('groupSelect').value;
+        const groupIdInt = groupId === 'null' ? null : parseInt(groupId);
+        console.log('Moving favorite', currentFavId, 'to group', groupIdInt);
+
+        fetch(`/api/favorite/${currentFavId}/group`, {
+            method: 'PATCH',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            },
+            body: JSON.stringify({ groupId: groupIdInt })
+        })
+        .then(r => {
+            console.log('Response status:', r.status);
+            return r.json();
+        })
+        .then(data => {
+            console.log('Response data:', data);
+            if (data.error) {
+                alert('Error: ' + data.error);
+            } else {
+                console.log('Move successful, closing modal and reloading groups');
+                $('#moveToGroupModal').modal('hide');
+                loadGroups();
+            }
+        })
+        .catch(e => {
+            console.error('Fetch error:', e);
+            alert('Failed to move favorite: ' + e.message);
+        });
+    });
+
+    // Initial load
+    loadGroups();
+});
+</script>
+{% endblock %}
