@@ -170,6 +170,7 @@ def start():
 
         #latest = db.session.query(Ztf).order_by(Ztf.jd.desc()).first() # ? to show latest update date
         #paginator = query.paginate(page, 100, True)
+        query = query.options(db.load_only(Ztf.alert_id, Ztf.ztf_object_id, Ztf.date_alert_mjd, Ztf.ant_passband, Ztf.locus_id, Ztf.locus_ra, Ztf.locus_dec, Ztf.ant_mag_corrected))
         paginator = query.paginate(page=page, per_page=100, error_out=True)
 
         #pdb.set_trace()
@@ -494,7 +495,7 @@ def query_features():
 
     feature_query = db.session.query(Ztf)
     feature_query = feature_query.filter(Ztf.alert_id == 'ztf_candidate:' + alert_id)
-    data = object_as_dict(feature_query.first())
+    data = object_as_dict(feature_query.first()) #TODO: only return feature columns, not all columns of the Ztf table. Maybe add a column to the DB that contains a pre-serialized JSON of the features for faster retrieval?
     #print(data)
     
     response = current_app.response_class(
