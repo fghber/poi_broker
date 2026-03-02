@@ -192,7 +192,7 @@ def start():
         page=paginator.page,
         has_next=paginator.has_next,
         last_page=paginator.pages,
-        #TODO: Pagination query-string re.sub may leave a trailing & in edge cases. TODO:TEST
+        #TODO: Pagination query-string re.sub may leave a trailing & in edge cases. TEST
         query_string=re.sub('[&?]?page=\\d+|&$', '', request.query_string.decode('ascii')), # ? b'' binary string 
         filter_warning = filter_warning_message,
         observatories = site_names,
@@ -395,10 +395,9 @@ def query_lightcurve_data():
 
     #query where locus id equals selected id
     lightcurve_query = db.session.query(Ztf)
-    lightcurve_query = lightcurve_query.filter(Ztf.locus_id == locusId) #TODO: load only specific columns
+    lightcurve_query = lightcurve_query.filter(Ztf.locus_id == locusId)
+    lightcurve_query = lightcurve_query.options(db.load_only(Ztf.date_alert_mjd, Ztf.ant_mag_corrected, Ztf.ant_passband))
     data = lightcurve_query.all()
-    #fields = ['id', 'date_alert_mjd', 'ant_mag_corrected']
-    #data = lightcurve_query.options(db.load_only(Ztf.id, Ztf.date_alert_mjd, Ztf.ant_mag_corrected)).all()
 
     # Creating Plot Figure
     p = figure(height=350, sizing_mode="stretch_width") 
@@ -470,7 +469,8 @@ def get_locus_plot():
         return Response('Missing locusId', status=400)
     
     lightcurve_query = db.session.query(Ztf)
-    lightcurve_query = lightcurve_query.filter(Ztf.locus_id == locusId) #TODO: load only specific columns
+    lightcurve_query = lightcurve_query.filter(Ztf.locus_id == locusId)
+    lightcurve_query = lightcurve_query.options(db.load_only(Ztf.locus_id, Ztf.date_alert_mjd, Ztf.ant_mag_corrected))
     data = lightcurve_query.all()
     csv = 'locus_id,date_alert_mjd,ant_mag_corrected\n'
 
@@ -524,12 +524,12 @@ def query_featureplot_data():
             feature_list = features_array
             #print(feature_list)
 
-    #query where locus id equals selected id
+    #query where locus id equals selected id - build column list dynamically
+    columns_to_load = [Ztf.date_alert_mjd, Ztf.ant_mag_corrected] + [getattr(Ztf, feature) for feature in feature_list]
     featureplot_query = db.session.query(Ztf)
-    featureplot_query = featureplot_query.filter(Ztf.locus_id == locusId) #TODO: load only specific columns
+    featureplot_query = featureplot_query.filter(Ztf.locus_id == locusId)
+    featureplot_query = featureplot_query.options(db.load_only(*columns_to_load))
     data = featureplot_query.all()
-    #fields = ['id', 'date_alert_mjd', 'ant_mag_corrected']
-    #data = lightcurve_query.options(db.load_only(Ztf.id, Ztf.date_alert_mjd, Ztf.ant_mag_corrected)).all()
 
     # Creating Plot Figure
     p = figure(height=350, sizing_mode="stretch_width") 

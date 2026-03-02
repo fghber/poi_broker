@@ -31,6 +31,9 @@ Start the web app from the terminal from the **project root** (the folder that *
 
 `flask --app "poi_broker:create_app()" run --debug`
 
+or 
+
+`flask --app "poi_broker:create_app()" run --no-debug --no-reload`
 
 In the web browser, enter `http://127.0.0.1:5000/` to view the front-ent.
 
@@ -42,3 +45,9 @@ in your terminal window to see the correct URL
 
 
 Also, inspect the browser developer console (F12) to see if there are any JavaScript errors, ie. a missmatching bokeh.min.js version.
+
+The app can be profiled like any other python module, e.g.
+
+`python -m cProfile -o program.prof -m flask --app "poi_broker:create_app()" run --no-reload`
+
+but it's more useful to use the werkzeug ProfilerMiddleware to profile routes. Activate it in `__init__.py` if needed.
