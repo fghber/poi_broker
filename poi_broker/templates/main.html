@@ -327,7 +327,7 @@
                   <div class="col-md-6">
                     <div style="position:relative; min-height:100px;" class="container">
                       <div style="position:absolute; bottom:0; right:0;" class="block">
-                        <a class="btn" id="btn_locus_csv" href="/locus_plot_csv?locusId="><i class="fa fa-download" ></i> Download Lightcurve as CSV</a>
+                        <a class="btn" id="btn_locus_csv" href="#"><i class="fa fa-download" ></i> Download Lightcurve as CSV</a>
                       </div>
                     </div>
                   </div>
@@ -634,7 +634,7 @@
     //$('body').find('img[name="object-id-plot"]').attr("src", "/static/img/_ZTF_cutouts/"+date+"/"+ztf_object_id+"_"+alert_id+".png"); //NOTE: alert_id was candid
     //$('body').find('img[name="object-id-plot"]').attr("onerror", "this.src='/static/img/_ZTF_lc_plots/missing_file.png';");
     //update URL Of download button
-    $('#btn_locus_csv').attr('href',  $('#btn_locus_csv').attr('href')+locus_id);
+    $('#btn_locus_csv').attr('href', '/locus_plot_csv?locusId='+locus_id);
     query_features_table(candid);
     query_locusplot(locus_id);
     //set selected & reload UI:
