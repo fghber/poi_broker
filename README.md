@@ -26,6 +26,8 @@ After downloading the package, within the folder `_web_frontend` install all req
 
 `pip3 install -r requirements.txt`
 
+> [!NOTE]
+> requirements2.txt shows the output of `pip freeze` and lists exact version numbers of the packages. However, this is more for reference. You may not be able to install these exact version on your specific system/environment.
 
 Start the web app from the terminal from the **project root** (the folder that **contains** the _sub-folder_ `poi_boker`) with 
 
