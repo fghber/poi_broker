@@ -1,6 +1,10 @@
-astropy==6.*
-bokeh==3.*
 Flask==3.*
+flask-login==0.6.*
+Flask-WTF==1.*
 Flask-SQLAlchemy==3.*
 python-dotenv
-SQLAlchemy==2.*
+astropy==6.*
+bokeh==3.*
+matplotlib==3.*
+timezonefinder[numba]
+email-validator
