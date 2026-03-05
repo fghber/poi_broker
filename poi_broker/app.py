@@ -3,7 +3,7 @@ from flask import (render_template, abort, jsonify, request, Response,
 from flask_login import login_required, current_user
 import logging
 from functools import lru_cache
-from datetime import UTC
+from datetime import timezone
 from astropy.time import Time
 from astropy.coordinates import EarthLocation
 import re
@@ -27,7 +27,7 @@ main_blueprint = Blueprint('main', __name__)
 @lru_cache(maxsize=8192)
 def _format_mjd_cached(mjd_value: float) -> str:
     jdate = mjd_value + 2400000.5
-    dt = Time(jdate, format='jd', scale='utc').to_datetime(timezone=UTC) # Convert to timezone-aware datetime in UTC
+    dt = Time(jdate, format='jd', scale='utc').to_datetime(timezone=timezone.utc) # Convert to timezone-aware datetime in UTC
     return  dt.strftime('%Y-%m-%d %H:%M:%S')
 
 

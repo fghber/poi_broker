@@ -10,6 +10,7 @@ import smtplib
 import logging
 from email.message import EmailMessage
 from email_validator import validate_email, EmailNotValidError
+import ssl
 
 logger = logging.getLogger(__name__)
 auth_blueprint = Blueprint('auth', __name__)
@@ -266,6 +267,8 @@ def send_email(message, to_email=None, subject=None, html_text=None, from_email=
     SMTP_USER = os.environ.get("SMTP_USER")  # required for authenticated SMTP
     SMTP_PASS = os.environ.get("SMTP_APP_PASSWORD")
     FROM = from_email or os.environ.get("SMTP_FROM") or SMTP_USER
+    LOCAL_HOST = os.environ.get("LOCAL_HOST", "localhost")
+    #logger.info("%s %s %s %s %s %s", SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS[0:1] + "***" + SMTP_PASS[-2:-1] if SMTP_PASS else "None", FROM, LOCAL_HOST)
 
     if not FROM:
         raise RuntimeError("No sender address configured (SMTP_FROM or SMTP_USER)")
@@ -276,9 +279,10 @@ def send_email(message, to_email=None, subject=None, html_text=None, from_email=
     msg["To"] = to_email
     msg.set_content(plain_text)
     msg.add_alternative(html_text, subtype="html")
+    #logging.info("Email sent:\n%s", msg.as_string())
 
     try:
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, local_hostname=LOCAL_HOST, context=ssl.create_default_context()) as server:
             if SMTP_USER and SMTP_PASS:
                 server.login(SMTP_USER, SMTP_PASS)
             server.send_message(msg)

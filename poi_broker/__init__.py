@@ -39,7 +39,7 @@ def create_app():
     logging.basicConfig(handlers=[logging.FileHandler(filename="app.log", 
                                                  encoding='utf-8', mode='a+')],
                     format="%(asctime)s %(name)s:%(levelname)s:%(message)s", 
-                    level=logging.ERROR)
+                    level=logging.INFO)
 
     # Main DB (alerts)
     base_dir = Path(__file__).resolve().parent  # poi_broker directory
