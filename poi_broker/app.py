@@ -45,7 +45,6 @@ def start():
     filter_warning_message = ''
     if request.method == 'GET':
         query = db.session.query(Ztf)
-        # Return alerts with a brightness greater than the given value. Ex: ?magpsf=17,18 (range:17-18)
 
         if request.args.get('date'):
             date_input = extract_dates(request.args.get('date'))
@@ -63,9 +62,7 @@ def start():
                 filter_warning_message += 'Date filter cannot be applied - Enter a valid 8-digit integer date of the form yyyymmdd, e.g. "20201207", or range, e.g., "20201207 20201209". You can filter the columns by entering values and then click the "Filter" button.'
 
         if request.args.get('alert_id'):
-            candid_input = f"ztf_candidate:{request.args.get('alert_id')}"
-            print(candid_input)
-            query = query.filter(Ztf.alert_id == candid_input) # a range filter does not work with the alert_id string field. Only exact match are possible with the current format
+            query = query.filter(Ztf.alert_id == request.args.get('alert_id')) # a range filter does not work with the alert_id string field. Only exact match are possible with the current format
 
         if request.args.get('ztf_object_id'):
             query = query.filter(Ztf.ztf_object_id == request.args.get('ztf_object_id'))
@@ -87,7 +84,6 @@ def start():
         if request.args.get('locus_id'):
             query = query.filter(Ztf.locus_id == request.args.get('locus_id'))
 
-        # ! TODO: filter is not working
         if request.args.get('locus_ra'):
             ra_input = extract_numbers(request.args.get('locus_ra'))
             if ra_input != None:
@@ -95,7 +91,6 @@ def start():
             else:
                 filter_warning_message += 'Ra filter cannot be applied - Enter a valid number, e.g., "118.61421", or range, e.g., "80 90". You can filter the columns by entering values and then click the "Filter" button.'
 
-        # ! TODO: filter is not working
         if request.args.get('locus_dec'):
             dec_input = extract_numbers(request.args.get('locus_dec'))
             if dec_input != None:
@@ -173,6 +168,7 @@ def start():
         #latest = db.session.query(Ztf).order_by(Ztf.jd.desc()).first() # ? to show latest update date
         #paginator = query.paginate(page, 100, True)
         query = query.options(db.load_only(Ztf.alert_id, Ztf.ztf_object_id, Ztf.date_alert_mjd, Ztf.ant_passband, Ztf.locus_id, Ztf.locus_ra, Ztf.locus_dec, Ztf.ant_mag_corrected))
+        #print(query.statement.compile(compile_kwargs={"literal_binds": True})) #DEBUG: print the resulting SQL query
         paginator = query.paginate(page=page, per_page=100, error_out=True)
 
         #pdb.set_trace()
@@ -497,7 +493,7 @@ def query_features():
         return Response('Missing alert_id', status=400)
 
     feature_query = db.session.query(Ztf)
-    feature_query = feature_query.filter(Ztf.alert_id == 'ztf_candidate:' + alert_id)
+    feature_query = feature_query.filter(Ztf.alert_id == alert_id)
     data = object_as_dict(feature_query.first()) #TODO: only return feature columns, not all columns of the Ztf table. Maybe add a column to the DB that contains a pre-serialized JSON of the features for faster retrieval?
     #print(data)
     

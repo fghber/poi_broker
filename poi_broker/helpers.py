@@ -66,13 +66,12 @@ def extract_filter(input_field, db_field, query, convert_callback, offset_mjd = 
             upper_bound = convert_callback(input_field[0]) + offset_mjd
             query = query.filter(db_field >= lower_bound)
             query = query.filter(db_field <= upper_bound)
-            # org: 61056.12116899993
-            # clc: 61056.12116898148
-
+            # MJD time can suffer from rounding errors: DB: 61056.12116899993 vs calc: 61056.12116898148
     else: #2 inputs
-        input_field.sort()  #REM: Ensure >min <max order
-        lower_bound = convert_callback(input_field[0]) - offset_mjd #1 day in MJD
-        upper_bound = convert_callback(input_field[1]) + offset_mjd
+        filter_fields = [convert_callback(x) for x in input_field]
+        filter_fields.sort()  #NOTE: Ensure >min <max order is correct regardless of input order
+        lower_bound = filter_fields[0] - offset_mjd
+        upper_bound = filter_fields[1] + offset_mjd
         query = query.filter(db_field >= lower_bound)
         query = query.filter(db_field <= upper_bound)
     return query

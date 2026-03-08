@@ -119,8 +119,6 @@ def create_app():
     login_manager.login_view = 'auth.login'
     
     # Global error handler for CSRF errors raised by Flask-WTF
-    #TODO: Make sure that CSRFError is being caught—test it by intentionally sending a request with a missing or invalid CSRF token to verify the handler triggers correctly. 
-    #      If it doesn't, you may need to check that CSRF validation is actually being enforced on your forms (e.g., {{ csrf_token() }} in templates, or @csrf.protect decorators on routes).
     @app.errorhandler(CSRFError)
     def handle_csrf_error(error):
         flash('Your form session expired or is invalid. Please reload this page and submit again. If this is a reset link, request a new one.', 'danger')

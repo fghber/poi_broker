@@ -15,18 +15,17 @@ def classification_plot():
     if not alertId:
         return 'Missing alertId'
 
-    candId = "ztf_candidate:" + alertId
     # load values from the SQLite 'classification' table using SQL (no model required)
     # local import to avoid circular import at module import time
     from . import db
-    # We are using SQLAlchemy's text() which should handle parameterization safely
+    # SQLAlchemy's text() should handle parameterization safely
     sql = text("""
         SELECT p_cvnova, p_e, p_lpv, p_puls,
                p_periodic_other, p_quas, p_sn, p_yso
         FROM classification
         WHERE alert_id = :id
     """)
-    row = db.session.execute(sql, {'id': candId}).fetchone()
+    row = db.session.execute(sql, {'id': alertId}).fetchone()
     if row is None:
         return f'No classification found for alert_id={alertId}' #TODO: does this even work?
 
@@ -34,7 +33,7 @@ def classification_plot():
     values = [float(v) if v is not None else 0.0 for v in row]
 
     # map to the expected structure used later in the function
-    data = {'alert_id': candId, 'values': values}
+    data = {'alert_id': alertId, 'values': values}
 
     max_index = np.argmax(data['values'])
     max_value = data['values'][max_index]
