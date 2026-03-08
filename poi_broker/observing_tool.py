@@ -7,12 +7,6 @@ from matplotlib import dates
 import io
 import base64
 
-from bokeh.plotting import figure
-from bokeh.models import DatetimeTickFormatter, Range1d, LinearAxis
-from bokeh.embed import components
-from bokeh.io import export_png
-from bokeh.models import Legend
-
 import numpy as np
 from astropy.visualization import astropy_mpl_style, quantity_support
 from astropy.coordinates import AltAz, EarthLocation, SkyCoord, get_body

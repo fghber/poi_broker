@@ -96,7 +96,9 @@
     </script>
 
     <!--"https://cdn.bokeh.org/bokeh/release/bokeh-3.6.1.min.js"{#TODO: Determine bokeh.js version dynamically #}-->
-    <script src="/static/js/bokeh-3.6.1.min.js"></script>
+    {% if bokeh_version is defined %}
+    <script src="https://cdn.bokeh.org/bokeh/release/bokeh-{{ bokeh_version }}.min.js"></script>
+    {% endif %}
     <!--"https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8"-->
     <script type="text/javascript" src="/static/js/aladin.js" charset="utf-8"></script>
   </head>

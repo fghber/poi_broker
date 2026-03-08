@@ -13,6 +13,8 @@ from .helpers import extract_numbers, extract_dates, extract_float_filter, extra
 from . import db
 from .models import Ztf, Crossmatches, User, Favorite, FavoriteGroup
 
+from importlib.metadata import version
+bokeh_version = version("bokeh")
 from bokeh.embed import components
 from bokeh.plotting import figure
 from bokeh.models import Legend
@@ -197,7 +199,8 @@ def start():
         query_string=re.sub('[&?]?page=\\d+|&$', '', request.query_string.decode('ascii')), # ? b'' binary string 
         filter_warning = filter_warning_message,
         observatories = site_names,
-        today_utc = current_date
+        today_utc = current_date,
+        bokeh_version = bokeh_version
     )
 
 @main_blueprint.route('/help', methods=['GET'])
@@ -455,7 +458,7 @@ def query_lightcurve_data():
         alpha=0.5
     )
  
-    # Get Chart Components
+    # Get lightcurve Chart Components
     script, div = components(p)
  
     # Return the components to the HTML template
@@ -592,7 +595,7 @@ def query_featureplot_data():
     p.legend.label_text_font_size = '9px'
     p.legend.glyph_width = 12
  
-    # Get Chart Components
+    # Get Features Chart Components
     script, div = components(p)
     #print(div)
  

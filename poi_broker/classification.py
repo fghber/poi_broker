@@ -1,11 +1,10 @@
 from flask import Blueprint, render_template, abort, request, make_response
-
 import numpy as np
+from sqlalchemy import text
 from bokeh.plotting import figure, show
 from bokeh.models import ColumnDataSource, HoverTool, PolarTransform, LabelSet, Title
 from bokeh.colors import RGB
 from bokeh.embed import components
-from sqlalchemy import text
 
 classification_blueprint = Blueprint('classification', __name__) # TODO: Perhaps add a URL prefix classification/
 
@@ -133,7 +132,7 @@ def classification_plot():
 
     #show(p)
 
-    # Get Chart Components
+    # Get Classification Chart Components
     script, div = components(p)
  
     # Return the components to the HTML template
