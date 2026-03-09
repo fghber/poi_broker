@@ -1,13 +1,13 @@
 from flask import Blueprint, render_template, abort, request, make_response
-
 import numpy as np
+from sqlalchemy import text
 from bokeh.plotting import figure, show
 from bokeh.models import ColumnDataSource, HoverTool, PolarTransform, LabelSet, Title
 from bokeh.colors import RGB
 from bokeh.embed import components
-from sqlalchemy import text
 
-classification_blueprint = Blueprint('classification', __name__) # TODO: Perhaps add a URL prefix classification/
+classification_blueprint = Blueprint('classification', __name__)
+# IDEA: Perhaps add a URL prefix classification/
 
 @classification_blueprint.route('/query_classification')
 def classification_plot():
@@ -16,26 +16,25 @@ def classification_plot():
     if not alertId:
         return 'Missing alertId'
 
-    candId = "ztf_candidate:" + alertId
     # load values from the SQLite 'classification' table using SQL (no model required)
     # local import to avoid circular import at module import time
     from . import db
-    # We are using SQLAlchemy's text() which should handle parameterization safely
+    # SQLAlchemy's text() should handle parameterization safely
     sql = text("""
         SELECT p_cvnova, p_e, p_lpv, p_puls,
                p_periodic_other, p_quas, p_sn, p_yso
         FROM classification
         WHERE alert_id = :id
     """)
-    row = db.session.execute(sql, {'id': candId}).fetchone()
+    row = db.session.execute(sql, {'id': alertId}).fetchone()
     if row is None:
-        return f'No classification found for alert_id={alertId}' #TODO: does this even work?
+        return f'No classification found for alert_id={alertId}'
 
     # ensure numeric values and replace NULL with 0.0
     values = [float(v) if v is not None else 0.0 for v in row]
 
     # map to the expected structure used later in the function
-    data = {'alert_id': candId, 'values': values}
+    data = {'alert_id': alertId, 'values': values}
 
     max_index = np.argmax(data['values'])
     max_value = data['values'][max_index]
@@ -133,7 +132,7 @@ def classification_plot():
 
     #show(p)
 
-    # Get Chart Components
+    # Get Classification Chart Components
     script, div = components(p)
  
     # Return the components to the HTML template

@@ -13,6 +13,8 @@ from .helpers import extract_numbers, extract_dates, extract_float_filter, extra
 from . import db
 from .models import Ztf, Crossmatches, User, Favorite, FavoriteGroup
 
+from importlib.metadata import version
+bokeh_version = version("bokeh")
 from bokeh.embed import components
 from bokeh.plotting import figure
 from bokeh.models import Legend
@@ -43,7 +45,6 @@ def start():
     filter_warning_message = ''
     if request.method == 'GET':
         query = db.session.query(Ztf)
-        # Return alerts with a brightness greater than the given value. Ex: ?magpsf=17,18 (range:17-18)
 
         if request.args.get('date'):
             date_input = extract_dates(request.args.get('date'))
@@ -61,9 +62,9 @@ def start():
                 filter_warning_message += 'Date filter cannot be applied - Enter a valid 8-digit integer date of the form yyyymmdd, e.g. "20201207", or range, e.g., "20201207 20201209". You can filter the columns by entering values and then click the "Filter" button.'
 
         if request.args.get('alert_id'):
-            candid_input = f"ztf_candidate:{request.args.get('alert_id')}"
-            print(candid_input)
-            query = query.filter(Ztf.alert_id == candid_input) # a range filter does not work with the alert_id string field. Only exact match are possible with the current format
+            alertId = request.args.get('alert_id')
+            search = "{}%".format(alertId)
+            query = query.filter(Ztf.alert_id.like(search)) # allows for partial matching of alert_id to find alerts with aspecific prefix, e.g. ztf / lsst
 
         if request.args.get('ztf_object_id'):
             query = query.filter(Ztf.ztf_object_id == request.args.get('ztf_object_id'))
@@ -85,29 +86,26 @@ def start():
         if request.args.get('locus_id'):
             query = query.filter(Ztf.locus_id == request.args.get('locus_id'))
 
-        # ! TODO: filter is not working
         if request.args.get('locus_ra'):
             ra_input = extract_numbers(request.args.get('locus_ra'))
             if ra_input != None:
-                query = extract_float_filter(ra_input, Ztf.locus_ra, query)
+                query = extract_float_filter(ra_input, Ztf.locus_ra, query, decimals=5)
             else:
                 filter_warning_message += 'Ra filter cannot be applied - Enter a valid number, e.g., "118.61421", or range, e.g., "80 90". You can filter the columns by entering values and then click the "Filter" button.'
 
-        # ! TODO: filter is not working
         if request.args.get('locus_dec'):
             dec_input = extract_numbers(request.args.get('locus_dec'))
             if dec_input != None:
-                query = extract_float_filter(dec_input, Ztf.locus_dec, query)
+                query = extract_float_filter(dec_input, Ztf.locus_dec, query, decimals=5)
             else:
                 filter_warning_message += 'Dec filter cannot be applied - Enter a valid number, e.g., "-20.02131", or range, e.g., "18.8 19.4". You can filter the columns by entering values and then click the "Filter" button.'
 
-        # TODO: Add ant_mag corrected filtering (currently not possible because the column is not indexed and would be too slow to filter on the entire dataset without an index)
-        #if request.args.get('magpsf'):
-            #magpsf_input = extract_numbers(request.args.get('magpsf'))
-            #if magpsf_input != None:
-                #query = extract_float_filter(magpsf_input, Ztf.magpsf, query)
-            #else:
-                #filter_warning_message += 'Magpsf filter cannot be applied - Enter a valid number, e.g., "18.84", or range, e.g., "18.8 19.4". You can filter the columns by entering values and then click the "Filter" button.'
+        if request.args.get('magpsf'):
+            magpsf_input = extract_numbers(request.args.get('magpsf'))
+            if magpsf_input != None:
+                query = extract_float_filter(magpsf_input, Ztf.ant_mag_corrected, query, decimals=3)
+            else:
+                filter_warning_message += 'ant_mag_corrected filter cannot be applied - Enter a valid number, e.g., "18.84", or range, e.g., "18.8 19.4". You can filter the columns by entering values and then click the "Filter" button.'
 
         #Sort order by date (still sorts by mjd column)
         if request.args.get('sort__date'):
@@ -168,9 +166,9 @@ def start():
                 #query = query.order_by(Ztf.magpsf.asc())
 
 
-        #latest = db.session.query(Ztf).order_by(Ztf.jd.desc()).first() # ? to show latest update date
-        #paginator = query.paginate(page, 100, True)
+        #latest = db.session.query(Ztf).order_by(Ztf.jd.desc()).first() # ? IDEA: show latest update date
         query = query.options(db.load_only(Ztf.alert_id, Ztf.ztf_object_id, Ztf.date_alert_mjd, Ztf.ant_passband, Ztf.locus_id, Ztf.locus_ra, Ztf.locus_dec, Ztf.ant_mag_corrected))
+        #print(query.statement.compile(compile_kwargs={"literal_binds": True})) #DEBUG: print the resulting SQL query
         paginator = query.paginate(page=page, per_page=100, error_out=True)
 
         #pdb.set_trace()
@@ -193,11 +191,12 @@ def start():
         page=paginator.page,
         has_next=paginator.has_next,
         last_page=paginator.pages,
-        #TODO: Pagination query-string re.sub may leave a trailing & in edge cases. TEST
+        # ? TODO Pagination query-string re.sub may leave a trailing & in edge cases. TEST
         query_string=re.sub('[&?]?page=\\d+|&$', '', request.query_string.decode('ascii')), # ? b'' binary string 
         filter_warning = filter_warning_message,
         observatories = site_names,
-        today_utc = current_date
+        today_utc = current_date,
+        bokeh_version = bokeh_version
     )
 
 @main_blueprint.route('/help', methods=['GET'])
@@ -455,7 +454,7 @@ def query_lightcurve_data():
         alpha=0.5
     )
  
-    # Get Chart Components
+    # Get lightcurve Chart Components
     script, div = components(p)
  
     # Return the components to the HTML template
@@ -494,12 +493,118 @@ def query_features():
         return Response('Missing alert_id', status=400)
 
     feature_query = db.session.query(Ztf)
-    feature_query = feature_query.filter(Ztf.alert_id == 'ztf_candidate:' + alert_id)
-    data = object_as_dict(feature_query.first()) #TODO: only return feature columns, not all columns of the Ztf table. Maybe add a column to the DB that contains a pre-serialized JSON of the features for faster retrieval?
+    feature_query = feature_query.filter(Ztf.alert_id == alert_id)
+    feature_query = feature_query.options(db.load_only(Ztf.feature_amplitude_magn_r,
+        Ztf.feature_anderson_darling_normal_magn_r,
+        Ztf.feature_beyond_1_std_magn_r,
+        Ztf.feature_beyond_2_std_magn_r,
+        Ztf.feature_cusum_magn_r,
+        Ztf.feature_eta_e_magn_r,
+        Ztf.feature_inter_percentile_range_2_magn_r,
+        Ztf.feature_inter_percentile_range_10_magn_r,
+        Ztf.feature_inter_percentile_range_25_magn_r,
+        Ztf.feature_kurtosis_magn_r,
+        Ztf.feature_linear_fit_slope_magn_r,
+        Ztf.feature_linear_fit_slope_sigma_magn_r,
+        Ztf.feature_linear_fit_reduced_chi2_magn_r,
+        Ztf.feature_linear_trend_magn_r,
+        Ztf.feature_linear_trend_sigma_magn_r,
+        Ztf.feature_magnitude_percentage_ratio_40_5_magn_r,
+        Ztf.feature_magnitude_percentage_ratio_20_5_magn_r,
+        Ztf.feature_maximum_slope_magn_r,
+        Ztf.feature_mean_magn_r,
+        Ztf.feature_median_absolute_deviation_magn_r,
+        Ztf.feature_percent_amplitude_magn_r,
+        Ztf.feature_percent_difference_magnitude_percentile_5_magn_r,
+        Ztf.feature_percent_difference_magnitude_percentile_10_magn_r,
+        Ztf.feature_median_buffer_range_percentage_10_magn_r,
+        Ztf.feature_median_buffer_range_percentage_20_magn_r,
+        Ztf.feature_period_0_magn_r,
+        Ztf.feature_period_s_to_n_0_magn_r,
+        Ztf.feature_period_1_magn_r,
+        Ztf.feature_period_s_to_n_1_magn_r,
+        Ztf.feature_period_2_magn_r,
+        Ztf.feature_period_s_to_n_2_magn_r,
+        Ztf.feature_period_3_magn_r,
+        Ztf.feature_period_s_to_n_3_magn_r,
+        Ztf.feature_period_4_magn_r,
+        Ztf.feature_period_s_to_n_4_magn_r,
+        Ztf.feature_periodogram_amplitude_magn_r,
+        Ztf.feature_periodogram_beyond_2_std_magn_r,
+        Ztf.feature_periodogram_beyond_3_std_magn_r,
+        Ztf.feature_periodogram_standard_deviation_magn_r,
+        Ztf.feature_chi2_magn_r,
+        Ztf.feature_skew_magn_r,
+        Ztf.feature_standard_deviation_magn_r,
+        Ztf.feature_stetson_k_magn_r,
+        Ztf.feature_weighted_mean_magn_r,
+        Ztf.feature_anderson_darling_normal_flux_r,
+        Ztf.feature_cusum_flux_r,
+        Ztf.feature_eta_e_flux_r,
+        Ztf.feature_excess_variance_flux_r,
+        Ztf.feature_kurtosis_flux_r,
+        Ztf.feature_mean_variance_flux_r,
+        Ztf.feature_chi2_flux_r,
+        Ztf.feature_skew_flux_r,
+        Ztf.feature_stetson_k_flux_r,
+        Ztf.feature_amplitude_magn_g,
+        Ztf.feature_anderson_darling_normal_magn_g,
+        Ztf.feature_beyond_1_std_magn_g,
+        Ztf.feature_beyond_2_std_magn_g,
+        Ztf.feature_cusum_magn_g,
+        Ztf.feature_eta_e_magn_g,
+        Ztf.feature_inter_percentile_range_2_magn_g,
+        Ztf.feature_inter_percentile_range_10_magn_g,
+        Ztf.feature_inter_percentile_range_25_magn_g,
+        Ztf.feature_kurtosis_magn_g,
+        Ztf.feature_linear_fit_slope_magn_g,
+        Ztf.feature_linear_fit_slope_sigma_magn_g,
+        Ztf.feature_linear_fit_reduced_chi2_magn_g,
+        Ztf.feature_linear_trend_magn_g,
+        Ztf.feature_linear_trend_sigma_magn_g,
+        Ztf.feature_magnitude_percentage_ratio_40_5_magn_g,
+        Ztf.feature_magnitude_percentage_ratio_20_5_magn_g,
+        Ztf.feature_maximum_slope_magn_g,
+        Ztf.feature_mean_magn_g,
+        Ztf.feature_median_absolute_deviation_magn_g,
+        Ztf.feature_percent_amplitude_magn_g,
+        Ztf.feature_percent_difference_magnitude_percentile_5_magn_g,
+        Ztf.feature_percent_difference_magnitude_percentile_10_magn_g,
+        Ztf.feature_median_buffer_range_percentage_10_magn_g,
+        Ztf.feature_median_buffer_range_percentage_20_magn_g,
+        Ztf.feature_period_0_magn_g,
+        Ztf.feature_period_s_to_n_0_magn_g,
+        Ztf.feature_period_1_magn_g,
+        Ztf.feature_period_s_to_n_1_magn_g,
+        Ztf.feature_period_2_magn_g,
+        Ztf.feature_period_s_to_n_2_magn_g,
+        Ztf.feature_period_3_magn_g,
+        Ztf.feature_period_s_to_n_3_magn_g,
+        Ztf.feature_period_4_magn_g,
+        Ztf.feature_period_s_to_n_4_magn_g,
+        Ztf.feature_periodogram_amplitude_magn_g,
+        Ztf.feature_periodogram_beyond_2_std_magn_g,
+        Ztf.feature_periodogram_beyond_3_std_magn_g,
+        Ztf.feature_periodogram_standard_deviation_magn_g,
+        Ztf.feature_chi2_magn_g,
+        Ztf.feature_skew_magn_g,
+        Ztf.feature_standard_deviation_magn_g,
+        Ztf.feature_stetson_k_magn_g,
+        Ztf.feature_weighted_mean_magn_g,
+        Ztf.feature_anderson_darling_normal_flux_g,
+        Ztf.feature_cusum_flux_g,
+        Ztf.feature_eta_e_flux_g,
+        Ztf.feature_excess_variance_flux_g,
+        Ztf.feature_kurtosis_flux_g,
+        Ztf.feature_mean_variance_flux_g,
+        Ztf.feature_chi2_flux_g,
+        Ztf.feature_skew_flux_g,
+        Ztf.feature_stetson_k_flux_g))
+    data = object_as_dict(feature_query.first())
     #print(data)
     
     response = current_app.response_class(
-        response=json.dumps(data), #TODO? array[] with single row when using BootstrapTable?
+        response=json.dumps(data), 
         status=200,
         mimetype='application/json'
     )
@@ -519,6 +624,7 @@ def query_featureplot_data():
         'feature_beyond_2_std_magn_r',
         'feature_cusum_magn_r']
 
+    #Features from args.get() - if none: select defaults
     if selected_features:
         features_array = selected_features.split(',')
         if features_array and len(features_array) > 0:
@@ -539,7 +645,6 @@ def query_featureplot_data():
     # Defining Plot to be a Scatter Plot
     x_coords = []
     y_coords = []
-    #TODO Features: Retrieve from args.get() - if none: select these as defaults
 
     #10! colors
     data_colors = [
@@ -592,7 +697,7 @@ def query_featureplot_data():
     p.legend.label_text_font_size = '9px'
     p.legend.glyph_width = 12
  
-    # Get Chart Components
+    # Get Features Chart Components
     script, div = components(p)
     #print(div)
  
@@ -627,7 +732,7 @@ def query_crossmatches():
 def astro_filter(str):
     if (str == "g"):
         return "g"
-    elif (str == "R"): #TODO?
+    elif (str == "R"):
         return "R"
     elif (str == "i"):
         return "i"

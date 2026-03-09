@@ -15,9 +15,12 @@ import ssl
 logger = logging.getLogger(__name__)
 auth_blueprint = Blueprint('auth', __name__)
 
+#IDEA: Improve emails (body and subject), add HTML version, perhaps use a proper email template, etc.
+
 @auth_blueprint.route('/login')
 def login():
-    return render_template('login.html')
+    show_reset = request.args.get('forgot_password', default=False, type=bool)
+    return render_template('login.html', forgot_password=show_reset)
 
 @auth_blueprint.route('/login', methods=['POST'])
 def login_post():
@@ -40,7 +43,7 @@ def login_post():
     # check if user actually exists & provided the right password (compared to hashed password in database)
     if not user or not check_password_hash(user.password, password):
         flash('Please check your login details and try again.')
-        return redirect(url_for('auth.login')) # if user doesn't exist or password is wrong, reload the page
+        return redirect(url_for('auth.login', forgot_password=True)) # if user doesn't exist or password is wrong, reload the page
     
     # Check if email is verified
     if not user.email_verified:
@@ -107,12 +110,10 @@ def signup_post():
         email_verified=False,
         email_verification_token=secrets.token_urlsafe(32)
     )
-    db.session.add(new_user)
-    db.session.commit()
 
     # Send verification email
     verification_link = url_for('auth.verify_email', token=new_user.email_verification_token, _external=True)
-    send_email(
+    result = send_email(
         message=f'Please verify your email by clicking here: {verification_link}',
         to_email=email,
         subject='Verify your POI Broker account',
@@ -125,6 +126,14 @@ def signup_post():
             '</body></html>'
         )
     )
+
+    if not result:
+        flash('Failed to send verification email. Please try signing up again later.')
+        return redirect(url_for('auth.signup'))
+    
+    #only add the user to the database if the email was sent successfully to avoid creating unverified accounts with invalid emails
+    db.session.add(new_user)
+    db.session.commit()
 
     flash('Welcome! A verification email has been sent to your address. Please check your inbox.')
     return redirect(url_for('auth.login'))
@@ -157,8 +166,6 @@ def logout():
     logout_user()
     return redirect(url_for('main.start'))
 
-#TODO: Improve email body and subject, add HTML version, perhaps use a proper email template, etc.
-
 @auth_blueprint.route('/forgot-password')
 def forgot_password():
     return render_template('forgot_password.html')
@@ -179,12 +186,15 @@ def forgot_password_post():
         db.session.commit()
         
         # Send email with reset link and expiration time
-        send_email(
+        result = send_email(
             f"Reset your password using the following link: {url_for('auth.reset_password', token=user.reset_token, _external=True)}", 
             email,
             expire_time=user.reset_token_expires
         )
-        flash('Password reset link sent to your email')
+        if not result:
+            flash('Failed to send password reset email. Please try again later.')
+        else:
+            flash('Password reset link sent to your email')
     
     return redirect(url_for('auth.login'))
 
@@ -230,7 +240,7 @@ def reset_password_post(token):
     return redirect(url_for('auth.login'))
 
 
-def send_email(message, to_email=None, subject=None, html_text=None, from_email=None, expire_time=None):
+def send_email(message, to_email, subject=None, html_text=None, from_email=None, expire_time=None):
     """
     Send a multipart email (plain text + optional HTML).
     Backwards-compatible: legacy calls use send_email(message, email).
@@ -242,7 +252,7 @@ def send_email(message, to_email=None, subject=None, html_text=None, from_email=
     """
     # Backwards compatibility: if called as send_email(message, email)
     if to_email is None:
-        raise ValueError("Recipient email address required as second argument (to_email).")
+        raise ValueError("Recipient email address required as second argument.")
 
     plain_text = str(message)
     if subject is None:

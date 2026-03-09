@@ -33,6 +33,9 @@ ON classification(alert_id);
 COMMIT;
 
 ANALYZE;
+
+CREATE INDEX idx_featuretable_ant_mag_corrected
+ON featuretable(ant_mag_corrected)
 """
 class Ztf(db.Model):
     __tablename__ = 'featuretable'
@@ -197,7 +200,7 @@ class Crossmatches(db.Model):
 
 """
 
-TODO: NEW vs OLD / outdated again
+TODO: Add table initialization scripts here or in a separate file, or use Flask-Migrate for migrations.
 CREATE TABLE user (
     id INTEGER PRIMARY KEY,
     email VARCHAR(100) NOT NULL UNIQUE,
@@ -276,7 +279,7 @@ class FavoriteGroup(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True)
     name = db.Column(db.String(128), nullable=False)
-    created_at = db.Column(db.DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=datetime.now(timezone.utc), nullable=False)
 
     __table_args__ = (db.UniqueConstraint('user_id', 'name', name='uix_user_group_name'),)
 

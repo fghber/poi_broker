@@ -7,12 +7,6 @@ from matplotlib import dates
 import io
 import base64
 
-from bokeh.plotting import figure
-from bokeh.models import DatetimeTickFormatter, Range1d, LinearAxis
-from bokeh.embed import components
-from bokeh.io import export_png
-from bokeh.models import Legend
-
 import numpy as np
 from astropy.visualization import astropy_mpl_style, quantity_support
 from astropy.coordinates import AltAz, EarthLocation, SkyCoord, get_body
@@ -26,7 +20,9 @@ from timezonefinder import TimezoneFinder
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-observing_tool_blueprint = Blueprint('observing_tool', __name__) # TODO: Perhaps add a URL prefix observing_tool/
+observing_tool_blueprint = Blueprint('observing_tool', __name__) 
+
+# IDEA: Perhaps add a URL prefix observing_tool/
 
 # @observing_tool.route('/observatories')
 # def show():
@@ -248,10 +244,10 @@ def get_moon_phase_panel(observatory, midnight_utc, moon_separation):
     html = '<span class="moon-container-square">'
     html += f'<img src="/static/img/{phase_image}" width="96" height="96" style="transform: rotate({rotation}deg);">'
     html += '</span><br>'
-    html += f'Moon Phase at {midnight_utc} UTC<br>' #TODO:  UTC with 2 digit after ??
+    html += f'Moon Phase at {midnight_utc.strftime("%Y-%m-%d %H:%M:%S")} UTC<br>' #TODO/IDEA: Should we distinguish between UTC and local time here? I think UTC is more standard for astronomy, but we could also add the local time in parentheses
     html += f'Phase: {phase_name}<br>'
     html += f'Illumination: {fraction_illuminated_percentage}<br>'
-    html += f'separation from moon <br>to object during night: {np.min(moon_separation.degree):.3f} to {np.max(moon_separation.degree):.3f} degree' #TODO: round to 3 digits okay?
+    html += f'separation from moon <br>to object during night: {np.min(moon_separation.degree):.3f} to {np.max(moon_separation.degree):.3f} degree'
     #html += '</div>'
     #TODO: tilt based on latitude, where I show it on a larger black square
     #this is how it should look like: https://astronomy.stackexchange.com/questions/24711/how-does-the-moon-look-like-from-different-latitudes-of-the-earth

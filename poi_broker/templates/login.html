@@ -35,7 +35,12 @@
                         Login
                     </button>
                 </form>
-
+                {% if forgot_password %}
+                <hr>
+                <p class="text-center">
+                    Click <a href="/forgot-password">here</a> if you forgot your password.
+                </p>
+                {% endif %}
             </div>
         </div>
     </div>

@@ -43,7 +43,7 @@
         <div class="col-md-6">
         <div class="justify-content-center">
           <p>
-          <!-- TODO: Pagination: arg_str not implemented {{ arg_str }}& -->
+          <!-- ? TODO: Pagination: arg_str not implemented {{ arg_str }}& -->
           <!-- e.g. ?sort_value=date_alert_mjd&sort_order=desc&ztf_object_id=&alert_id=&time__gt=2021-02-28&time__lt=&time__since=&jd__gt=&jd__lt=&filter=&cone=&objectcone=&objectidps=&ra__gt=&ra__lt=&dec__gt=&dec__lt=&l__gt=&l__lt=&b__gt=&b__lt=&magpsf__gte=&magpsf__lte=&sigmapsf__lte=&magap__gte=&magap__lte=&distnr__gte=&distnr__lte=&deltamaglatest__gte=&deltamaglatest__lte=&deltamagref__gte=&deltamagref__lte=&elong__lte=&nbad__lte=&rb__gte=&drb__gte=&classtar__gte=&classtar__lte=&fwhm__lte= -->
           <!-- <div class="col"> -->
           <!-- Buttons are disabled via CSS based on page no. and has_next -->
@@ -58,9 +58,9 @@
         </div>
 
             <!-- Side Panel -->
-        <div class="col-md-3">
+        <div class="col-md-3"> 
+          <!-- ? TODO: Style/pad insted -->
           <div class="d-flex justify-content-end">
-          <!-- TODO: Style/pad insted -->
           <button type="submit" class="btn btn-primary">
             <i class="fa fa-filter fa-lg" title="Filter" aria-label="Filter"></i> Filter
           </button>
@@ -150,7 +150,7 @@
 
         <table class="table table-sm table-striped table-hover table-auto">
           <thead>
-            <tr class="sticky-top" style="background-color: #073642"> <!-- TODO! date vs date_alert_mjd sortable?!  -->
+            <tr class="sticky-top" style="background-color: #073642"> <!-- TODO: date vs date_alert_mjd sortable?!  -->
               <th class="sortable" id="date" title='Enter a specific date or enter a range, and click the "Filter" button.  Value ranges can be entered like: >20201208, <20201210, or 20201207 20201209'>date (UTC)</th>
               <th class="sortable" id="alert_id" title='Enter a specific alert_id, and click the "Filter" button.'>alert_id</th>
               <th class="sortable" id="ztf_object_id" title='Enter a specific ztf_object_id, and click the "Filter" button.'>ztf_object_id</th>
@@ -169,7 +169,7 @@
                 <!-- <div class="form-group"> -->
                 <!-- <label for="date">date</label> -->
                 <input type="text" class="form-control form-control-sm" id="date" name="date"
-                  value="{{ request.args.date_alert_mjd }}">
+                  value="{{ request.args.date }}">
                 <!-- </div> -->
               </th>
               <th>
@@ -241,7 +241,7 @@
             <tr>
               <!-- <td><a href="/{#{ alert.lco_id }}/" title="{{ alert.lco_id }}">{{ alert.lco_id }#}</a></td> -->
               <td>{{ alert.date_alert_mjd|format_mjd_readable }}</td>
-              <td>{{ alert.alert_id | replace('ztf_candidate:','') }}</td>
+              <td>{{ alert.alert_id }}</td>
               <td>
                 <a href="#myModal" data-toggle="modal" data-target="#objectIdModal" 
                   data-object-id="{{ alert.ztf_object_id }}" 
@@ -611,7 +611,10 @@
   $('#objectIdModal').on('show.bs.modal', function(e) {
     //get data-id attribute of the clicked element and populate text box
     var ztf_object_id = $(e.relatedTarget).data('object-id');
-    var candid = $(e.relatedTarget).data('candid').replace("ztf_candidate:", "");
+    alertId = $(e.relatedTarget).data('candid');
+    var antares_prefix = alertId.replace(/[:_].+/, ''); //extract prefix: ztf / lsst
+    var antares_stamps_base_url = `https://storage.googleapis.com/antares-production-${antares_prefix}-stamps/`;
+    var candid = alertId.replace(/^[^:]+:/, ''); //remove prefix 'ztf_candid:'' / 'lsst:'
     //var date = $(e.relatedTarget).data('date');
     var locus_id = $(e.relatedTarget).data('locusid');
     var locus_ra = $(e.relatedTarget).data('locusra');
@@ -624,17 +627,17 @@
     $('#obs_ra').html(locus_ra);
     $('#obs_dec').html(locus_dec);
     //$('body').find('span[name="date-label"]').html("Date: " + date); //{# ! TODO: de-mess! #}
-    $('#thumbnail-1').attr("src", "https://storage.googleapis.com/antares-production-ztf-stamps/candid"+candid+"_pid"+candid.substring(0,13)+"_targ_sci.fits.png");
-    $('#thumbnail-2').attr("src", "https://storage.googleapis.com/antares-production-ztf-stamps/candid"+candid+"_ref.fits.png");
-    $('#thumbnail-3').attr("src", "https://storage.googleapis.com/antares-production-ztf-stamps/candid"+candid+"_pid"+candid.substring(0,13)+"_targ_diff.fits.png");
+    $('#thumbnail-1').attr("src", antares_stamps_base_url+"candid"+candid+"_pid"+candid.substring(0,13)+"_targ_sci.fits.png");
+    $('#thumbnail-2').attr("src", antares_stamps_base_url+"candid"+candid+"_ref.fits.png");
+    $('#thumbnail-3').attr("src", antares_stamps_base_url+"candid"+candid+"_pid"+candid.substring(0,13)+"_targ_diff.fits.png");
     //$('body').find('img[name="object-id-image"]').attr("src", "/static/img/_ZTF_lc_plots/"+ztf_object_id+".png");
     //var csvUrl = "CsvExists('/static/_ZTF_lightcurves_concat/"+ztf_object_id+".csv')";
     //$('body').find('img[name="object-id-image"]').attr("onerror", csvUrl);
-    //$('body').find('img[name="object-id-plot"]').attr("src", "/static/img/_ZTF_cutouts/"+date+"/"+ztf_object_id+"_"+alert_id+".png"); //NOTE: alert_id was candid
+    //$('body').find('img[name="object-id-plot"]').attr("src", "/static/img/_ZTF_cutouts/"+date+"/"+ztf_object_id+"_"+alert_id+".png");
     //$('body').find('img[name="object-id-plot"]').attr("onerror", "this.src='/static/img/_ZTF_lc_plots/missing_file.png';");
     //update URL Of download button
     $('#btn_locus_csv').attr('href', '/locus_plot_csv?locusId='+locus_id);
-    query_features_table(candid);
+    query_features_table(alertId);
     query_locusplot(locus_id);
     //set selected & reload UI:
     let default_features = ['feature_amplitude_magn_r',
@@ -649,7 +652,7 @@
     query_crossmatches_table(locus_id);
     query_crossmatches_footer(locus_id, ztf_object_id, locus_ra, locus_dec);
 
-    query_classification(candid);
+    query_classification(alertId);
     
     //clear observing output
     $("#observing_output").html('');
@@ -685,7 +688,6 @@
     $("#classification_output").html('');
   });
 
-  //TODO: Deprecated?
   function query_locusplot(locus_id) {
     let lightcurve_data_url = '/query_lightcurve_data?locusId=' + locus_id;
     $.ajax({
