@@ -6,7 +6,8 @@ from bokeh.models import ColumnDataSource, HoverTool, PolarTransform, LabelSet, 
 from bokeh.colors import RGB
 from bokeh.embed import components
 
-classification_blueprint = Blueprint('classification', __name__) # TODO: Perhaps add a URL prefix classification/
+classification_blueprint = Blueprint('classification', __name__)
+# IDEA: Perhaps add a URL prefix classification/
 
 @classification_blueprint.route('/query_classification')
 def classification_plot():
@@ -27,7 +28,7 @@ def classification_plot():
     """)
     row = db.session.execute(sql, {'id': alertId}).fetchone()
     if row is None:
-        return f'No classification found for alert_id={alertId}' #TODO: does this even work?
+        return f'No classification found for alert_id={alertId}'
 
     # ensure numeric values and replace NULL with 0.0
     values = [float(v) if v is not None else 0.0 for v in row]

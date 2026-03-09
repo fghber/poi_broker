@@ -15,6 +15,8 @@ import ssl
 logger = logging.getLogger(__name__)
 auth_blueprint = Blueprint('auth', __name__)
 
+#IDEA: Improve emails (body and subject), add HTML version, perhaps use a proper email template, etc.
+
 @auth_blueprint.route('/login')
 def login():
     show_reset = request.args.get('forgot_password', default=False, type=bool)
@@ -163,8 +165,6 @@ def verify_email(token):
 def logout():
     logout_user()
     return redirect(url_for('main.start'))
-
-#TODO: Improve email body and subject, add HTML version, perhaps use a proper email template, etc.
 
 @auth_blueprint.route('/forgot-password')
 def forgot_password():

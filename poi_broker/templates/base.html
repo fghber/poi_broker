@@ -62,9 +62,10 @@
     <link rel="stylesheet" type="text/css" href="/static/css/base.css">
     {% endblock %}
 
-    <!-- TODO: update both? favicon -->
+    <!-- ? TODO: update both? favicon -->
     <link rel="apple-touch-icon" href="/static/favicon.png">
     <link rel="shortcut icon" type="image/png" href="/static/favicon-trans.png"/>
+    <!-- <link rel="icon" type="image/x-icon" href="/static/favicon.ico"> -->
     <!-- https://fontawesome.com/v4.7.0/ https://fontawesome.com/v4/icons/ -->
     <link rel="stylesheet" href="/static/css/font-awesome.min.css">
 
@@ -89,13 +90,12 @@
   
           link.type = "text/css";
           link.rel = "stylesheet";
-          link.href = "/static/css/bootstrap.min.css"; // TODO: Needs to exist
+          link.href = "/static/css/bootstrap.min.css";
   
           document.head.appendChild(link);
       }
     </script>
 
-    <!--"https://cdn.bokeh.org/bokeh/release/bokeh-3.6.1.min.js"{#TODO: Determine bokeh.js version dynamically #}-->
     {% if bokeh_version is defined %}
     <script src="https://cdn.bokeh.org/bokeh/release/bokeh-{{ bokeh_version }}.min.js"></script>
     {% endif %}
