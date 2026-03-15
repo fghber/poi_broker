@@ -62,9 +62,14 @@ def start():
                 filter_warning_message += 'Date filter cannot be applied - Enter a valid 8-digit integer date of the form yyyymmdd, e.g. "20201207", or range, e.g., "20201207 20201209". You can filter the columns by entering values and then click the "Filter" button.'
 
         if request.args.get('alert_id'):
-            alertId = request.args.get('alert_id')
-            search = "{}%".format(alertId)
-            query = query.filter(Ztf.alert_id.like(search)) # allows for partial matching of alert_id to find alerts with aspecific prefix, e.g. ztf / lsst
+            alertId = request.args.get('alert_id', '').strip()
+            if re.match(r'^(?:ztf_candidate|lsst):\d{18,}$', alertId): # if it contains 18+ digits, we got a complete alert_id and can query it directly.
+                query = query.filter(Ztf.alert_id == alertId)
+            elif re.match(r'^(?:ztf|lsst)\D*$', alertId): # otherwise, we allow for partial matching of alert_id to find alerts with a specific prefix, e.g. ztf / lsst
+                search = "{}%".format(alertId)
+                query = query.filter(Ztf.alert_id.like(search))
+            elif alertId != '':
+                filter_warning_message += 'Alert ID cannot be filter by partial IDs - Enter a full alert ID, e.g. "ztf_candidate:335155568501", or "lsst:170094456539709554", or just the catalog prefix, e.g. "ztf" or "lsst".'
 
         if request.args.get('ztf_object_id'):
             query = query.filter(Ztf.ztf_object_id == request.args.get('ztf_object_id'))
@@ -600,8 +605,10 @@ def query_features():
         Ztf.feature_chi2_flux_g,
         Ztf.feature_skew_flux_g,
         Ztf.feature_stetson_k_flux_g))
-    data = object_as_dict(feature_query.first())
-    #print(data)
+    row = feature_query.first()
+    if row is None:
+        return Response(jsonify({'error': 'No feature record found for alert_id'}), status=404)
+    data = object_as_dict(row)
     
     response = current_app.response_class(
         response=json.dumps(data), 
@@ -626,10 +633,9 @@ def query_featureplot_data():
 
     #Features from args.get() - if none: select defaults
     if selected_features:
-        features_array = selected_features.split(',')
+        features_array = [f.strip() for f in selected_features.split(',') if f.strip()]
         if features_array and len(features_array) > 0:
-            feature_list = features_array
-            #print(feature_list)
+            feature_list = features_array[:10] # limit to 10 features for plotting
 
     #query where locus id equals selected id - build column list dynamically
     columns_to_load = [Ztf.date_alert_mjd, Ztf.ant_mag_corrected] + [getattr(Ztf, feature) for feature in feature_list]
