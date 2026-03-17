@@ -33,7 +33,7 @@ def _format_mjd_cached(mjd_value: float) -> str:
     return  dt.strftime('%Y-%m-%d %H:%M:%S')
 
 
-@main_blueprint.route('/', methods=['GET', 'POST'])
+@main_blueprint.route('/', methods=['GET'])
 def start():
     #app.logger.info('Info')
     #app.logger.warning('Warn')
@@ -386,6 +386,8 @@ def api_favorite_groups_delete(group_id):
     if not group:
         return jsonify({'error': 'group not found'}), 404
     
+    #Update favorites that belonged to this group to have group_id = null (ungrouped) instead of deleting them, so they are not lost and can be re-assigned to other groups by the user if desired.
+    Favorite.query.filter_by(group_id=group_id).update({'group_id': None})
     db.session.delete(group)
     db.session.commit()
     
