@@ -12,7 +12,7 @@ The Point of Interest broker can be found at https://poibroker.uantof.cl/
 
 ## Motivation
  
-Current and especially upcoming all-sky time-domain surveys, such as LSST, will deliver a vast amount of data each night, requiring for the developent of flexible, straightforward tools for the analysis, selection and forwarding of information regarding astrophysical transients and variable objects. 
+Current and especially upcoming all-sky time-domain surveys, such as LSST, will deliver a vast amount of data each night, requiring for the development of flexible, straightforward tools for the analysis, selection and forwarding of information regarding astrophysical transients and variable objects. 
  
 Our alert broker, called *Point of Interest*, is tailored towards the needs of astronomers looking for updated observations of variable stars in specific on-sky regions. Developed by a small team at Vanderbilt University, where I'm the main developer responsible for this project, this *Point of Interest*' alert broker should enable users to get updates on variable star observations from a straightforward, user-friendly web service. Data are processed in real time by big data/ machine learning algorithms and will be immediately available to the user community.
 
@@ -20,7 +20,7 @@ Our alert broker, called *Point of Interest*, is tailored towards the needs of a
 *Point of Interest* differs from other brokers in the focus on updates on variable stars, thus running a rather specific than the full analysis chain of streamed data. As a consequence, the broker is rather lightweight. *Point of Interest* users are encouraged to design their own on-sky regions they want receive updates for (such as for planned follow-up campaigns) or select from a list of on-sky regions which are particularly interesting for variable star observers, such as stellar streams, globular clusters and dwarf galaxies.
 
 ## Usage
-This repository contais the web frontend, including a small database for testing purposes.
+This repository contains the web frontend, including a small database for testing purposes.
 
 After downloading the package, within the folder `_web_frontend` install all required packages:
 
@@ -30,6 +30,19 @@ After downloading the package, within the folder `_web_frontend` install all req
 > requirements2.txt shows the output of `pip freeze` and lists exact version numbers of the packages. However, this is mostly for reference. You may not be able to install these exact version on your specific system/environment.
 
 Create a `.env` file in the project root based on the `.env.example` file and adjust the settings as needed.
+
+Database locations are configured through environment variables:
+
+- `ALERTS_DB_PATH`: path to the main alerts SQLite database.
+- `USERS_DB_PATH`: path to the users/auth SQLite database.
+
+Both values may be absolute paths or paths relative to the project root. By default the app assumes both files live in a sibling directory named `_broker_db` outside the repository, for example:
+
+`../_broker_db/ztf_alerts_stream.db`
+
+`../_broker_db/users.db`
+
+This is intentional: the main alerts database is typically too large to keep inside the repository.
 
 Start the web app from the terminal from the **project root** (the folder that **contains** the _sub-folder_ `poi_boker`) with 
 
@@ -48,10 +61,10 @@ In case the website isn't displayed: do a
 in your terminal window to see the correct URL
 
 
-Also, inspect the browser developer console (F12) to see if there are any JavaScript errors, ie. a missmatching bokeh.min.js version.
+Also, inspect the browser developer console (F12) to see if there are any JavaScript errors, ie. a mismatching bokeh.min.js version.
 
 The app can be profiled like any other python module, e.g.
 
 `python -m cProfile -o program.prof -m flask --app "poi_broker:create_app()" run --no-reload`
 
-but it's more useful to use the werkzeug ProfilerMiddleware to profile routes. Activate it in `__init__.py` if needed.
+but it's more useful to use werkzeug's `ProfilerMiddleware` to profile routes. Activate it in `__init__.py` if needed.

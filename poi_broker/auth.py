@@ -28,6 +28,20 @@ def _is_reset_token_expired(expires_at) -> bool:
             return True
     return expires_epoch < _utc_now_epoch()
 
+def _format_expire_time(expire_time) -> str | None:
+    if expire_time is None:
+        return None
+    if isinstance(expire_time, datetime):
+        if expire_time.tzinfo is None:
+            expire_time = expire_time.replace(tzinfo=timezone.utc)
+        else:
+            expire_time = expire_time.astimezone(timezone.utc)
+        return expire_time.isoformat()
+    try:
+        return datetime.fromtimestamp(int(expire_time), tz=timezone.utc).isoformat()
+    except (TypeError, ValueError, OSError, OverflowError):
+        return None
+
 logger = logging.getLogger(__name__)
 auth_blueprint = Blueprint('auth', __name__)
 
@@ -277,8 +291,9 @@ def send_email(message, to_email, subject=None, html_text=None, from_email=None,
     # If no explicit HTML provided, create a simple HTML version
     if html_text is None:
         expire_section = ""
-        if expire_time:
-            expire_section = f"<p><strong>Expires:</strong> {expire_time.isoformat()} UTC</p>"
+        expire_display = _format_expire_time(expire_time)
+        if expire_display:
+            expire_section = f"<p><strong>Expires:</strong> {expire_display} UTC</p>"
         
         html_text = (
             "<html><body>"

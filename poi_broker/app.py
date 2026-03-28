@@ -609,7 +609,8 @@ def query_features():
         Ztf.feature_stetson_k_flux_g))
     row = feature_query.first()
     if row is None:
-        return Response(jsonify({'error': 'No feature record found for alert_id'}), status=404)
+        #return Response(jsonify({'error': 'No feature record found for alert_id'}), status=404)
+        return jsonify({'error': 'No feature record found for alert_id'}), 404
     data = object_as_dict(row)
     
     response = current_app.response_class(

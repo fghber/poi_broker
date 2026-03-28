@@ -19,6 +19,12 @@ db = SQLAlchemy()
 login_manager = LoginManager()
 csrf = CSRFProtect()
 
+def _resolve_sqlite_path(env_var_name, default_path):
+    configured_path = os.environ.get(env_var_name)
+    if configured_path:
+        return Path(configured_path).expanduser().resolve()
+    return default_path.resolve()
+
 def create_app():
     app = Flask(__name__)
     
@@ -41,16 +47,21 @@ def create_app():
                     level=logging.INFO)
 
     # Main DB (alerts)
-    base_dir = Path(__file__).resolve().parent  # poi_broker directory
-    # Search upward from the parent package folder
-    db_path = base_dir.parent.parent / '_broker_db/ztf_alerts_stream.db'
-    #print(db_path)
-    db_uri = 'sqlite:///{}'.format(db_path)
+    base_dir = Path(__file__).resolve().parent
+    workspace_root = base_dir.parent
+    default_db_dir = workspace_root.parent / '_broker_db'
+    db_path = _resolve_sqlite_path(
+        'ALERTS_DB_PATH',
+        default_db_dir / 'ztf_alerts_stream.db'
+    )
+    db_uri = 'sqlite:///{}'.format(db_path.as_posix())
 
     # Separate DB for logins
-    login_db_path = base_dir.parent.parent / '_broker_db/users.db'
-    #print(login_db_path)
-    login_db_uri = 'sqlite:///{}'.format(login_db_path)
+    login_db_path = _resolve_sqlite_path(
+        'USERS_DB_PATH',
+        default_db_dir / 'users.db'
+    )
+    login_db_uri = 'sqlite:///{}'.format(login_db_path.as_posix())
 
     secret_key = os.environ.get('SECRET_KEY')
     if not secret_key:
@@ -76,6 +87,8 @@ def create_app():
         SESSION_COOKIE_HTTPONLY = True,  # Prevent XSS
         SESSION_COOKIE_SAMESITE = 'Lax'  # CSRF protection
     )
+    app.logger.info('Configured alerts database at %s', db_path)
+    app.logger.info('Configured users database at %s', login_db_path)
 
     if app.debug is True:
         app.jinja_env.auto_reload = True
