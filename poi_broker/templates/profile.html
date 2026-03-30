@@ -17,10 +17,6 @@
                     Welcome, {{ name }}!
                 </h3>
 
-                <p class="text-muted mb-4">
-                    This is your profile page
-                </p>
-
                 <!-- Profile details -->
                 <ul class="list-group list-group-flush text-left mb-4">
                     <li class="list-group-item">
@@ -59,6 +55,22 @@
 
             <!-- Tab content -->
             <div class="tab-content" id="favoritePanels">
+                <!-- Panels inserted entirely by JS -->
+            </div>
+
+        </div>
+
+        <!-- Watchlist card -->
+        <div class="card mt-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Your POI Watchlists</span>
+                <a href="./visual_query" class="btn btn-sm btn-outline-primary" id="newWatchlistBtn">
+                    <i class="fa fa-plus"></i> New Watchlist
+                </a>
+            </div>
+
+            <!-- Tab content -->
+            <div class="tab-content" id="watchlistPanels">
                 <!-- Panels inserted entirely by JS -->
             </div>
 

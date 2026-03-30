@@ -18,6 +18,7 @@ bokeh_version = version("bokeh")
 from bokeh.embed import components
 from bokeh.plotting import figure
 from bokeh.models import Legend
+from sqlalchemy import text
 
 #debug/set_trace breakpoints
 # import pdb
@@ -393,6 +394,37 @@ def api_favorite_groups_delete(group_id):
     
     return jsonify({'status': 'ok'})
 
+@main_blueprint.route('/visual_query')
+@login_required
+def visual_query():
+    """Show visual query interface."""
+    return render_template(
+        'visual_query.html'
+    )
+
+@main_blueprint.route('/api/preview-query', methods=['POST'])
+@login_required
+def preview_query():
+    try:
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({'error': 'Invalid or missing JSON'}), 400
+              
+        # For debugging: print the received data
+        print("Received data:", data)
+        
+        sql_text = 'SELECT alert_id FROM featuretable WHERE ' + data + ' LIMIT 100'
+        
+        print("SQL:", sql_text)
+        sql = text(sql_text)
+        results = db.session.execute(sql, {}).fetchall()
+        print("Results:", results)
+        
+        return jsonify([dict(row._mapping) for row in results])
+    except Exception as e:
+        print(f"Error in preview_query: {e}")
+        return jsonify({'error': str(e)}), 500
+    
 
 @main_blueprint.route('/query_lightcurve_data', methods=['GET'])
 def query_lightcurve_data():

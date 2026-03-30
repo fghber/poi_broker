@@ -1,4 +1,8 @@
 {% extends 'base.html' %}
+{% block extra_head %}
+    {{ super() }}
+    {# <script src="/static/js/nav-logic.js"></script> #}
+{% endblock %}
 {% block body %}
   <nav class="navbar navbar-expand-md navbar-light bg-light">
     <div class="container-fluid">

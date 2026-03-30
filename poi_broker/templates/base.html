@@ -101,6 +101,9 @@
     {% endif %}
     <!--"https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8"-->
     <script type="text/javascript" src="/static/js/aladin.js" charset="utf-8"></script>
+
+    {# Placeholder for page-specific JS/CSS #}
+    {% block extra_head %}{% endblock %}
   </head>
   <body {#{% if bodyClass is defined %}class="{{ bodyClass }}"{% endif %}#}>
     <!-- main CONTENT -->
