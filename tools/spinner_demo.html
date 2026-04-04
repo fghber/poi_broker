@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Loading Spinner Test</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        #loading-spinner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        .spinner-overlay {
+            text-align: center;
+            color: white;
+        }
+
+        .spinner-text {
+            font-size: 16px;
+            font-weight: 500;
+            margin-top: 10px;
+        }
+
+        .d-none {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1>Loading Spinner Test</h1>
+
+        <button id="test-btn" class="btn btn-primary">Test Spinner</button>
+        <button id="test-delay-btn" class="btn btn-secondary">Test Delayed Spinner</button>
+
+        <div id="loading-spinner" class="d-none">
+            <div class="spinner-overlay">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="sr-only">Loading...</span>
+                </div>
+                <div class="spinner-text">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // New spinner functions with delay
+        let spinnerTimeout;
+        let spinnerVisible = false;
+
+        function showLoadingSpinner(delay = 1500) {
+            if (spinnerVisible) return; // Already showing
+
+            // Clear any existing timeout
+            if (spinnerTimeout) {
+                clearTimeout(spinnerTimeout);
+            }
+
+            // Show spinner after delay
+            spinnerTimeout = setTimeout(() => {
+                document.getElementById('loading-spinner').classList.remove('d-none');
+                spinnerVisible = true;
+                console.log('Spinner shown after', delay, 'ms');
+            }, delay);
+        }
+
+        function hideLoadingSpinner() {
+            // Clear the timeout if spinner hasn't shown yet
+            if (spinnerTimeout) {
+                clearTimeout(spinnerTimeout);
+                spinnerTimeout = null;
+            }
+
+            // Hide spinner if it's visible
+            if (spinnerVisible) {
+                document.getElementById('loading-spinner').classList.add('d-none');
+                spinnerVisible = false;
+                console.log('Spinner hidden');
+            }
+        }
+
+        // Test buttons
+        document.getElementById('test-btn').addEventListener('click', function() {
+            showLoadingSpinner(0); // Show immediately
+            setTimeout(hideLoadingSpinner, 2000); // Hide after 2 seconds
+        });
+
+        document.getElementById('test-delay-btn').addEventListener('click', function() {
+            showLoadingSpinner(2000); // Show after 2 seconds
+            setTimeout(hideLoadingSpinner, 5000); // Hide after 5 seconds total
+        });
+
+        // Hide spinner on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            hideLoadingSpinner();
+        });
+    </script>
+</body>
+</html>

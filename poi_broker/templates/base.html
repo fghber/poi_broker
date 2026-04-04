@@ -62,16 +62,13 @@
     <link rel="stylesheet" type="text/css" href="/static/css/base.css">
     {% endblock %}
 
-    <!-- ? TODO: update both? favicon -->
     <link rel="apple-touch-icon" href="/static/favicon.png">
     <link rel="shortcut icon" type="image/png" href="/static/favicon-trans.png"/>
-    <!-- <link rel="icon" type="image/x-icon" href="/static/favicon.ico"> -->
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <!-- https://fontawesome.com/v4.7.0/ https://fontawesome.com/v4/icons/ -->
     <link rel="stylesheet" href="/static/css/font-awesome.min.css">
 
     <link href="https://code.jquery.com/ui/1.14.0/themes/base/jquery-ui.css" rel="stylesheet" />
-    <link href="static/css/jquery.multiselect.css" rel="stylesheet" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@eonasdan/tempus-dominus@6.9.4/dist/css/tempus-dominus.min.css" crossorigin="anonymous">
 
     <!-- NOTE: Bootstrap CSS CDN with local fallback (ref: https://stackoverflow.com/a/26198380/8291949) --> <!-- TODO: BS4.3.1: update local files -->
     <!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.3.1/css/bootstrap.min.css"> -->
@@ -96,17 +93,14 @@
       }
     </script>
 
-    {% if bokeh_version is defined %}
-    <script src="https://cdn.bokeh.org/bokeh/release/bokeh-{{ bokeh_version }}.min.js"></script>
-    {% endif %}
-    <!--"https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8"-->
-    <script type="text/javascript" src="/static/js/aladin.js" charset="utf-8"></script>
+    {# Placeholder for page-specific JS/CSS #}
+    {% block extra_head %}{% endblock %}
   </head>
   <body {#{% if bodyClass is defined %}class="{{ bodyClass }}"{% endif %}#}>
     <!-- main CONTENT -->
     {% block body %}{% endblock %}
     <!-- Extendable Footer -->
     {% block foot %}{% endblock %}
-    <!-- NOTE: Default Javascript at the end (as recommended) in the inner most content template that requires JS (%impor does not solve this properly, AFAIK)-->
+    <!-- NOTE: Default Javascript at the end (as recommended) in the inner most content template that requires JS (%import does not solve this properly, AFAIK)-->
 </body>
 </html>

@@ -40,9 +40,15 @@ ON featuretable(ant_mag_corrected)
 class Ztf(db.Model):
     __tablename__ = 'featuretable'
     #id = db.Column(db.Integer, primary_key=True)
+    date_log = db.Column(db.String)
     date_alert_mjd = db.Column(db.Float, primary_key=True)
     alert_id = db.Column(db.String, primary_key=True)
     ztf_object_id = db.Column(db.String)
+    num_alerts = db.Column(db.Integer)
+    num_mag_values = db.Column(db.Integer)
+    brightest_alert_id_ztf = db.Column(db.String)
+    brightest_alert_magnitude_ztf = db.Column(db.Float)
+    brightest_alert_observation_time_ztf = db.Column(db.Float)
     locus_id = db.Column(db.String, primary_key=True)
     locus_ra = db.Column(db.Float)
     locus_dec = db.Column(db.Float)
@@ -154,6 +160,167 @@ class Ztf(db.Model):
     feature_chi2_flux_g = db.Column(db.Float)
     feature_skew_flux_g = db.Column(db.Float)
     feature_stetson_k_flux_g = db.Column(db.Float)
+    anomaly_score = db.Column(db.Float)
+    anomaly_mask = db.Column(db.String)
+    anomaly_type = db.Column(db.String)
+    is_corrected = db.Column(db.Boolean)
+    g_r_max = db.Column(db.Float)
+    g_r_mean = db.Column(db.Float)
+    best_period = db.Column(db.Float)
+    best_period_significance = db.Column(db.Float)
+    best_period_g = db.Column(db.Float)
+    best_period_r = db.Column(db.Float)
+    best_period_i = db.Column(db.Float)
+    power_rate_0p5 = db.Column(db.Float)
+    power_rate_0p333 = db.Column(db.Float)
+    power_rate_0p25 = db.Column(db.Float)
+    power_rate_2 = db.Column(db.Float)
+    power_rate_3 = db.Column(db.Float)
+    power_rate_4 = db.Column(db.Float)
+    mhps_ratio_g = db.Column(db.Float)
+    mhps_ratio_R = db.Column(db.Float)
+    mhps_ratio_i = db.Column(db.Float)
+    mhps_low_g = db.Column(db.Float)
+    mhps_low_R = db.Column(db.Float)
+    mhps_low_i = db.Column(db.Float)
+    mhps_high_g = db.Column(db.Float)
+    mhps_high_R = db.Column(db.Float)
+    mhps_high_i = db.Column(db.Float)
+    mhps_non_zero_g = db.Column(db.Float)
+    mhps_non_zero_R = db.Column(db.Float)
+    mhps_non_zero_i = db.Column(db.Float)
+    mhps_pn_flag_g = db.Column(db.Float)
+    mhps_pn_flag_R = db.Column(db.Float)
+    mhps_pn_flag_i = db.Column(db.Float)
+    drw_omega_g = db.Column(db.Float)
+    drw_omega_R = db.Column(db.Float)
+    drw_omega_i = db.Column(db.Float)
+    drw_tau_g = db.Column(db.Float)
+    drw_tau_R = db.Column(db.Float)
+    drw_tau_i = db.Column(db.Float)
+    amplitude_g = db.Column(db.Float)
+    amplitude_R = db.Column(db.Float)
+    amplitude_i = db.Column(db.Float)
+    anderson_darling_g = db.Column(db.Float)
+    anderson_darling_R = db.Column(db.Float)
+    anderson_darling_i = db.Column(db.Float)
+    autocorrelation_length_g = db.Column(db.Float)
+    autocorrelation_length_R = db.Column(db.Float)
+    autocorrelation_length_i = db.Column(db.Float)
+    beyond1std_g = db.Column(db.Float)
+    beyond1std_R = db.Column(db.Float)
+    beyond1std_i = db.Column(db.Float)
+    con_g = db.Column(db.Float)
+    con_R = db.Column(db.Float)
+    con_i = db.Column(db.Float)
+    eta_e_g = db.Column(db.Float)
+    eta_e_R = db.Column(db.Float)
+    eta_e_i = db.Column(db.Float)
+    gskew_g = db.Column(db.Float)
+    gskew_R = db.Column(db.Float)
+    gskew_i = db.Column(db.Float)
+    maxslope_g = db.Column(db.Float)
+    maxslope_R = db.Column(db.Float)
+    maxslope_i = db.Column(db.Float)
+    meanmag_g = db.Column(db.Float)
+    meanmag_R = db.Column(db.Float)
+    meanmag_i = db.Column(db.Float)
+    meanvariance_g = db.Column(db.Float)
+    meanvariance_R = db.Column(db.Float)
+    meanvariance_i = db.Column(db.Float)
+    medianabsdev_g = db.Column(db.Float)
+    medianabsdev_R = db.Column(db.Float)
+    medianabsdev_i = db.Column(db.Float)
+    medianbrp_g = db.Column(db.Float)
+    medianbrp_R = db.Column(db.Float)
+    medianbrp_i = db.Column(db.Float)
+    pairslopetrend_g = db.Column(db.Float)
+    pairslopetrend_R = db.Column(db.Float)
+    pairslopetrend_i = db.Column(db.Float)
+    percent_amplitude_g = db.Column(db.Float)
+    percent_amplitude_R = db.Column(db.Float)
+    percent_amplitude_i = db.Column(db.Float)
+    q31_g = db.Column(db.Float)
+    q31_R = db.Column(db.Float)
+    q31_i = db.Column(db.Float)
+    rcs_g = db.Column(db.Float)
+    rcs_R = db.Column(db.Float)
+    rcs_i = db.Column(db.Float)
+    skew_g = db.Column(db.Float)
+    skew_R = db.Column(db.Float)
+    skew_i = db.Column(db.Float)
+    smallkurtosis_g = db.Column(db.Float)
+    smallkurtosis_R = db.Column(db.Float)
+    smallkurtosis_i = db.Column(db.Float)
+    stdmag_g = db.Column(db.Float)
+    stdmag_R = db.Column(db.Float)
+    stdmag_i = db.Column(db.Float)
+    stetsonk_g = db.Column(db.Float)
+    stetsonk_R = db.Column(db.Float)
+    stetsonk_i = db.Column(db.Float)
+    p_chi_g = db.Column(db.Float)
+    p_chi_R = db.Column(db.Float)
+    p_chi_i = db.Column(db.Float)
+    ex_var_g = db.Column(db.Float)
+    ex_var_R = db.Column(db.Float)
+    ex_var_i = db.Column(db.Float)
+    iar_phi_g = db.Column(db.Float)
+    iar_phi_R = db.Column(db.Float)
+    iar_phi_i = db.Column(db.Float)
+    regression_slope_g = db.Column(db.Float)
+    regression_slope_R = db.Column(db.Float)
+    regression_slope_i = db.Column(db.Float)
+    delta_mag_fid_g = db.Column(db.Float)
+    delta_mag_fid_R = db.Column(db.Float)
+    delta_mag_fid_i = db.Column(db.Float)
+    harmonics_mag_1_g = db.Column(db.Float)
+    harmonics_mag_1_R = db.Column(db.Float)
+    harmonics_mag_1_i = db.Column(db.Float)
+    harmonics_mag_2_g = db.Column(db.Float)
+    harmonics_mag_2_R = db.Column(db.Float)
+    harmonics_mag_2_i = db.Column(db.Float)
+    harmonics_mag_3_g = db.Column(db.Float)
+    harmonics_mag_3_R = db.Column(db.Float)
+    harmonics_mag_3_i = db.Column(db.Float)
+    harmonics_mag_4_g = db.Column(db.Float)
+    harmonics_mag_4_R = db.Column(db.Float)
+    harmonics_mag_4_i = db.Column(db.Float)
+    harmonics_mag_5_g = db.Column(db.Float)
+    harmonics_mag_5_R = db.Column(db.Float)
+    harmonics_mag_5_i = db.Column(db.Float)
+    harmonics_mag_6_g = db.Column(db.Float)
+    harmonics_mag_6_R = db.Column(db.Float)
+    harmonics_mag_6_i = db.Column(db.Float)
+    harmonics_mag_7_g = db.Column(db.Float)
+    harmonics_mag_7_R = db.Column(db.Float)
+    harmonics_mag_7_i = db.Column(db.Float)
+    harmonics_phi_1_g = db.Column(db.Float)
+    harmonics_phi_1_R = db.Column(db.Float)
+    harmonics_phi_1_i = db.Column(db.Float)
+    harmonics_phi_2_g = db.Column(db.Float)
+    harmonics_phi_2_R = db.Column(db.Float)
+    harmonics_phi_2_i = db.Column(db.Float)
+    harmonics_phi_3_g = db.Column(db.Float)
+    harmonics_phi_3_R = db.Column(db.Float)
+    harmonics_phi_3_i = db.Column(db.Float)
+    harmonics_phi_4_g = db.Column(db.Float)
+    harmonics_phi_4_R = db.Column(db.Float)
+    harmonics_phi_4_i = db.Column(db.Float)
+    harmonics_phi_5_g = db.Column(db.Float)
+    harmonics_phi_5_R = db.Column(db.Float)
+    harmonics_phi_5_i = db.Column(db.Float)
+    harmonics_phi_6_g = db.Column(db.Float)
+    harmonics_phi_6_R = db.Column(db.Float)
+    harmonics_phi_6_i = db.Column(db.Float)
+    harmonics_phi_7_g = db.Column(db.Float)
+    harmonics_phi_7_R = db.Column(db.Float)
+    harmonics_phi_7_i = db.Column(db.Float)
+    harmonics_mse_g = db.Column(db.Float)
+    harmonics_mse_R = db.Column(db.Float)
+    harmonics_mse_i = db.Column(db.Float)
+    harmonics_chi_per_degree_g = db.Column(db.Float)
+    harmonics_chi_per_degree_R = db.Column(db.Float)
+    harmonics_chi_per_degree_i = db.Column(db.Float)
 
     # @property
     # def ra(self):
@@ -164,6 +331,9 @@ class Ztf(db.Model):
     # @property
     # def dec(self):
     #     return shape.to_shape(self.location).y
+
+    # Relationship to Classification table
+    classification = db.relationship("Classification", foreign_keys="[Classification.alert_id]", primaryjoin="Ztf.alert_id==Classification.alert_id", uselist=False, viewonly=True)
 
     def __str__(self):
         return self.ztf_object_id
@@ -177,6 +347,21 @@ class Crossmatches(db.Model):
     ra_cat = db.Column(db.Float)
     dec_cat = db.Column(db.Float)
     separation = db.Column(db.Float)
+
+
+class Classification(db.Model):
+    __tablename__ = 'classification'
+
+    alert_id = db.Column(db.String, primary_key=True)
+    p_cvnova = db.Column(db.Float)
+    p_e = db.Column(db.Float)
+    p_lpv = db.Column(db.Float)
+    p_puls = db.Column(db.Float)
+    p_periodic_other = db.Column(db.Float)
+    p_quas = db.Column(db.Float)
+    p_sn = db.Column(db.Float)
+    p_yso = db.Column(db.Float)
+    prob_class = db.Column(db.String)
 
 # class Gaiadr3_variability(db.Model):
 #     __tablename__ = 'gaiadr3_variability'
@@ -238,6 +423,8 @@ class User(UserMixin, db.Model):
     email_verification_token = db.Column(db.String(128), index=True, nullable=True)    # Used by the reset-password flow
     reset_token = db.Column(db.String(128), index=True, nullable=True)
     reset_token_expires = db.Column(db.Integer, nullable=True) # epoch seconds
+    # created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    # last_password_changed = db.Column(db.DateTime(timezone=True), nullable=True)
 
     def __repr__(self):
         return f"<User {self.email}>"
@@ -279,7 +466,7 @@ class FavoriteGroup(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True)
     name = db.Column(db.String(128), nullable=False)
-    created_at = db.Column(db.DateTime(timezone=True), default=datetime.now(timezone.utc), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     __table_args__ = (db.UniqueConstraint('user_id', 'name', name='uix_user_group_name'),)
 
@@ -309,9 +496,37 @@ class Favorite(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True)
     locus_id = db.Column(db.String(128), nullable=False, index=True)
     group_id = db.Column(db.Integer, db.ForeignKey('favorite_group.id', ondelete='SET NULL'), nullable=True, index=True)
-    created_at = db.Column(db.DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     __table_args__ = (db.UniqueConstraint('user_id', 'locus_id', name='uix_user_locus'),)
 
     def __repr__(self):
         return f"<Favorite {self.locus_id}>"
+
+# DDL for watchlist table (run once against users.db):
+# CREATE TABLE watchlist (
+#     id INTEGER PRIMARY KEY,
+#     user_id INTEGER NOT NULL,
+#     name TEXT NOT NULL,
+#     rules_json TEXT NOT NULL,
+#     sql_where TEXT NOT NULL,
+#     created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+#     UNIQUE(user_id, name),
+#     FOREIGN KEY(user_id) REFERENCES user(id) ON DELETE CASCADE
+# );
+# CREATE INDEX ix_watchlist_user_id ON watchlist(user_id);
+class Watchlist(db.Model):
+    __bind_key__ = 'users'
+    __tablename__ = 'watchlist'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True)
+    name = db.Column(db.String(128), nullable=False)
+    rules_json = db.Column(db.Text, nullable=False)
+    sql_where = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.Integer, nullable=False)
+
+    __table_args__ = (db.UniqueConstraint('user_id', 'name', name='uix_watchlist_user_name'),)
+
+    def __repr__(self):
+        return f"<Watchlist {self.name}>"

@@ -1,12 +1,44 @@
 {% extends 'site.html' %}
 {% block content %}
-<div style="margin-top: 29px;"> 
-    <h1>Questions? Comments? Feedback?</h1>
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-md-8">
+            <h1>Contact & Feedback</h1>
+            <p class="lead">
+                Have questions, comments, or suggestions? We would love to hear from you. 
+                Your feedback helps us make the Point of Interest broker more useful for the community.
+            </p>
+            
+            <div class="card bg-light mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Project Lead</h5>
+                    <p class="card-text">
+                        <strong>Nina Hernitschek</strong><br>
+                        <a href="mailto:nina.hernitschek@uantof.cl">nina.hernitschek@uantof.cl</a>
+                    </p>
+                </div>
+            </div>
+
+            <hr>
+
+            <h3>About the Project</h3>
+            <p>
+                The Point of Interest (POI) broker is developed and maintained at 
+                <strong>CITEVA</strong> (Centro de Investigación, Tecnología, Educación y Vinculación Astronómica), 
+                within the <strong>Universidad de Antofagasta</strong>, Chile.
+            </p>
+            <p>
+                Our mission is to bridge the gap between massive alert streams like ZTF and LSST and 
+                actionable astronomical research by providing efficient filtering and visualization tools.
+            </p>
+
+            <div class="mt-4">
+                <a href="https://astro.uantof.cl/" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm">
+                    Visit CITEVA Website
+                </a>
+            </div>
+        </div>
+    </div>
 </div>
-<br><br>
-Please let our team know if we can answer any questions that you have about using 
-the Point of Interest broker or if there's any way we can make it more useful!<br>
-<br>
-You can email Nina Hernitschek (Lead Developer): nina.hernitschek@uantof.cl
 
 {% endblock %}

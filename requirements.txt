@@ -2,6 +2,7 @@ Flask==3.*
 flask-login==0.6.*
 Flask-WTF==1.*
 Flask-SQLAlchemy==3.*
+Flask-Limiter==3.*
 python-dotenv
 numpy==2.2.*
 astropy==6.*

@@ -1,0 +1,222 @@
+"""Favorites persistence service for managing user favorites and groups."""
+
+import logging
+from flask_login import current_user
+from .. import db
+from ..models import Favorite, FavoriteGroup
+
+logger = logging.getLogger(__name__)
+
+
+def get_favorite_status(locus_id):
+    """
+    Check if a locus_id is favorited by the current user.
+    
+    Args:
+        locus_id: The locus_id to check
+    
+    Returns:
+        bool: True if favorited, False otherwise (or if not authenticated)
+    """
+    if not current_user.is_authenticated:
+        return False
+    
+    if not locus_id:
+        return False
+    
+    fav = Favorite.query.filter_by(user_id=current_user.id, locus_id=locus_id).first()
+    return fav is not None
+
+
+def get_user_favorites(group_id=None):
+    """
+    Get all favorites for the current user, optionally filtered by group.
+    
+    Args:
+        group_id: Optional group ID to filter by (None returns ungrouped)
+    
+    Returns:
+        list: List of dicts with 'id' and 'locusId'
+    """
+    if not current_user.is_authenticated:
+        return []
+    
+    query = Favorite.query.filter_by(user_id=current_user.id)
+    
+    if group_id is not None:
+        query = query.filter_by(group_id=group_id)
+    
+    favs = [{'id': r.id, 'locusId': r.locus_id} for r in query.all()]
+    return favs
+
+
+def toggle_favorite(locus_id, fav_flag, group_id=None):
+    """
+    Add or remove a favorite for the current user.
+    
+    Args:
+        locus_id: The locus_id to favorite
+        fav_flag: True to add, False to remove
+        group_id: Optional group to assign to (can be None for ungrouped)
+    
+    Returns:
+        dict: Status dict with 'status': 'ok' or error message
+    """
+    if not current_user.is_authenticated:
+        return {'error': 'authentication required'}, 401
+    
+    if not locus_id:
+        return {'error': 'locusId required'}, 400
+    
+    try:
+        fav = Favorite.query.filter_by(user_id=current_user.id, locus_id=locus_id).first()
+        
+        if fav_flag:
+            if not fav:
+                fav = Favorite(user_id=current_user.id, locus_id=locus_id, group_id=group_id)
+                db.session.add(fav)
+            else:
+                # Update group if specified
+                fav.group_id = group_id
+            db.session.commit()
+        else:
+            if fav:
+                db.session.delete(fav)
+                db.session.commit()
+        
+        return {'status': 'ok'}, 200
+    except Exception as e:
+        logger.error(f'Error toggling favorite for locus_id {locus_id}: {str(e)}', exc_info=True)
+        db.session.rollback()
+        return {'error': str(e)}, 500
+
+
+def update_favorite_group(favorite_id, group_id):
+    """
+    Move a favorite to a different group.
+    
+    Args:
+        favorite_id: The favorite ID to update
+        group_id: The group ID (can be None for ungrouped)
+    
+    Returns:
+        tuple: (response_dict, status_code)
+    """
+    if not current_user.is_authenticated:
+        return {'error': 'authentication required'}, 401
+    
+    try:
+        fav = Favorite.query.filter_by(id=favorite_id, user_id=current_user.id).first()
+        if not fav:
+            return {'error': 'favorite not found'}, 404
+        
+        # Validate group_id if not None
+        if group_id is not None:
+            group = FavoriteGroup.query.filter_by(id=group_id, user_id=current_user.id).first()
+            if not group:
+                return {'error': 'group not found'}, 404
+        
+        fav.group_id = group_id
+        db.session.commit()
+        
+        return {'status': 'ok', 'groupId': group_id}, 200
+    except Exception as e:
+        logger.error(f'Error updating favorite group for favorite_id {favorite_id}: {str(e)}', exc_info=True)
+        db.session.rollback()
+        return {'error': str(e)}, 500
+
+
+def get_favorite_groups():
+    """
+    Get all favorite groups for the current user with counts.
+    
+    Returns:
+        list: List of group dicts with 'id', 'name', 'count'
+    """
+    if not current_user.is_authenticated:
+        return []
+    
+    try:
+        groups = FavoriteGroup.query.filter_by(user_id=current_user.id).order_by(FavoriteGroup.name).all()
+        result = [
+            {
+                'id': g.id,
+                'name': g.name,
+                'count': Favorite.query.filter_by(group_id=g.id).count()
+            }
+            for g in groups
+        ]
+        
+        # Add ungrouped count at the beginning
+        ungrouped_count = Favorite.query.filter_by(user_id=current_user.id, group_id=None).count()
+        result.insert(0, {'id': None, 'name': 'Ungrouped', 'count': ungrouped_count})
+        
+        return result
+    except Exception as e:
+        logger.error(f'Error getting favorite groups: {str(e)}', exc_info=True)
+        return []
+
+
+def create_favorite_group(name):
+    """
+    Create a new favorite group for the current user.
+    
+    Args:
+        name: The group name
+    
+    Returns:
+        tuple: (response_dict, status_code)
+    """
+    if not current_user.is_authenticated:
+        return {'error': 'authentication required'}, 401
+    
+    if not name or not name.strip():
+        return {'error': 'name cannot be empty'}, 400
+    
+    try:
+        name = name.strip()
+        
+        # Check if group already exists
+        existing = FavoriteGroup.query.filter_by(user_id=current_user.id, name=name).first()
+        if existing:
+            return {'error': 'group already exists'}, 409
+        
+        group = FavoriteGroup(user_id=current_user.id, name=name)
+        db.session.add(group)
+        db.session.commit()
+        
+        return {'id': group.id, 'name': group.name}, 201
+    except Exception as e:
+        logger.error(f'Error creating favorite group: {str(e)}', exc_info=True)
+        db.session.rollback()
+        return {'error': str(e)}, 500
+
+
+def delete_favorite_group(group_id):
+    """
+    Delete a favorite group (orphans its favorites).
+    
+    Args:
+        group_id: The group ID to delete
+    
+    Returns:
+        tuple: (response_dict, status_code)
+    """
+    if not current_user.is_authenticated:
+        return {'error': 'authentication required'}, 401
+    
+    try:
+        group = FavoriteGroup.query.filter_by(id=group_id, user_id=current_user.id).first()
+        if not group:
+            return {'error': 'group not found'}, 404
+        
+        # Orphan favorites (set group_id to None instead of deleting)
+        Favorite.query.filter_by(group_id=group_id).update({'group_id': None})
+        db.session.delete(group)
+        db.session.commit()
+        
+        return {'status': 'ok'}, 200
+    except Exception as e:
+        logger.error(f'Error deleting favorite group {group_id}: {str(e)}', exc_info=True)
+        db.session.rollback()
+        return {'error': str(e)}, 500

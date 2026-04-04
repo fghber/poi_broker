@@ -112,7 +112,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-#.flaskenv is considered public in our project
+.flaskenv
 !.env.example
 
 # Spyder project settings
