@@ -1,6 +1,9 @@
+-- CLI: sqlite3 /path/to/alerts.db .schema
+-- Query: SELECT sql FROM sqlite_master WHERE sql IS NOT NULL;
+
 ---alerts.db---
 CREATE TABLE
-    "featuretable" (
+    IF NOT EXISTS "featuretable" (
         date_log string,
         alert_id string,
         locus_id string,
@@ -283,14 +286,15 @@ CREATE TABLE
         harmonics_chi_per_degree_R real,
         harmonics_chi_per_degree_i real,
         PRIMARY KEY (alert_id, locus_id, date_alert_mjd)
-    )
-CREATE INDEX idx_featuretable_date_alert_mjd ON featuretable (date_alert_mjd)
-CREATE INDEX idx_featuretable_alert_id ON featuretable (alert_id)
-CREATE INDEX idx_featuretable_ztf_object_id ON featuretable (ztf_object_id)
-CREATE INDEX idx_featuretable_locus_id ON featuretable (locus_id)
-CREATE INDEX idx_featuretable_ant_passband ON featuretable (ant_passband)
-CREATE INDEX idx_featuretable_locus_ra ON featuretable (locus_ra)
-CREATE INDEX idx_featuretable_locus_dec ON featuretable (locus_dec)
+    );
+CREATE INDEX idx_featuretable_date_alert_mjd ON featuretable (date_alert_mjd);
+CREATE INDEX idx_featuretable_alert_id ON featuretable (alert_id);
+CREATE INDEX idx_featuretable_ztf_object_id ON featuretable (ztf_object_id);
+CREATE INDEX idx_featuretable_locus_id ON featuretable (locus_id);
+CREATE INDEX idx_featuretable_ant_passband ON featuretable (ant_passband);
+CREATE INDEX idx_featuretable_locus_ra ON featuretable (locus_ra);
+CREATE INDEX idx_featuretable_locus_dec ON featuretable (locus_dec);
+CREATE INDEX idx_featuretable_ant_mag_corrected ON featuretable (ant_mag_corrected);
 
 CREATE TABLE
     crossmatches (
@@ -301,7 +305,7 @@ CREATE TABLE
         ra_cat real,
         dec_cat real,
         separation real
-    )
+    );
 
 CREATE TABLE
     classification (
@@ -315,13 +319,9 @@ CREATE TABLE
         p_sn real,
         p_yso real,
         prob_class string
-    )
-CREATE INDEX idx_classification_alert_id ON classification (alert_id)
-
--- CREATE TABLE
---     sqlite_stat1 (tbl, idx, stat)
--- CREATE INDEX idx_featuretable_ant_mag_corrected ON featuretable (ant_mag_corrected)
--- CREATE INDEX idx_classification_prob_class ON classification (prob_class)
+    );
+CREATE INDEX idx_classification_alert_id ON classification (alert_id);
+CREATE INDEX idx_classification_prob_class ON classification (prob_class);
 
 ---users.db---
 CREATE TABLE
@@ -337,8 +337,8 @@ CREATE TABLE
         email_verification_token VARCHAR(128),
         PRIMARY KEY (id),
         UNIQUE (email)
-    )
-CREATE INDEX ix_user_email_verification_token ON user (email_verification_token)    
+    );
+CREATE INDEX ix_user_email_verification_token ON user (email_verification_token);
 
 CREATE TABLE
     favorite (
@@ -349,10 +349,10 @@ CREATE TABLE
         group_id INTEGER REFERENCES favorite_group (id) ON DELETE SET NULL,
         UNIQUE (user_id, locus_id),
         FOREIGN KEY (user_id) REFERENCES user (id) ON DELETE CASCADE
-    )
-CREATE INDEX ix_favorite_group_id ON favorite (group_id)
-CREATE INDEX ix_favorite_user_id ON favorite (user_id)
-CREATE INDEX ix_favorite_locus_id ON favorite (locus_id)
+    );
+CREATE INDEX ix_favorite_group_id ON favorite (group_id);
+CREATE INDEX ix_favorite_user_id ON favorite (user_id);
+CREATE INDEX ix_favorite_locus_id ON favorite (locus_id);
 
 CREATE TABLE
     favorite_group (
@@ -362,8 +362,8 @@ CREATE TABLE
         created_at TEXT NOT NULL,
         UNIQUE (user_id, name),
         FOREIGN KEY (user_id) REFERENCES user (id) ON DELETE CASCADE
-    )
-CREATE INDEX ix_favorite_group_user_id ON favorite_group (user_id)
+    );
+CREATE INDEX ix_favorite_group_user_id ON favorite_group (user_id);
 
 CREATE TABLE
     watchlist (
@@ -375,5 +375,5 @@ CREATE TABLE
         created_at INTEGER NOT NULL DEFAULT (strftime ('%s', 'now')),
         UNIQUE (user_id, name),
         FOREIGN KEY (user_id) REFERENCES user (id) ON DELETE CASCADE
-    )
-CREATE INDEX ix_watchlist_user_id ON watchlist (user_id)
+    );
+CREATE INDEX ix_watchlist_user_id ON watchlist (user_id);

@@ -1,0 +1,23 @@
+- Change column type: ant_magband REAL -> TEXT
+
+  ALTER TABLE featuretable ADD COLUMN ant_passband_str TEXT
+  UPDATE featuretable SET ant_passband_str = CAST(ant_passband as TEXT)
+  ALTER TABLE featuretable DROP COLUMN ant_passband;
+  ALTER TABLE featuretable RENAME COLUMN ant_passband_str TO ant_passband;
+
+  Recommended (safer, canonical SQLite way)
+  CREATE TABLE new_featuretable (
+        -- same schema, but:
+        ant_passband TEXT,
+        ...
+    );
+    INSERT INTO new_featuretable (...)
+    SELECT
+        CAST(ant_passband AS TEXT),
+        ...
+    FROM featuretable;
+    DROP TABLE featuretable;
+    ALTER TABLE new_featuretable RENAME TO featuretable;
+    HOWEVER: SQLite happily stores TEXT in a REAL column (Type Affinity). This only matters when moving to PosgreSQL/MySQL
+
+- Check for missing DB indices? See schema SQL
