@@ -1,0 +1,515 @@
+<script src="https://cdn.jsdelivr.net/npm/jQuery-QueryBuilder/dist/js/query-builder.standalone.min.js"></script>
+<script>
+(function (window, document, $) {
+  if (!$) {
+    return;
+  }
+
+  if (window.PoiWatchlistQueryBuilder) {
+    return;
+  }
+
+  const filters = [
+    { id: 'featuretable.date_log', label: 'Date Log', type: 'string' },
+    { id: 'featuretable.alert_id', label: 'Alert ID', type: 'string' },
+    { id: 'featuretable.locus_id', label: 'Locus ID', type: 'string' },
+    { id: 'featuretable.ztf_object_id', label: 'ZTF Object ID', type: 'string' },
+    { id: 'featuretable.brightest_alert_id_ztf', label: 'Brightest Alert ID (ZTF)', type: 'string' },
+    { id: 'featuretable.anomaly_mask', label: 'Anomaly Mask', type: 'string' },
+    { id: 'featuretable.anomaly_type', label: 'Anomaly Type', type: 'string' },
+    { id: 'featuretable.is_corrected', label: 'Is Corrected', type: 'boolean' },
+    { id: 'featuretable.num_alerts', label: 'Number of Alerts', type: 'integer' },
+    { id: 'featuretable.num_mag_values', label: 'Number of Magnitude Values', type: 'integer' },
+    { id: 'featuretable.locus_ra', label: 'Locus RA', type: 'double' },
+    { id: 'featuretable.locus_dec', label: 'Locus Dec', type: 'double' },
+    { id: 'featuretable.date_alert_mjd', label: 'Date Alert (MJD)', type: 'double' },
+    { id: 'featuretable.brightest_alert_observation_time_ztf', label: 'Brightest Alert Observation Time (ZTF)', type: 'double' },
+    { id: 'featuretable.brightest_alert_magnitude_ztf', label: 'Brightest Alert Magnitude (ZTF)', type: 'double' },
+    { id: 'featuretable.feature_amplitude_magn_r', label: 'Amplitude (R)', type: 'double' },
+    { id: 'featuretable.feature_amplitude_magn_g', label: 'Amplitude (g)', type: 'double' },
+    { id: 'featuretable.amplitude_g', label: 'Amplitude (g)', type: 'double' },
+    { id: 'featuretable.amplitude_R', label: 'Amplitude (R)', type: 'double' },
+    { id: 'featuretable.amplitude_i', label: 'Amplitude (i)', type: 'double' },
+    { id: 'featuretable.feature_mean_magn_r', label: 'Mean Magnitude (R)', type: 'double' },
+    { id: 'featuretable.feature_mean_magn_g', label: 'Mean Magnitude (g)', type: 'double' },
+    { id: 'featuretable.meanmag_g', label: 'Mean Magnitude (g)', type: 'double' },
+    { id: 'featuretable.meanmag_R', label: 'Mean Magnitude (R)', type: 'double' },
+    { id: 'featuretable.meanmag_i', label: 'Mean Magnitude (i)', type: 'double' },
+    { id: 'featuretable.g_r_max', label: 'g-R Max', type: 'double' },
+    { id: 'featuretable.g_r_mean', label: 'g-R Mean', type: 'double' },
+    { id: 'featuretable.feature_anderson_darling_normal_magn_r', label: 'Anderson-Darling Normal (R)', type: 'double' },
+    { id: 'featuretable.feature_beyond_1_std_magn_r', label: 'Beyond 1 Std (R)', type: 'double' },
+    { id: 'featuretable.feature_beyond_2_std_magn_r', label: 'Beyond 2 Std (R)', type: 'double' },
+    { id: 'featuretable.feature_cusum_magn_r', label: 'CUSUM (R)', type: 'double' },
+    { id: 'featuretable.feature_eta_e_magn_r', label: 'Eta E (R)', type: 'double' },
+    { id: 'featuretable.feature_inter_percentile_range_2_magn_r', label: 'Inter Percentile Range 2 (R)', type: 'double' },
+    { id: 'featuretable.feature_inter_percentile_range_10_magn_r', label: 'Inter Percentile Range 10 (R)', type: 'double' },
+    { id: 'featuretable.feature_inter_percentile_range_25_magn_r', label: 'Inter Percentile Range 25 (R)', type: 'double' },
+    { id: 'featuretable.feature_kurtosis_magn_r', label: 'Kurtosis (R)', type: 'double' },
+    { id: 'featuretable.feature_linear_fit_slope_magn_r', label: 'Linear Fit Slope (R)', type: 'double' },
+    { id: 'featuretable.feature_linear_trend_magn_r', label: 'Linear Trend (R)', type: 'double' },
+    { id: 'featuretable.feature_linear_fit_slope_sigma_magn_r', label: 'Linear Fit Slope Sigma (R)', type: 'double' },
+    { id: 'featuretable.feature_linear_fit_reduced_chi2_magn_r', label: 'Linear Fit Reduced Chi2 (R)', type: 'double' },
+    { id: 'featuretable.feature_linear_trend_sigma_magn_r', label: 'Linear Trend Sigma (R)', type: 'double' },
+    { id: 'featuretable.feature_magnitude_percentage_ratio_40_5_magn_r', label: 'Magnitude Ratio 40/5 (R)', type: 'double' },
+    { id: 'featuretable.feature_magnitude_percentage_ratio_20_5_magn_r', label: 'Magnitude Ratio 20/5 (R)', type: 'double' },
+    { id: 'featuretable.feature_maximum_slope_magn_r', label: 'Maximum Slope (R)', type: 'double' },
+    { id: 'featuretable.feature_median_absolute_deviation_magn_r', label: 'Median Absolute Deviation (R)', type: 'double' },
+    { id: 'featuretable.feature_percent_amplitude_magn_r', label: 'Percent Amplitude (R)', type: 'double' },
+    { id: 'featuretable.feature_percent_difference_magnitude_percentile_5_magn_r', label: 'Percent Diff Mag P5 (R)', type: 'double' },
+    { id: 'featuretable.feature_percent_difference_magnitude_percentile_10_magn_r', label: 'Percent Diff Mag P10 (R)', type: 'double' },
+    { id: 'featuretable.feature_median_buffer_range_percentage_10_magn_r', label: 'Median Buffer Range Percentage 10 (R)', type: 'double' },
+    { id: 'featuretable.feature_median_buffer_range_percentage_20_magn_r', label: 'Median Buffer Range Percentage 20 (R)', type: 'double' },
+    { id: 'featuretable.feature_period_0_magn_r', label: 'Period 0 (R)', type: 'double' },
+    { id: 'featuretable.feature_period_s_to_n_0_magn_r', label: 'Period S/N 0 (R)', type: 'double' },
+    { id: 'featuretable.feature_period_1_magn_r', label: 'Period 1 (R)', type: 'double' },
+    { id: 'featuretable.feature_period_1_magn_g', label: 'Period 1 (g)', type: 'double' },
+    { id: 'featuretable.feature_period_s_to_n_1_magn_r', label: 'Period S/N 1 (R)', type: 'double' },
+    { id: 'featuretable.feature_period_s_to_n_1_magn_g', label: 'Period S/N 1 (g)', type: 'double' },
+    { id: 'featuretable.feature_period_2_magn_r', label: 'Period 2 (R)', type: 'double' },
+    { id: 'featuretable.feature_period_s_to_n_2_magn_r', label: 'Period S/N 2 (R)', type: 'double' },
+    { id: 'featuretable.feature_period_s_to_n_2_magn_g', label: 'Period S/N 2 (g)', type: 'double' },
+    { id: 'featuretable.feature_period_3_magn_r', label: 'Period 3 (R)', type: 'double' },
+    { id: 'featuretable.feature_period_3_magn_g', label: 'Period 3 (g)', type: 'double' },
+    { id: 'featuretable.feature_period_s_to_n_3_magn_r', label: 'Period S/N 3 (R)', type: 'double' },
+    { id: 'featuretable.feature_period_s_to_n_3_magn_g', label: 'Period S/N 3 (g)', type: 'double' },
+    { id: 'featuretable.feature_period_4_magn_g', label: 'Period 4 (g)', type: 'double' },
+    { id: 'featuretable.feature_period_4_magn_r', label: 'Period 4 (R)', type: 'double' },
+    { id: 'featuretable.feature_period_s_to_n_4_magn_r', label: 'Period S/N 4 (R)', type: 'double' },
+    { id: 'featuretable.feature_period_s_to_n_4_magn_g', label: 'Period S/N 4 (g)', type: 'double' },
+    { id: 'featuretable.feature_periodogram_beyond_2_std_magn_r', label: 'Periodogram Beyond 2 Std (R)', type: 'double' },
+    { id: 'featuretable.feature_periodogram_beyond_2_std_magn_g', label: 'Periodogram Beyond 2 Std (g)', type: 'double' },
+    { id: 'featuretable.feature_periodogram_beyond_3_std_magn_r', label: 'Periodogram Beyond 3 Std (R)', type: 'double' },
+    { id: 'featuretable.feature_periodogram_beyond_3_std_magn_g', label: 'Periodogram Beyond 3 Std (g)', type: 'double' },
+    { id: 'featuretable.feature_periodogram_standard_deviation_magn_r', label: 'Periodogram Standard Deviation (R)', type: 'double' },
+    { id: 'featuretable.feature_periodogram_amplitude_magn_r', label: 'Periodogram Amplitude (R)', type: 'double' },
+    { id: 'featuretable.feature_periodogram_standard_deviation_magn_g', label: 'Periodogram Standard Deviation (g)', type: 'double' },
+    { id: 'featuretable.feature_chi2_magn_r', label: 'Chi2 (R)', type: 'double' },
+    { id: 'featuretable.feature_skew_magn_r', label: 'Skew (R)', type: 'double' },
+    { id: 'featuretable.feature_standard_deviation_magn_r', label: 'Standard Deviation (R)', type: 'double' },
+    { id: 'featuretable.feature_stetson_k_magn_r', label: 'Stetson K (R)', type: 'double' },
+    { id: 'featuretable.feature_weighted_mean_magn_r', label: 'Weighted Mean (R)', type: 'double' },
+    { id: 'featuretable.feature_anderson_darling_normal_magn_g', label: 'Anderson-Darling Normal (g)', type: 'double' },
+    { id: 'featuretable.feature_beyond_1_std_magn_g', label: 'Beyond 1 Std (g)', type: 'double' },
+    { id: 'featuretable.feature_beyond_2_std_magn_g', label: 'Beyond 2 Std (g)', type: 'double' },
+    { id: 'featuretable.feature_cusum_magn_g', label: 'CUSUM (g)', type: 'double' },
+    { id: 'featuretable.feature_eta_e_magn_g', label: 'Eta E (g)', type: 'double' },
+    { id: 'featuretable.feature_inter_percentile_range_2_magn_g', label: 'Inter Percentile Range 2 (g)', type: 'double' },
+    { id: 'featuretable.feature_inter_percentile_range_10_magn_g', label: 'Inter Percentile Range 10 (g)', type: 'double' },
+    { id: 'featuretable.feature_inter_percentile_range_25_magn_g', label: 'Inter Percentile Range 25 (g)', type: 'double' },
+    { id: 'featuretable.feature_kurtosis_magn_g', label: 'Kurtosis (g)', type: 'double' },
+    { id: 'featuretable.feature_linear_fit_slope_magn_g', label: 'Linear Fit Slope (g)', type: 'double' },
+    { id: 'featuretable.feature_linear_fit_slope_sigma_magn_g', label: 'Linear Fit Slope Sigma Magnitude (g)', type: 'double' },
+    { id: 'featuretable.feature_linear_fit_reduced_chi2_magn_g', label: 'Linear Fit Reduced Chi2 Magnitude (g)', type: 'double' },
+    { id: 'featuretable.feature_linear_trend_magn_g', label: 'Linear Trend (g)', type: 'double' },
+    { id: 'featuretable.feature_linear_trend_sigma_magn_g', label: 'Linear Trend Sigma (g)', type: 'double' },
+    { id: 'featuretable.feature_magnitude_percentage_ratio_40_5_magn_g', label: 'Magnitude Ratio 40/5 (g)', type: 'double' },
+    { id: 'featuretable.feature_magnitude_percentage_ratio_20_5_magn_g', label: 'Magnitude Ratio 20/5 (g)', type: 'double' },
+    { id: 'featuretable.feature_maximum_slope_magn_g', label: 'Maximum Slope (g)', type: 'double' },
+    { id: 'featuretable.feature_median_absolute_deviation_magn_g', label: 'Median Absolute Deviation (g)', type: 'double' },
+    { id: 'featuretable.feature_percent_amplitude_magn_g', label: 'Percent Amplitude (g)', type: 'double' },
+    { id: 'featuretable.feature_percent_difference_magnitude_percentile_5_magn_g', label: 'Percent Diff Mag P5 (g)', type: 'double' },
+    { id: 'featuretable.feature_percent_difference_magnitude_percentile_10_magn_g', label: 'Percent Diff Mag P10 (g)', type: 'double' },
+    { id: 'featuretable.feature_period_0_magn_g', label: 'Period 0 (g)', type: 'double' },
+    { id: 'featuretable.feature_median_buffer_range_percentage_10_magn_g', label: 'Median Buffer Range Percentage 10 (g)', type: 'double' },
+    { id: 'featuretable.feature_median_buffer_range_percentage_20_magn_g', label: 'Median Buffer Range Percentage 20 (g)', type: 'double' },
+    { id: 'featuretable.feature_period_s_to_n_0_magn_g', label: 'Period S/N 0 (g)', type: 'double' },
+    { id: 'featuretable.feature_periodogram_amplitude_magn_g', label: 'Periodogram Amplitude (g)', type: 'double' },
+    { id: 'featuretable.feature_chi2_magn_g', label: 'Chi2 (g)', type: 'double' },
+    { id: 'featuretable.feature_skew_magn_g', label: 'Skew (g)', type: 'double' },
+    { id: 'featuretable.feature_standard_deviation_magn_g', label: 'Standard Deviation (g)', type: 'double' },
+    { id: 'featuretable.feature_stetson_k_magn_g', label: 'Stetson K (g)', type: 'double' },
+    { id: 'featuretable.feature_weighted_mean_magn_g', label: 'Weighted Mean (g)', type: 'double' },
+    { id: 'featuretable.feature_anderson_darling_normal_flux_r', label: 'Anderson-Darling Normal (Flux R)', type: 'double' },
+    { id: 'featuretable.feature_cusum_flux_r', label: 'CUSUM (Flux R)', type: 'double' },
+    { id: 'featuretable.feature_eta_e_flux_r', label: 'Eta E (Flux R)', type: 'double' },
+    { id: 'featuretable.feature_excess_variance_flux_r', label: 'Excess Variance (Flux R)', type: 'double' },
+    { id: 'featuretable.feature_kurtosis_flux_r', label: 'Kurtosis (Flux R)', type: 'double' },
+    { id: 'featuretable.feature_mean_variance_flux_r', label: 'Mean Variance (Flux R)', type: 'double' },
+    { id: 'featuretable.feature_chi2_flux_r', label: 'Chi2 (Flux R)', type: 'double' },
+    { id: 'featuretable.feature_skew_flux_r', label: 'Skew (Flux R)', type: 'double' },
+    { id: 'featuretable.feature_stetson_k_flux_r', label: 'Stetson K (Flux R)', type: 'double' },
+    { id: 'featuretable.feature_anderson_darling_normal_flux_g', label: 'Anderson-Darling Normal (Flux G)', type: 'double' },
+    { id: 'featuretable.feature_cusum_flux_g', label: 'CUSUM (Flux G)', type: 'double' },
+    { id: 'featuretable.feature_eta_e_flux_g', label: 'Eta E (Flux G)', type: 'double' },
+    { id: 'featuretable.feature_excess_variance_flux_g', label: 'Excess Variance (Flux G)', type: 'double' },
+    { id: 'featuretable.feature_kurtosis_flux_g', label: 'Kurtosis (Flux G)', type: 'double' },
+    { id: 'featuretable.feature_mean_variance_flux_g', label: 'Mean Variance (Flux G)', type: 'double' },
+    { id: 'featuretable.feature_chi2_flux_g', label: 'Chi2 (Flux G)', type: 'double' },
+    { id: 'featuretable.feature_skew_flux_g', label: 'Skew (Flux G)', type: 'double' },
+    { id: 'featuretable.feature_stetson_k_flux_g', label: 'Stetson K (Flux G)', type: 'double' },
+    { id: 'featuretable.anomaly_score', label: 'Anomaly Score', type: 'double' },
+    { id: 'featuretable.ant_mag_corrected', label: 'Magnitude Corrected', type: 'double' },
+    { id: 'featuretable.ant_passband', label: 'Filter', type: 'string', input: 'select', values: { g: 'g', R: 'R', i: 'i' }, operators: ['equal', 'not_equal', 'in', 'not_in'] },
+    { id: 'featuretable.best_period', label: 'Best Multiband Period', type: 'double' },
+    { id: 'featuretable.best_period_significance', label: 'Best Multiband Period Significance', type: 'double' },
+    { id: 'featuretable.best_period_g', label: 'Best Period (g)', type: 'double' },
+    { id: 'featuretable.best_period_r', label: 'Best Period (R)', type: 'double' },
+    { id: 'featuretable.best_period_i', label: 'Best Period (i)', type: 'double' },
+    { id: 'featuretable.power_rate_0p5', label: 'Power Rate 0.5', type: 'double' },
+    { id: 'featuretable.power_rate_0p333', label: 'Power Rate 0.333', type: 'double' },
+    { id: 'featuretable.power_rate_0p25', label: 'Power Rate 0.25', type: 'double' },
+    { id: 'featuretable.power_rate_2', label: 'Power Rate 2', type: 'double' },
+    { id: 'featuretable.power_rate_3', label: 'Power Rate 3', type: 'double' },
+    { id: 'featuretable.power_rate_4', label: 'Power Rate 4', type: 'double' },
+    { id: 'featuretable.mhps_ratio_g', label: 'MHPS Ratio (g)', type: 'double' },
+    { id: 'featuretable.mhps_ratio_R', label: 'MHPS Ratio (R)', type: 'double' },
+    { id: 'featuretable.mhps_ratio_i', label: 'MHPS Ratio (i)', type: 'double' },
+    { id: 'featuretable.mhps_low_g', label: 'MHPS Low (g)', type: 'double' },
+    { id: 'featuretable.mhps_low_R', label: 'MHPS Low (R)', type: 'double' },
+    { id: 'featuretable.mhps_low_i', label: 'MHPS Low (i)', type: 'double' },
+    { id: 'featuretable.mhps_high_g', label: 'MHPS High (g)', type: 'double' },
+    { id: 'featuretable.mhps_high_R', label: 'MHPS High (R)', type: 'double' },
+    { id: 'featuretable.mhps_high_i', label: 'MHPS High (i)', type: 'double' },
+    { id: 'featuretable.mhps_non_zero_g', label: 'MHPS Non-Zero (g)', type: 'double' },
+    { id: 'featuretable.mhps_non_zero_R', label: 'MHPS Non-Zero (R)', type: 'double' },
+    { id: 'featuretable.mhps_non_zero_i', label: 'MHPS Non-Zero (i)', type: 'double' },
+    { id: 'featuretable.mhps_pn_flag_g', label: 'MHPS PN Flag (g)', type: 'double' },
+    { id: 'featuretable.mhps_pn_flag_R', label: 'MHPS PN Flag (R)', type: 'double' },
+    { id: 'featuretable.mhps_pn_flag_i', label: 'MHPS PN Flag (i)', type: 'double' },
+    { id: 'featuretable.drw_omega_g', label: 'DRW Omega (g)', type: 'double' },
+    { id: 'featuretable.drw_omega_R', label: 'DRW Omega (R)', type: 'double' },
+    { id: 'featuretable.drw_omega_i', label: 'DRW Omega (i)', type: 'double' },
+    { id: 'featuretable.drw_tau_g', label: 'DRW Tau (g)', type: 'double' },
+    { id: 'featuretable.drw_tau_R', label: 'DRW Tau (R)', type: 'double' },
+    { id: 'featuretable.drw_tau_i', label: 'DRW Tau (i)', type: 'double' },
+    { id: 'featuretable.anderson_darling_g', label: 'Anderson-Darling (g)', type: 'double' },
+    { id: 'featuretable.anderson_darling_R', label: 'Anderson-Darling (R)', type: 'double' },
+    { id: 'featuretable.anderson_darling_i', label: 'Anderson-Darling (i)', type: 'double' },
+    { id: 'featuretable.autocorrelation_length_g', label: 'Autocorrelation Length (g)', type: 'double' },
+    { id: 'featuretable.autocorrelation_length_R', label: 'Autocorrelation Length (R)', type: 'double' },
+    { id: 'featuretable.autocorrelation_length_i', label: 'Autocorrelation Length (i)', type: 'double' },
+    { id: 'featuretable.beyond1std_g', label: 'Beyond 1 Std (g)', type: 'double' },
+    { id: 'featuretable.beyond1std_R', label: 'Beyond 1 Std (R)', type: 'double' },
+    { id: 'featuretable.beyond1std_i', label: 'Beyond 1 Std (i)', type: 'double' },
+    { id: 'featuretable.con_g', label: 'Con (g)', type: 'double' },
+    { id: 'featuretable.con_R', label: 'Con (R)', type: 'double' },
+    { id: 'featuretable.con_i', label: 'Con (i)', type: 'double' },
+    { id: 'featuretable.eta_e_g', label: 'Eta E (g)', type: 'double' },
+    { id: 'featuretable.eta_e_R', label: 'Eta E (R)', type: 'double' },
+    { id: 'featuretable.eta_e_i', label: 'Eta E (i)', type: 'double' },
+    { id: 'featuretable.gskew_g', label: 'GSkew (g)', type: 'double' },
+    { id: 'featuretable.gskew_R', label: 'GSkew (R)', type: 'double' },
+    { id: 'featuretable.gskew_i', label: 'GSkew (i)', type: 'double' },
+    { id: 'featuretable.maxslope_g', label: 'Max Slope (g)', type: 'double' },
+    { id: 'featuretable.maxslope_R', label: 'Max Slope (R)', type: 'double' },
+    { id: 'featuretable.maxslope_i', label: 'Max Slope (i)', type: 'double' },
+    { id: 'featuretable.meanvariance_g', label: 'Mean Variance (g)', type: 'double' },
+    { id: 'featuretable.meanvariance_R', label: 'Mean Variance (R)', type: 'double' },
+    { id: 'featuretable.meanvariance_i', label: 'Mean Variance (i)', type: 'double' },
+    { id: 'featuretable.medianabsdev_g', label: 'Median Absolute Deviation (g)', type: 'double' },
+    { id: 'featuretable.medianabsdev_R', label: 'Median Absolute Deviation (R)', type: 'double' },
+    { id: 'featuretable.medianabsdev_i', label: 'Median Absolute Deviation (i)', type: 'double' },
+    { id: 'featuretable.medianbrp_g', label: 'Median BRP (g)', type: 'double' },
+    { id: 'featuretable.medianbrp_R', label: 'Median BRP (R)', type: 'double' },
+    { id: 'featuretable.medianbrp_i', label: 'Median BRP (i)', type: 'double' },
+    { id: 'featuretable.pairslopetrend_g', label: 'Pair Slope Trend (g)', type: 'double' },
+    { id: 'featuretable.pairslopetrend_R', label: 'Pair Slope Trend (R)', type: 'double' },
+    { id: 'featuretable.pairslopetrend_i', label: 'Pair Slope Trend (i)', type: 'double' },
+    { id: 'featuretable.percent_amplitude_g', label: 'Percent Amplitude (g)', type: 'double' },
+    { id: 'featuretable.percent_amplitude_R', label: 'Percent Amplitude (R)', type: 'double' },
+    { id: 'featuretable.percent_amplitude_i', label: 'Percent Amplitude (i)', type: 'double' },
+    { id: 'featuretable.q31_g', label: 'Q31 (g)', type: 'double' },
+    { id: 'featuretable.q31_R', label: 'Q31 (R)', type: 'double' },
+    { id: 'featuretable.q31_i', label: 'Q31 (i)', type: 'double' },
+    { id: 'featuretable.rcs_g', label: 'RCS (g)', type: 'double' },
+    { id: 'featuretable.rcs_R', label: 'RCS (R)', type: 'double' },
+    { id: 'featuretable.rcs_i', label: 'RCS (i)', type: 'double' },
+    { id: 'featuretable.skew_g', label: 'Skew (g)', type: 'double' },
+    { id: 'featuretable.skew_R', label: 'Skew (R)', type: 'double' },
+    { id: 'featuretable.skew_i', label: 'Skew (i)', type: 'double' },
+    { id: 'featuretable.smallkurtosis_g', label: 'Small Kurtosis (g)', type: 'double' },
+    { id: 'featuretable.smallkurtosis_R', label: 'Small Kurtosis (R)', type: 'double' },
+    { id: 'featuretable.smallkurtosis_i', label: 'Small Kurtosis (i)', type: 'double' },
+    { id: 'featuretable.stdmag_g', label: 'Std Mag (g)', type: 'double' },
+    { id: 'featuretable.stdmag_R', label: 'Std Mag (R)', type: 'double' },
+    { id: 'featuretable.stdmag_i', label: 'Std Mag (i)', type: 'double' },
+    { id: 'featuretable.stetsonk_g', label: 'Stetson K (g)', type: 'double' },
+    { id: 'featuretable.stetsonk_R', label: 'Stetson K (R)', type: 'double' },
+    { id: 'featuretable.stetsonk_i', label: 'Stetson K (i)', type: 'double' },
+    { id: 'featuretable.p_chi_g', label: 'P Chi (g)', type: 'double' },
+    { id: 'featuretable.p_chi_R', label: 'P Chi (R)', type: 'double' },
+    { id: 'featuretable.p_chi_i', label: 'P Chi (i)', type: 'double' },
+    { id: 'featuretable.ex_var_g', label: 'Excess Variance (g)', type: 'double' },
+    { id: 'featuretable.ex_var_R', label: 'Excess Variance (R)', type: 'double' },
+    { id: 'featuretable.ex_var_i', label: 'Excess Variance (i)', type: 'double' },
+    { id: 'featuretable.iar_phi_g', label: 'IAR Phi (g)', type: 'double' },
+    { id: 'featuretable.iar_phi_R', label: 'IAR Phi (R)', type: 'double' },
+    { id: 'featuretable.iar_phi_i', label: 'IAR Phi (i)', type: 'double' },
+    { id: 'featuretable.regression_slope_g', label: 'Regression Slope (g)', type: 'double' },
+    { id: 'featuretable.regression_slope_R', label: 'Regression Slope (R)', type: 'double' },
+    { id: 'featuretable.regression_slope_i', label: 'Regression Slope (i)', type: 'double' },
+    { id: 'featuretable.delta_mag_fid_g', label: 'Delta Mag Fid (g)', type: 'double' },
+    { id: 'featuretable.delta_mag_fid_R', label: 'Delta Mag Fid (R)', type: 'double' },
+    { id: 'featuretable.delta_mag_fid_i', label: 'Delta Mag Fid (i)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_1_g', label: 'Harmonics Mag 1 (g)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_1_R', label: 'Harmonics Mag 1 (R)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_1_i', label: 'Harmonics Mag 1 (i)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_2_g', label: 'Harmonics Mag 2 (g)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_2_R', label: 'Harmonics Mag 2 (R)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_2_i', label: 'Harmonics Mag 2 (i)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_3_g', label: 'Harmonics Mag 3 (g)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_3_R', label: 'Harmonics Mag 3 (R)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_3_i', label: 'Harmonics Mag 3 (i)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_4_g', label: 'Harmonics Mag 4 (g)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_4_R', label: 'Harmonics Mag 4 (R)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_4_i', label: 'Harmonics Mag 4 (i)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_5_g', label: 'Harmonics Mag 5 (g)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_5_R', label: 'Harmonics Mag 5 (R)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_5_i', label: 'Harmonics Mag 5 (i)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_6_g', label: 'Harmonics Mag 6 (g)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_6_R', label: 'Harmonics Mag 6 (R)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_6_i', label: 'Harmonics Mag 6 (i)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_7_g', label: 'Harmonics Mag 7 (g)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_7_R', label: 'Harmonics Mag 7 (R)', type: 'double' },
+    { id: 'featuretable.harmonics_mag_7_i', label: 'Harmonics Mag 7 (i)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_1_g', label: 'Harmonics Phi 1 (g)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_1_R', label: 'Harmonics Phi 1 (R)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_1_i', label: 'Harmonics Phi 1 (i)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_2_g', label: 'Harmonics Phi 2 (g)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_2_R', label: 'Harmonics Phi 2 (R)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_2_i', label: 'Harmonics Phi 2 (i)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_3_g', label: 'Harmonics Phi 3 (g)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_3_R', label: 'Harmonics Phi 3 (R)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_3_i', label: 'Harmonics Phi 3 (i)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_4_g', label: 'Harmonics Phi 4 (g)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_4_R', label: 'Harmonics Phi 4 (R)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_4_i', label: 'Harmonics Phi 4 (i)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_5_g', label: 'Harmonics Phi 5 (g)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_5_R', label: 'Harmonics Phi 5 (R)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_5_i', label: 'Harmonics Phi 5 (i)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_6_g', label: 'Harmonics Phi 6 (g)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_6_R', label: 'Harmonics Phi 6 (R)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_6_i', label: 'Harmonics Phi 6 (i)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_7_g', label: 'Harmonics Phi 7 (g)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_7_R', label: 'Harmonics Phi 7 (R)', type: 'double' },
+    { id: 'featuretable.harmonics_phi_7_i', label: 'Harmonics Phi 7 (i)', type: 'double' },
+    { id: 'featuretable.harmonics_mse_g', label: 'Harmonics MSE (g)', type: 'double' },
+    { id: 'featuretable.harmonics_mse_R', label: 'Harmonics MSE (R)', type: 'double' },
+    { id: 'featuretable.harmonics_mse_i', label: 'Harmonics MSE (i)', type: 'double' },
+    { id: 'featuretable.harmonics_chi_per_degree_g', label: 'Harmonics Chi Per Degree (g)', type: 'double' },
+    { id: 'featuretable.harmonics_chi_per_degree_R', label: 'Harmonics Chi Per Degree (R)', type: 'double' },
+    { id: 'featuretable.harmonics_chi_per_degree_i', label: 'Harmonics Chi Per Degree (i)', type: 'double' },
+    { id: 'classification.alert_id', label: 'Alert ID', type: 'string' },
+    { id: 'classification.p_cvnova', label: 'CV Nova Probability', type: 'double' },
+    { id: 'classification.p_e', label: 'E Probability', type: 'double' },
+    { id: 'classification.p_lpv', label: 'LPV Probability', type: 'double' },
+    { id: 'classification.p_puls', label: 'Pulsator Probability', type: 'double' },
+    { id: 'classification.p_periodic_other', label: 'Periodic Other Probability', type: 'double' },
+    { id: 'classification.p_quas', label: 'Quasar Probability', type: 'double' },
+    { id: 'classification.p_sn', label: 'Supernova Probability', type: 'double' },
+    { id: 'classification.p_yso', label: 'YSO Probability', type: 'double' },
+    {
+      id: 'classification.prob_class',
+      label: 'Probability Class',
+      type: 'string',
+      input: 'select',
+      values: {
+        cvnova: 'cvnova',
+        e: 'e',
+        lpv: 'lpv',
+        puls: 'puls',
+        periodic_other: 'periodic_other',
+        quas: 'quas',
+        sn: 'sn',
+        yso: 'yso'
+      }
+    }
+  ];
+
+  const builderChangeEvents = [
+    'afterAddRule.queryBuilder', 'afterDeleteRule.queryBuilder',
+    'afterUpdateRuleFilter.queryBuilder', 'afterUpdateRuleOperator.queryBuilder',
+    'afterUpdateRuleValue.queryBuilder', 'afterAddGroup.queryBuilder',
+    'afterDeleteGroup.queryBuilder'
+  ];
+
+  function getCsrfToken() {
+    const tag = document.querySelector('meta[name="csrf-token"]');
+    return tag ? tag.getAttribute('content') : '';
+  }
+
+  function createApi(root, options) {
+    const settings = Object.assign({
+      onSave: null,
+      onPreview: null
+    }, options || {});
+
+    const $root = $(root);
+    const $builder = $root.find('[data-role="builder"]');
+    const $previewButton = $root.find('[data-role="preview-btn"]');
+    const $output = $root.find('[data-role="output"]');
+    const $saveButton = $root.find('[data-role="save-btn"]');
+    const $nameInput = $root.find('[data-role="name-input"]');
+    const $results = $root.find('[data-role="results"]');
+    let previewSuccess = false;
+
+    function resetPreview(message) {
+      previewSuccess = false;
+      $saveButton.prop('disabled', true).attr('title', 'Run Generate SQL first');
+      if (typeof message === 'string') {
+        $results.text(message);
+      }
+    }
+
+    function resetState() {
+      $output.text('');
+      $nameInput.val('');
+      $results.text('');
+      resetPreview();
+      try {
+        $builder.queryBuilder('destroy');
+      } catch (error) {
+      }
+      $builder.empty();
+      $builder.queryBuilder({
+        plugins: ['bt-tooltip-errors'],
+        filters: filters
+      });
+    }
+
+    function getRules() {
+      return $builder.queryBuilder('getRules');
+    }
+
+    $builder.queryBuilder({
+      plugins: ['bt-tooltip-errors'],
+      filters: filters
+    });
+
+    $builder.on(builderChangeEvents.join(' '), function () {
+      resetPreview();
+    });
+
+    $previewButton.on('click', function () {
+      try {
+        const result = $builder.queryBuilder('getSQL', false, false);
+        const rules = getRules();
+        const displaySQL = (result.sql || 'No query generated').replace(/featuretable\.|classification\./g, '');
+        $output.text(displaySQL);
+
+        if (!rules || !Array.isArray(rules.rules) || rules.rules.length === 0) {
+          resetPreview('Please add at least one valid rule.');
+          return;
+        }
+
+        $.ajax({
+          url: '/api/preview-query',
+          type: 'POST',
+          data: JSON.stringify({ rules: rules }),
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+          },
+          contentType: 'application/json; charset=utf-8',
+          dataType: 'json',
+          success: function (response) {
+            if (response.sql) {
+              $results.text('Query is valid. Filter: ' + response.sql);
+              previewSuccess = true;
+              $saveButton.prop('disabled', false).attr('title', 'Save this query as a watchlist');
+              if (typeof settings.onPreview === 'function') {
+                settings.onPreview(response, rules);
+              }
+              return;
+            }
+
+            resetPreview('Could not validate query.');
+          },
+          error: function (xhr, status, error) {
+            const resp = xhr.responseJSON;
+            resetPreview('Query error: ' + ((resp && resp.error) || error));
+          }
+        });
+      } catch (error) {
+        $output.text('Error: ' + error.message);
+      }
+    });
+
+    $saveButton.on('click', function () {
+      if (!previewSuccess) {
+        return;
+      }
+
+      const name = ($nameInput.val() || '').trim();
+      if (!name) {
+        $results.text('Please enter a watchlist name before saving.');
+        $nameInput.trigger('focus');
+        return;
+      }
+
+      try {
+        const rules = getRules();
+        if (!rules || !Array.isArray(rules.rules) || rules.rules.length === 0) {
+          $results.text('Please add at least one valid rule.');
+          return;
+        }
+
+        $saveButton.prop('disabled', true);
+        $.ajax({
+          url: '/api/watchlist',
+          type: 'POST',
+          data: JSON.stringify({ name: name, rules: rules }),
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+          },
+          contentType: 'application/json; charset=utf-8',
+          dataType: 'json',
+          success: function (response) {
+            $results.text('Watchlist "' + response.name + '" saved (id=' + response.id + ').');
+            $saveButton.prop('disabled', false).attr('title', 'Save this query as a watchlist');
+            if (typeof settings.onSave === 'function') {
+              settings.onSave(response, { reset: resetState, root: root });
+              return;
+            }
+            $nameInput.val('');
+          },
+          error: function (xhr, status, error) {
+            const resp = xhr.responseJSON;
+            $results.text('Save error: ' + ((resp && resp.error) || error));
+            $saveButton.prop('disabled', false).attr('title', 'Save this query as a watchlist');
+          }
+        });
+      } catch (error) {
+        $results.text('Error: ' + error.message);
+        $saveButton.prop('disabled', false).attr('title', 'Save this query as a watchlist');
+      }
+    });
+
+    return {
+      root: root,
+      reset: resetState,
+      destroy: function () {
+        try {
+          $builder.off(builderChangeEvents.join(' '));
+          $previewButton.off('click');
+          $saveButton.off('click');
+          $builder.queryBuilder('destroy');
+        } catch (error) {
+        }
+        $builder.empty();
+        root.__watchlistQueryBuilder = null;
+      },
+      getRules: getRules,
+      setMessage: function (message) {
+        $results.text(message || '');
+      }
+    };
+  }
+
+  window.PoiWatchlistQueryBuilder = {
+    init: function (root, options) {
+      if (!root) {
+        return null;
+      }
+      if (root.__watchlistQueryBuilder) {
+        return root.__watchlistQueryBuilder;
+      }
+      const api = createApi(root, options);
+      root.__watchlistQueryBuilder = api;
+      return api;
+    }
+  };
+})(window, document, window.jQuery);
+</script>

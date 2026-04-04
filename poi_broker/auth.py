@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
 from flask_login import login_user, logout_user, login_required
 from werkzeug.security import generate_password_hash, check_password_hash
 from .models import User
@@ -11,6 +11,7 @@ import logging
 from email.message import EmailMessage
 from email_validator import validate_email, EmailNotValidError
 import ssl
+from . import limiter
 
 
 def _utc_now_epoch() -> int:
@@ -53,6 +54,7 @@ def login():
     return render_template('login.html', forgot_password=show_reset)
 
 @auth_blueprint.route('/login', methods=['POST'])
+@limiter.limit(lambda: current_app.config.get('AUTH_RATE_LIMIT_LOGIN', '10 per minute'))
 def login_post():
     email_input = request.form.get('email')
     password = request.form.get('password')
@@ -101,11 +103,12 @@ def normalize_email(email: str, check_deliverability: bool = False) -> str | Non
     """
     try:
         valid = validate_email(email, check_deliverability=check_deliverability)
-        return valid.email
+        return valid.normalized
     except EmailNotValidError:
         return None
 
 @auth_blueprint.route('/signup', methods=['POST'])
+@limiter.limit(lambda: current_app.config.get('AUTH_RATE_LIMIT_SIGNUP', '5 per hour'))
 def signup_post():
     email_input = request.form.get('email', '').strip()
     name = request.form.get('name', '').strip()
@@ -201,6 +204,7 @@ def forgot_password():
     return render_template('forgot_password.html')
 
 @auth_blueprint.route('/forgot-password', methods=['POST'])
+@limiter.limit(lambda: current_app.config.get('AUTH_RATE_LIMIT_FORGOT_PASSWORD', '5 per hour'))
 def forgot_password_post():
     email_input = request.form.get('email')
     
@@ -239,6 +243,7 @@ def reset_password(token):
     return render_template('reset_password.html', token=token)
 
 @auth_blueprint.route('/reset-password/<token>', methods=['POST'])
+@limiter.limit(lambda: current_app.config.get('AUTH_RATE_LIMIT_RESET_PASSWORD', '10 per hour'))
 def reset_password_post(token):
     password = request.form.get('password')
     password_confirm = request.form.get('password_confirm')
@@ -268,6 +273,58 @@ def reset_password_post(token):
 
     flash('Password updated. Please log in.')
     return redirect(url_for('auth.login'))
+
+
+@auth_blueprint.route('/security')
+@login_required
+def security():
+    return render_template('security.html')
+
+@auth_blueprint.route('/change-password', methods=['POST'])
+@login_required
+@limiter.limit(lambda: current_app.config.get('AUTH_RATE_LIMIT_CHANGE_PASSWORD', '10 per hour'))
+def change_password():
+    """
+    Allow authenticated users to change their password.
+    Requires current password verification for security.
+    """
+    from flask_login import current_user
+    
+    current_password = request.form.get('current_password')
+    new_password = request.form.get('new_password')
+    new_password_confirm = request.form.get('new_password_confirm')
+    
+    # Validate that all fields are provided
+    if not current_password or not new_password or not new_password_confirm:
+        flash('Please provide current password and new password.')
+        return redirect(url_for('auth.security'))
+    
+    # Verify current password
+    if not check_password_hash(current_user.password, current_password):
+        flash('Current password is incorrect.')
+        return redirect(url_for('auth.security'))
+    
+    # Validate new password matches confirmation
+    if new_password != new_password_confirm:
+        flash('New passwords do not match.')
+        return redirect(url_for('auth.security'))
+    
+    # Validate password length
+    if len(new_password) < 8:
+        flash('New password must be at least 8 characters.')
+        return redirect(url_for('auth.security'))
+    
+    # Check that new password is different from current
+    if check_password_hash(current_user.password, new_password):
+        flash('New password must be different from current password.')
+        return redirect(url_for('auth.security'))
+    
+    # Update password
+    current_user.password = generate_password_hash(new_password)
+    db.session.commit()
+    
+    flash('Password changed successfully.')
+    return redirect(url_for('auth.security'))
 
 
 def send_email(message, to_email, subject=None, html_text=None, from_email=None, expire_time=None):

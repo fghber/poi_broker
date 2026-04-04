@@ -1,46 +1,51 @@
 {% extends 'site.html' %}
 
+{% block extra_head %}
+{{ super() }}
+{% include '_watchlist_query_builder_assets.html' %}
+{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center mt-4">
     <div class="col-md-8 col-lg-6">
 
-        <div class="card text-center">
-            <div class="card-body">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="fa fa-user-circle-o mr-2"></i>Profile</span>
+                <a href="{{ url_for('auth.security') }}" class="btn btn-sm btn-outline-secondary">Security</a>
+            </div>
+            <div class="card-body text-center">
+                <h3 class="card-title mb-1">Welcome, {{ name }}!</h3>
+                <p class="text-muted mb-3">Manage your favorites and watchlists below.</p>
 
-                <!-- Avatar -->
-                <div class="mb-3">
-                    <i class="fa fa-user-circle fa-5x text-secondary"></i>
-                </div>
-
-                <!-- Greeting -->
-                <h3 class="card-title mb-1">
-                    Welcome, {{ name }}!
-                </h3>
-
-                <!-- Profile details -->
-                <ul class="list-group list-group-flush text-left mb-4">
+                <!-- <ul class="list-group list-group-flush text-left mb-4">
                     <li class="list-group-item">
                         <i class="fa fa-envelope mr-2 text-muted"></i>
                         {{ current_user.email if current_user else "—" }}
                     </li>
-                </ul>
+                </ul> -->
 
-                <!-- Actions -->
-                <div class="d-flex justify-content-between">
-                    <a href="{{ url_for('main.start') }}" class="btn btn-outline-secondary">
-                        <i class="fa fa-home"></i> Home
-                    </a>
-
-                    <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-danger">
-                        <i class="fa fa-sign-out"></i> Logout
-                    </a>
+                <div class="border rounded bg-light py-2 px-3 mb-2">
+                    <div class="row text-center">
+                        <div class="col-4">
+                            <div class="small text-muted">Favorites</div>
+                            <div class="h5 mb-0" id="summaryFavoritesCount">—</div>
+                        </div>
+                        <div class="col-4 border-left border-right">
+                            <div class="small text-muted">Groups</div>
+                            <div class="h5 mb-0" id="summaryGroupsCount">—</div>
+                        </div>
+                        <div class="col-4">
+                            <div class="small text-muted">Watchlists</div>
+                            <div class="h5 mb-0" id="summaryWatchlistsCount">—</div>
+                        </div>
+                    </div>
                 </div>
-
             </div>
         </div>
 
         <!-- Favorites card -->
-        <div class="card mt-4">
+        <div id="favorites" class="card mt-4">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span>Your Favorites</span>
                 <button class="btn btn-sm btn-outline-primary" id="newGroupBtn">
@@ -61,17 +66,17 @@
         </div>
 
         <!-- Watchlist card -->
-        <div class="card mt-4">
+        <div id="watchlists" class="card mt-4">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span>Your POI Watchlists</span>
-                <a href="./visual_query" class="btn btn-sm btn-outline-primary" id="newWatchlistBtn">
+                <button type="button" class="btn btn-sm btn-outline-primary" id="newWatchlistBtn">
                     <i class="fa fa-plus"></i> New Watchlist
-                </a>
+                </button>
             </div>
 
             <!-- Tab content -->
             <div class="tab-content" id="watchlistPanels">
-                <!-- Panels inserted entirely by JS -->
+                <div class="p-3 text-muted text-center">Loading watchlists...</div>
             </div>
 
         </div>
@@ -107,13 +112,58 @@
     </div>
 </div>
 
-{% include 'common_js.html' %}
+<div class="modal fade watchlist-query-modal" id="watchlistQueryModal" tabindex="-1" role="dialog" aria-labelledby="watchlistQueryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="watchlistQueryModalLabel">Create Watchlist</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                {% set builder_variant = 'modal' %}
+                {% include '_watchlist_query_builder.html' %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% include '_watchlist_query_builder_js.html' %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     let allGroups = [];
     let currentFavId = null;
+    let watchlistBuilderApi = null;
+
+    const summaryFavoritesCount = document.getElementById('summaryFavoritesCount');
+    const summaryGroupsCount = document.getElementById('summaryGroupsCount');
+    const summaryWatchlistsCount = document.getElementById('summaryWatchlistsCount');
 
     const newGroupBtn = document.getElementById('newGroupBtn');
+    const newWatchlistBtn = document.getElementById('newWatchlistBtn');
+    const watchlistPanels = document.getElementById('watchlistPanels');
+    const watchlistQueryModal = document.getElementById('watchlistQueryModal');
+    const watchlistQueryRoot = watchlistQueryModal.querySelector('[data-watchlist-query-builder]');
+
+    function setSummaryValue(element, value) {
+        if (element) {
+            element.textContent = String(value);
+        }
+    }
+
+    function updateFavoriteSummary() {
+        const totalFavorites = allGroups.reduce((sum, group) => sum + (Number(group.count) || 0), 0);
+        const totalGroups = allGroups.filter(group => group.id !== null).length;
+        setSummaryValue(summaryFavoritesCount, totalFavorites);
+        setSummaryValue(summaryGroupsCount, totalGroups);
+    }
+
+    function updateWatchlistSummary(items) {
+        const count = Array.isArray(items) ? items.length : 0;
+        setSummaryValue(summaryWatchlistsCount, count);
+    }
+
     newGroupBtn.addEventListener('click', function () {
         const name = prompt('Enter group name:');
         if (!name || !name.trim()) return;
@@ -151,6 +201,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(data => {
                 allGroups = data.groups || [];
                 populateGroupSelect();
+                updateFavoriteSummary();
 
                 const tabsEl = document.getElementById('favoriteTabs');
                 const panelsEl = document.getElementById('favoritePanels');
@@ -275,6 +326,59 @@ document.addEventListener('DOMContentLoaded', function () {
             .catch(e => console.error(e));
     }
 
+    function formatWatchlistDate(epochSeconds) {
+        if (!epochSeconds) {
+            return 'Unknown date';
+        }
+
+        const date = new Date(epochSeconds * 1000);
+        if (Number.isNaN(date.getTime())) {
+            return 'Unknown date';
+        }
+
+        return date.toLocaleString();
+    }
+
+    function renderWatchlists(items) {
+        if (!Array.isArray(items) || items.length === 0) {
+            watchlistPanels.innerHTML = '<div class="p-3 text-muted text-center">No watchlists yet.</div>';
+            return;
+        }
+
+        watchlistPanels.innerHTML = `
+            <div class="list-group list-group-flush watchlist-list">
+                ${items.map(item => `
+                    <div class="list-group-item d-flex justify-content-between">
+                        <div class="pr-3">
+                            <div class="font-weight-bold">${item.name}</div>
+                            <div class="small text-muted mb-2">Created ${formatWatchlistDate(item.created_at)}</div>
+                            <div class="watchlist-sql text-muted">${item.sql_where || ''}</div>
+                        </div>
+                        <div class="ml-3">
+                            <button type="button" class="btn btn-sm btn-outline-danger remove-watchlist-btn" data-watchlist-id="${item.id}">Delete</button>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    function loadWatchlists() {
+        watchlistPanels.innerHTML = '<div class="p-3 text-muted text-center">Loading watchlists...</div>';
+        fetch('/api/watchlist')
+            .then(r => r.json())
+            .then(data => {
+                const items = data || [];
+                updateWatchlistSummary(items);
+                renderWatchlists(items);
+            })
+            .catch(error => {
+                console.error(error);
+                setSummaryValue(summaryWatchlistsCount, '—');
+                watchlistPanels.innerHTML = '<div class="p-3 text-danger text-center">Failed to load watchlists.</div>';
+            });
+    }
+
     // Event delegation for remove and move buttons
     document.addEventListener('click', function (e) {
         if (e.target.classList.contains('remove-fav-btn')) {
@@ -309,6 +413,26 @@ document.addEventListener('DOMContentLoaded', function () {
             })
                 .then(() => loadGroups())
                 .catch(e => console.error(e));
+        }
+
+        if (e.target.classList.contains('remove-watchlist-btn')) {
+            const watchlistId = e.target.dataset.watchlistId;
+            if (!confirm('Delete this watchlist?')) return;
+
+            fetch(`/api/watchlist/${watchlistId}`, {
+                method: 'DELETE',
+                headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content') }
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to delete watchlist');
+                    }
+                    loadWatchlists();
+                })
+                .catch(error => {
+                    console.error(error);
+                    alert('Failed to delete watchlist.');
+                });
         }
     });
 
@@ -346,8 +470,29 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    newWatchlistBtn.addEventListener('click', function () {
+        $('#watchlistQueryModal').modal('show');
+    });
+
+    $('#watchlistQueryModal').on('shown.bs.modal', function () {
+        watchlistBuilderApi = window.PoiWatchlistQueryBuilder.init(watchlistQueryRoot, {
+            onSave: function (_response, api) {
+                loadWatchlists();
+                api.reset();
+                $('#watchlistQueryModal').modal('hide');
+            }
+        });
+    });
+
+    $('#watchlistQueryModal').on('hidden.bs.modal', function () {
+        if (watchlistBuilderApi) {
+            watchlistBuilderApi.reset();
+        }
+    });
+
     // Initial load
     loadGroups(getActiveTabId());
+    loadWatchlists();
 });
 </script>
 {% endblock %}

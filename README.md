@@ -22,9 +22,11 @@ Our alert broker, called *Point of Interest*, is tailored towards the needs of a
 ## Usage
 This repository contains the web frontend, including a small database for testing purposes.
 
-After downloading the package, within the folder `_web_frontend` install all required packages:
+After downloading the package, install all required packages for development:
 
-`pip3 install -r requirements.txt`
+`pip3 install -r requirements-dev.txt`
+
+Use the regular `requirements.txt` for deployments.
 
 > [!NOTE]
 > requirements2.txt shows the output of `pip freeze` and lists exact version numbers of the packages. However, this is mostly for reference. You may not be able to install these exact version on your specific system/environment.
@@ -58,13 +60,40 @@ In case the website isn't displayed: do a
 
 `cat app.log`
 
-in your terminal window to see the correct URL
+in your terminal window to see the correct URL.
 
 
-Also, inspect the browser developer console (F12) to see if there are any JavaScript errors, ie. a mismatching bokeh.min.js version.
+Also, inspect the browser developer console (F12) to see if there are any errors, e.g. missing includes or JavaScript exceptions.
+
+### Testing, Debugging and Profiling
+
+For now, only a basic `pytest` smoke test for the main route exists. Run the tests before commiting changes.
+
+```
+(poi_brokerenv) λ pytest -q
+```
+
+It is highly recommended to debug the app in a capable IDE like VS Code to leverage built-in debugging capabilities.
+
+Tp set breakpoints in the CLI use pdb
+```
+import pdb
+from pprint import pprint
+...
+pdb.set_trace()
+```
+
+Use the logger class to log output to the app.log file instead of `print`'ing to the console
+```
+app.logger.info('Info')
+app.logger.warning('Warn')
+logging.error('Exception occurred', exc_info=True) #or: logging.exception()
+```
 
 The app can be profiled like any other python module, e.g.
 
-`python -m cProfile -o program.prof -m flask --app "poi_broker:create_app()" run --no-reload`
+```
+python -m cProfile -o program.prof -m flask --app "poi_broker:create_app()" run --no-reload
+```
 
-but it's more useful to use werkzeug's `ProfilerMiddleware` to profile routes. Activate it in `__init__.py` if needed.
+However, it's more useful to use werkzeug's `ProfilerMiddleware` to profile routes. Activate it in `poi_broker/__init__.py` if needed.

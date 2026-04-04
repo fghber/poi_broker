@@ -1,0 +1,49 @@
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jQuery-QueryBuilder/dist/css/query-builder.default.min.css">
+<style>
+    .watchlist-query-builder [data-role="builder"] {
+        margin-bottom: 20px;
+    }
+
+    .watchlist-query-builder [data-role="results"] {
+        margin-top: 20px;
+    }
+
+    .watchlist-query-builder pre {
+        min-height: 48px;
+        max-height: 220px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .watchlist-query-builder.modal-layout pre {
+        max-height: 160px;
+    }
+
+    .watchlist-query-modal .modal-body {
+        max-height: calc(100vh - 220px);
+        overflow-y: auto;
+    }
+
+    .watchlist-query-modal .modal-dialog {
+        max-width: 1140px;
+    }
+
+    .watchlist-list .list-group-item {
+        align-items: flex-start;
+    }
+
+    .watchlist-list .watchlist-sql {
+        font-family: monospace;
+        font-size: 0.875rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    /* QueryBuilder may emit BS3/BS4/BS5-style float utility classes */
+    .watchlist-query-builder .query-builder .pull-right,
+    .watchlist-query-builder .query-builder .float-right,
+    .watchlist-query-builder .query-builder .float-end {
+        float: right !important;
+    }
+</style>

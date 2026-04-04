@@ -1,0 +1,101 @@
+{% extends 'site.html' %}
+
+{% block content %}
+<div class="row justify-content-center mt-4">
+    <div class="col-md-8 col-lg-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="fa fa-lock mr-2"></i>Security</span>
+                <a href="{{ url_for('main.profile') }}" class="btn btn-sm btn-outline-secondary">Back to Profile</a>
+            </div>
+            <div class="card-body">
+                <!-- Account Information Section -->
+                <div class="mb-4 px-4 py-2 rounded bg-light">
+                    <!-- <h6 class="mb-3">Account Information</h6> -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <small class="text-muted">User Login</small>
+                            <p class="mb-2">
+                                <i class="fa fa-envelope mr-2 text-muted"></i>
+                                {{ current_user.email if current_user.email else 'N/A' }}
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <small class="text-muted">Email Verified</small>
+                            <p class="mb-2">
+                                {% if current_user.email_verified %}
+                                    <i class="fa fa-check text-success"></i> Yes
+                                {% else %}
+                                    <i class="fa fa-times text-danger"></i> Not verified
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                    {% if current_user.created_at %}
+                    <div class="row">
+                        <div class="col-md-6">
+                            <small class="text-muted">Account Created</small>
+                            <p class="mb-0">
+                                {{ current_user.created_at.strftime('%Y-%m-%d') }}
+                            </p>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if current_user.last_password_changed %}
+                    <div class="row">
+                        <div class="col-md-6">
+                            <small class="text-muted">Last Password Change</small>
+                            <p class="mb-0">
+                                {{ current_user.last_password_changed.strftime('%Y-%m-%d') }}
+                            </p>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <hr>
+                <h6 class="mb-3">Change Password</h6>
+
+                {% with messages = get_flashed_messages() %}
+                    {% if messages %}
+                    <div class="alert alert-info alert-dismissible fade show" role="alert">
+                        {{ messages[0] }}
+                        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    {% endif %}
+                {% endwith %}
+
+                <form method="POST" action="{{ url_for('auth.change_password') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <div class="form-group">
+                        <label for="currentPassword">Current Password</label>
+                        <input type="password" class="form-control" id="currentPassword" name="current_password"
+                            placeholder="Enter your current password" required>
+                        <small class="form-text text-muted">We need your current password to confirm the change.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="newPassword">New Password</label>
+                        <input type="password" class="form-control" id="newPassword" name="new_password"
+                            placeholder="Enter new password (min 8 characters)" required>
+                        <small class="form-text text-muted">Must be at least 8 characters long.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="confirmPassword">Confirm New Password</label>
+                        <input type="password" class="form-control" id="confirmPassword" name="new_password_confirm"
+                            placeholder="Confirm new password" required>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa fa-check mr-1"></i>Update Password
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

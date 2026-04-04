@@ -25,6 +25,9 @@
                 <li>Changes in light curve parameters (features).</li>
                 <li>Cross-matches to other astronomical surveys.</li>
                 <li>An integrated observation planning tool.</li>
+                <li>Automated object classification based on light curve features.</li>
+                <li>Personal watchlists with daily email digests (sign-in required).</li>
+                <li>Favorites and object collections (sign-in required).</li>
             </ul>
             
             <p>
@@ -139,7 +142,7 @@
         <div class="card-body">
             <h2 class="h4 accent-heading mb-3">Observing Planning Tool</h2>
               <p>The observing planning tool assists with planning follow-up observations. Users can choose from a list of observatories, <i>or enter their own</i>.<br>
-                It includes a display of the moon's position according to the latitude of the observer.</p>            
+                It includes a diagram of the moon's position according to the latitude of the observer.</p>            
         </div>
     </div>
 
@@ -147,7 +150,7 @@
     <div class="card mb-4 shadow-sm">
         <div class="card-body">
             <h2 class="h4 accent-heading mb-3">Light Curve Features</h2>
-            <p>Features are derived properties of light curves.<br>
+            <p>Features are derived properties of light curves, usually calculated by statistics.<br>
             Depending on the number of observations, certain features may be excluded from calculation if the data is insufficient (i.e., too few observations).<br>
             The display is restricted to features computed for the current light curve.</p>
 
@@ -156,6 +159,45 @@
         </div>
     </div>
 
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body">
+            <h2 class="h4 accent-heading mb-3">Object Classification</h2>
+            <p>Our machine learning classification system analyzes light curve features to automatically categorize astronomical objects. The feature/based classification is based on such as periodicity, amplitude variations, and morphological characteristics.</p>
+            <p>The classification helps astronomers prioritize follow-up observations by identifying potentially interesting objects such as eclipsing binaries, pulsating variables, or transient events. Classifications are updated as new data becomes available, providing an evolving understanding of each object's nature.</p>
+        </div>
+    </div>
+
+        <div class="row mb-4">
+        <div class="col-12 bg-light p-3 rounded shadow-sm">
+            <h2 class="h3 mb-0 text-dark">Advanced Features (Sign-in Required)</h2>
+        </div>
+    </div>
+
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body">
+            <h2 class="h4 accent-heading mb-3">Watchlists & Daily Email Digests</h2>
+            <p>Create personalized watchlists using our visual query builder to monitor specific astronomical objects or classes of interest. Define custom search criteria and receive daily email notifications containing links to new alerts that match your watchlist criteria from the previous 24 hours (UTC).</p>
+            <p>This feature helps tracking specific types of variable stars or following objects with certain light curve characteristics.</p>
+        </div>
+    </div>
+
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body">
+            <h2 class="h4 accent-heading mb-3">Favorites & Object Collections</h2>
+            <p>Mark interesting astronomical objects as favorites and organize them into custom groups for easy reference. Your favorites are accessible from your profile page, allowing you to quickly return to objects of particular interest without having to remember their IDs or search criteria.</p>
+            <p>This is especially useful for maintaining collections of objects for follow-up observations, research projects, or educational purposes.</p>
+        </div>
+    </div>
+
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body">
+            <h2 class="h4 accent-heading mb-3">Additional User Features</h2>
+            <ul>
+                <li><strong>Personal Profile:</strong> Manage your account settings, view your watchlists, and access your favorite objects.</li>
+                <li><strong>Data Export:</strong> Download light curve data, features, and individual alerts including their classification information for further analysis.</li>
+            </ul>
+        </div>
+    </div>
 
     <div class="row mb-4">
         <div class="col-12 bg-light p-3 rounded shadow-sm">

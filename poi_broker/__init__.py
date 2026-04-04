@@ -1,29 +1,35 @@
-import os
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 import logging
-from flask import (Flask, app, render_template, abort, jsonify, request, Response,
+from flask import (Flask, render_template, abort, jsonify, request, Response,
                    redirect, url_for, make_response, Blueprint, flash)
 from flask_login import LoginManager, login_required, current_user
 from flask_wtf.csrf import CSRFProtect, CSRFError
-
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from sqlalchemy import event
 
 #from werkzeug.middleware.profiler import ProfilerMiddleware
 #import jinja2
 from flask_sqlalchemy import SQLAlchemy
 from astropy.time import Time
-from .helpers import _env_bool
+from .settings import build_app_config
 
 # Initialize SQLAlchemy instance (outside create_app for import access)
 db = SQLAlchemy()
 login_manager = LoginManager()
 csrf = CSRFProtect()
+limiter = Limiter(key_func=get_remote_address, default_limits=[])
 
-def _resolve_sqlite_path(env_var_name, default_path):
-    configured_path = os.environ.get(env_var_name)
-    if configured_path:
-        return Path(configured_path).expanduser().resolve()
-    return default_path.resolve()
+def _configure_sqlite_pragmas(dbapi_conn, connection_record):
+    """Configure SQLite PRAGMAs for improved concurrent read performance."""
+    cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA journal_mode = WAL") # Enable Write-Ahead Logging for better concurrency https://sqlite.org/wal.html
+    cursor.execute("PRAGMA synchronous = NORMAL") # Balance durability and performance; WAL mode is safe with NORMAL https://sqlite.org/wal.html#durability
+    cursor.execute("PRAGMA cache_size = -64000")  # 64MB in KB https://sqlite.org/pragma.html#pragma_cache_size
+    cursor.execute("PRAGMA mmap_size = 268435456")  # 256MB in bytes https://sqlite.org/mmap.html
+    cursor.execute("PRAGMA temp_store = MEMORY")    # Temporary tables in RAM
+    cursor.close()
 
 def create_app():
     app = Flask(__name__)
@@ -46,47 +52,9 @@ def create_app():
                     format="%(asctime)s %(name)s:%(levelname)s:%(message)s", 
                     level=logging.INFO)
 
-    # Main DB (alerts)
     base_dir = Path(__file__).resolve().parent
-    workspace_root = base_dir.parent
-    default_db_dir = workspace_root.parent / '_broker_db'
-    db_path = _resolve_sqlite_path(
-        'ALERTS_DB_PATH',
-        default_db_dir / 'ztf_alerts_stream.db'
-    )
-    db_uri = 'sqlite:///{}'.format(db_path.as_posix())
-
-    # Separate DB for logins
-    login_db_path = _resolve_sqlite_path(
-        'USERS_DB_PATH',
-        default_db_dir / 'users.db'
-    )
-    login_db_uri = 'sqlite:///{}'.format(login_db_path.as_posix())
-
-    secret_key = os.environ.get('SECRET_KEY')
-    if not secret_key:
-        raise RuntimeError("SECRET_KEY environment variable must be set (generate with: python -c 'import secrets; print(secrets.token_hex(32))')")
-
-    debug_flag = _env_bool(os.environ.get('FLASK_DEBUG'), False)
-    testing_flag = _env_bool(os.environ.get('FLASK_TESTING'), False)
-    session_cookie_secure = _env_bool(os.environ.get('SESSION_COOKIE_SECURE'), not debug_flag)
-
-    # Load config from environment variables; use safe defaults for development
-    app.config.update(
-        DEBUG=debug_flag, # Shows detailed error pages with stack traces, and enables auto-reloading of code changes. Disable in production.
-        TESTING=testing_flag, # If True, Exceptions propagate rather than being caught by Flask's error handlers. Disable in production.
-        TEMPLATES_AUTO_RELOAD=True,
-        SQLALCHEMY_DATABASE_URI=db_uri,
-        SQLALCHEMY_BINDS={
-            'users': login_db_uri         # second DB for logins
-        },
-        SQLALCHEMY_TRACK_MODIFICATIONS=False,
-        SECRET_KEY=secret_key, #Used by Flask to sign the session cookie data so users can't tamper with it.
-        PERMANENT_SESSION_LIFETIME = timedelta(hours=24),
-        SESSION_COOKIE_SECURE = session_cookie_secure,  # HTTPS only, unless in debug mode where we allow it for local testing
-        SESSION_COOKIE_HTTPONLY = True,  # Prevent XSS
-        SESSION_COOKIE_SAMESITE = 'Lax'  # CSRF protection
-    )
+    config, db_path, login_db_path = build_app_config(base_dir)
+    app.config.update(config)
     app.logger.info('Configured alerts database at %s', db_path)
     app.logger.info('Configured users database at %s', login_db_path)
 
@@ -111,16 +79,25 @@ def create_app():
     
     # Initialize extensions with app
     db.init_app(app)
+    
+    # Configure SQLite pragmas - must be inside app context to access db.engine
+    with app.app_context():
+        event.listens_for(db.engine, "connect")(_configure_sqlite_pragmas)
+        # Also configure the users database if it's SQLite
+        if 'users' in db.engines:
+            event.listens_for(db.engines['users'], "connect")(_configure_sqlite_pragmas)
+    
     csrf.init_app(app)
+    limiter.init_app(app)
     login_manager.init_app(app)
 
     # import and register blueprints here to avoid circular imports
-    from .app import main_blueprint
+    from .app import register_blueprints
     from .observing_tool import observing_tool_blueprint
     from .classification import classification_blueprint
     from .auth import auth_blueprint
 
-    app.register_blueprint(main_blueprint)
+    register_blueprints(app)
     app.register_blueprint(auth_blueprint)
     app.register_blueprint(observing_tool_blueprint)
     app.register_blueprint(classification_blueprint)
@@ -129,14 +106,31 @@ def create_app():
     from .models import User
     @login_manager.user_loader
     def load_user(user_id):
-        return User.query.get(int(user_id))
+        return db.session.get(User, int(user_id))
     
     # Set login_view AFTER blueprint registration to ensure the endpoint exists
     login_manager.login_view = 'auth.login'
     
+    @login_manager.unauthorized_handler
+    def unauthorized():
+        message = 'Log-in or Sign-Up to use this feature.'
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'authentication required', 'message': message}), 401
+        flash(message, 'warning')
+        return redirect(url_for('auth.login'))
+
+    @app.context_processor
+    def inject_template_globals():
+        return {
+            'app_version': app.config.get('APP_VERSION', ''),
+            'current_year': datetime.now(timezone.utc).year,
+        }
+    
     # Global error handler for CSRF errors raised by Flask-WTF
     @app.errorhandler(CSRFError)
     def handle_csrf_error(error):
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'csrf validation failed', 'message': str(error)}), 400
         flash('Your form session expired or is invalid. Please reload this page and submit again. If this is a reset link, request a new one.', 'danger')
         if request.referrer:
             return redirect(request.referrer)
