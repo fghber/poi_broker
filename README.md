@@ -75,7 +75,7 @@ For now, only a basic `pytest` smoke test for the main route exists. Run the tes
 
 It is highly recommended to debug the app in a capable IDE like VS Code to leverage built-in debugging capabilities.
 
-Tp set breakpoints in the CLI use pdb
+To set breakpoints in the CLI use pdb
 ```
 import pdb
 from pprint import pprint
