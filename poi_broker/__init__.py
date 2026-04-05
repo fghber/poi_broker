@@ -51,6 +51,8 @@ def create_app():
                                                  encoding='utf-8', mode='a+')],
                     format="%(asctime)s %(name)s:%(levelname)s:%(message)s", 
                     level=logging.INFO)
+    # Reduce werkzeug noise
+    logging.getLogger("werkzeug").setLevel(logging.ERROR)  # or logging.WARNING
 
     base_dir = Path(__file__).resolve().parent
     config, db_path, login_db_path = build_app_config(base_dir)

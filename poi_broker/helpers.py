@@ -1,6 +1,9 @@
 from sqlalchemy import inspect
 import re
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 from datetime import datetime
 from astropy.time import Time
 
@@ -98,7 +101,7 @@ def safe_serialize(obj):
     try:
         return json.dumps(obj)
     except TypeError as e:
-        print(f"Serialization error: {e}")
+        logger.warning("JSON serialization fallback used: %s", e)
         return json.dumps(serialize_fallback(obj))
    
 def serialize_fallback(obj):
