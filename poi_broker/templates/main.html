@@ -9,6 +9,20 @@
   {% endif %}
   <!--"https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8"-->
   <script type="text/javascript" src="/static/js/aladin.js" charset="utf-8"></script>
+  <style>
+    /* TODO: Remove, not needed in BS4.6 https://getbootstrap.com/docs/4.6/utilities/borders/ */
+    /* remove rounding on the right side */
+    .rounded-right-none {
+      border-top-right-radius: 0 !important;
+      border-bottom-right-radius: 0 !important;
+    }
+
+    /* remove rounding on the left side */
+    .rounded-left-none {
+      border-top-left-radius: 0 !important;
+      border-bottom-left-radius: 0 !important;
+    }
+  </style>
 {% endblock %}
 
 {% block content %}
@@ -44,10 +58,10 @@
     <div class="col-md-12">
       <div class="responsive">
         <div class="row">
-        <div class="col-md-3 mt-2">
+        <div class="col-md-4 mt-2">
           <div class="justify-content-start">&nbsp;<b>Rows:</b> {{total_queries}}</div> 
         </div> 
-        <div class="col-md-6">
+        <div class="col-md-4">
         <div class="justify-content-center">
           <p>
           <!-- ? TODO: Pagination: arg_str not implemented {{ arg_str }}& -->
@@ -65,14 +79,19 @@
         </div>
 
             <!-- Side Panel -->
-        <div class="col-md-3">
+        <div class="col-md-4">
           <div class="d-flex justify-content-end">
           <button type="button" class="btn btn-outline-secondary mr-2" id="btn_download_selected_csv">
             <i class="fa fa-download fa-lg" title="Download Selected" aria-label="Download Selected"></i> Download Selected
           </button>
-          <button type="submit" class="btn btn-primary">
+          <button type="submit" class="btn btn-primary {% if current_user.is_authenticated %}rounded-right-none{% endif %}">
             <i class="fa fa-filter fa-lg" title="Filter" aria-label="Filter"></i> Filter
           </button>
+          {% if current_user.is_authenticated %}
+          <button type="button" class="btn btn-primary mr-2 {% if current_user.is_authenticated %}rounded-left-none{% endif %}" id="btn_save_filter_bookmark" title="Save current filters">
+            <i class="fa fa-bookmark fa-lg" aria-hidden="true"></i> 
+          </button>
+          {% endif %}
           <!-- <a href="/" class="btn btn-secondary">
           <span class="fa-stack fa-lg">
             <i class="fa fa-filter fa-stack-1x" style="font-size:22px" aria-hidden="true"></i>
@@ -580,6 +599,56 @@
       }
     });
   });
+
+  {% if current_user.is_authenticated %}
+  $('#btn_save_filter_bookmark').on('click', function () {
+    const name = window.prompt('Name this filter bookmark:', '');
+    if (name === null) {
+      return;
+    }
+    const trimmed = name.trim();
+    if (!trimmed) {
+      alert('Please enter a name for the filter bookmark.');
+      return;
+    }
+
+    const searchParams = new URLSearchParams(window.location.search);
+    searchParams.delete('page');
+    searchParams.delete('survey');
+    searchParams.delete('options');
+    const params = {};
+    searchParams.forEach(function (value, key) {
+      params[key] = value;
+    });
+
+    $.ajax({
+      type: 'POST',
+      url: '/api/filter-bookmarks',
+      contentType: 'application/json',
+      headers: {
+        'X-CSRFToken': $('meta[name="csrf-token"]').attr('content')
+      },
+      data: JSON.stringify({ name: trimmed, params: params }),
+      success: function () {
+        alert('Filter bookmark saved. You can find it in your profile.');
+      },
+      error: function (xhr) {
+        if (xhr.status === 401) {
+          showAuthRequiredToast();
+          return;
+        }
+        let msg = 'Could not save filter bookmark.';
+        try {
+          const body = JSON.parse(xhr.responseText);
+          if (body && body.error) {
+            msg = body.error;
+          }
+        } catch (e) { /* ignore */ }
+        alert(msg);
+      }
+    });
+  });
+  {% endif %}
 
   $('#btn_download_selected_csv').on('click', function () {
     const selected = $('.row-download-checkbox:checked').map(function () {

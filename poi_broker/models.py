@@ -530,3 +530,28 @@ class Watchlist(db.Model):
 
     def __repr__(self):
         return f"<Watchlist {self.name}>"
+
+"""
+DDL for filter_bookmark (run once against users.db):
+CREATE TABLE filter_bookmark (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    query_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+);
+CREATE INDEX ix_filter_bookmark_user_id ON filter_bookmark(user_id);
+"""
+class FilterBookmark(db.Model):
+    __bind_key__ = 'users'
+    __tablename__ = 'filter_bookmark'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True)
+    name = db.Column(db.String(200), nullable=False)
+    query_json = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    def __repr__(self):
+        return f"<FilterBookmark {self.name!r}>"

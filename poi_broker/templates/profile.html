@@ -27,17 +27,21 @@
 
                 <div class="border rounded bg-light py-2 px-3 mb-2">
                     <div class="row text-center">
-                        <div class="col-4">
+                        <div class="col-6 col-md-3 border-right">
                             <div class="small text-muted">Favorites</div>
                             <div class="h5 mb-0" id="summaryFavoritesCount">—</div>
                         </div>
-                        <div class="col-4 border-left border-right">
+                        <div class="col-6 col-md-3 border-right mt-2 mt-md-0">
                             <div class="small text-muted">Groups</div>
                             <div class="h5 mb-0" id="summaryGroupsCount">—</div>
                         </div>
-                        <div class="col-4">
+                        <div class="col-6 col-md-3 border-right mt-2 mt-md-0">
                             <div class="small text-muted">Watchlists</div>
                             <div class="h5 mb-0" id="summaryWatchlistsCount">—</div>
+                        </div>
+                        <div class="col-6 col-md-3 mt-2 mt-md-0">
+                            <div class="small text-muted">Bookmarks</div>
+                            <div class="h5 mb-0" id="summaryFilterBookmarksCount">—</div>
                         </div>
                     </div>
                 </div>
@@ -63,6 +67,16 @@
                 <!-- Panels inserted entirely by JS -->
             </div>
 
+        </div>
+
+        <!-- Saved filter bookmarks -->
+        <div id="filterBookmarks" class="card mt-4">
+            <div class="card-header">
+                <span>Your Saved Filters</span>
+            </div>
+            <div class="tab-content" id="filterBookmarkPanels">
+                <div class="p-3 text-muted text-center">Loading saved filter...</div>
+            </div>
         </div>
 
         <!-- Watchlist card -->
@@ -139,9 +153,11 @@ document.addEventListener('DOMContentLoaded', function () {
     const summaryFavoritesCount = document.getElementById('summaryFavoritesCount');
     const summaryGroupsCount = document.getElementById('summaryGroupsCount');
     const summaryWatchlistsCount = document.getElementById('summaryWatchlistsCount');
+    const summaryFilterBookmarksCount = document.getElementById('summaryFilterBookmarksCount');
 
     const newGroupBtn = document.getElementById('newGroupBtn');
     const newWatchlistBtn = document.getElementById('newWatchlistBtn');
+    const filterBookmarkPanels = document.getElementById('filterBookmarkPanels');
     const watchlistPanels = document.getElementById('watchlistPanels');
     const watchlistQueryModal = document.getElementById('watchlistQueryModal');
     const watchlistQueryRoot = watchlistQueryModal.querySelector('[data-watchlist-query-builder]');
@@ -162,6 +178,73 @@ document.addEventListener('DOMContentLoaded', function () {
     function updateWatchlistSummary(items) {
         const count = Array.isArray(items) ? items.length : 0;
         setSummaryValue(summaryWatchlistsCount, count);
+    }
+
+    function updateFilterBookmarkSummary(items) {
+        const count = Array.isArray(items) ? items.length : 0;
+        setSummaryValue(summaryFilterBookmarksCount, count);
+    }
+
+    function escapeHtml(str) {
+        if (str == null) {
+            return '';
+        }
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function formatFilterBookmarkDate(isoString) {
+        if (!isoString) {
+            return 'Unknown date';
+        }
+        const date = new Date(isoString);
+        if (Number.isNaN(date.getTime())) {
+            return 'Unknown date';
+        }
+        return date.toLocaleString();
+    }
+
+    function renderFilterBookmarks(items) {
+        if (!Array.isArray(items) || items.length === 0) {
+            filterBookmarkPanels.innerHTML = '<div class="p-3 text-muted text-center">No filter bookmarks yet. Save one from the main table while logged in.</div>';
+            return;
+        }
+
+        filterBookmarkPanels.innerHTML = `
+            <div class="list-group list-group-flush filter-bookmark-list">
+                ${items.map(item => `
+                    <div class="list-group-item d-flex justify-content-between align-items-start">
+                        <div class="pr-3">
+                            <a class="font-weight-bold" href="${item.path}">${escapeHtml(item.name)}</a>
+                            <div class="small text-muted mb-1">Created ${formatFilterBookmarkDate(item.created_at)}</div>
+                            <div class="small text-muted text-break">${decodeURIComponent(item.path || '/')}</div>
+                        </div>
+                        <div class="ml-2 flex-shrink-0">
+                            <button type="button" class="btn btn-sm btn-outline-danger remove-filter-bookmark-btn" data-bookmark-id="${item.id}">Delete</button>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    function loadFilterBookmarks() {
+        filterBookmarkPanels.innerHTML = '<div class="p-3 text-muted text-center">Loading filter bookmarks...</div>';
+        fetch('/api/filter-bookmarks')
+            .then(r => r.json())
+            .then(data => {
+                const items = Array.isArray(data) ? data : [];
+                updateFilterBookmarkSummary(items);
+                renderFilterBookmarks(items);
+            })
+            .catch(error => {
+                console.error(error);
+                setSummaryValue(summaryFilterBookmarksCount, '—');
+                filterBookmarkPanels.innerHTML = '<div class="p-3 text-danger text-center">Failed to load filter bookmarks.</div>';
+            });
     }
 
     newGroupBtn.addEventListener('click', function () {
@@ -434,6 +517,26 @@ document.addEventListener('DOMContentLoaded', function () {
                     alert('Failed to delete watchlist.');
                 });
         }
+
+        if (e.target.classList.contains('remove-filter-bookmark-btn')) {
+            const bookmarkId = e.target.dataset.bookmarkId;
+            if (!confirm('Delete this filter bookmark?')) return;
+
+            fetch(`/api/filter-bookmarks/${bookmarkId}`, {
+                method: 'DELETE',
+                headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content') }
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to delete filter bookmark');
+                    }
+                    loadFilterBookmarks();
+                })
+                .catch(error => {
+                    console.error(error);
+                    alert('Failed to delete filter bookmark.');
+                });
+        }
     });
 
     // Confirm move button
@@ -492,6 +595,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Initial load
     loadGroups(getActiveTabId());
+    loadFilterBookmarks();
     loadWatchlists();
 });
 </script>
