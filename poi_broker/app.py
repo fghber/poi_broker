@@ -14,7 +14,7 @@ import json
 from .helpers import extract_numbers, extract_dates, extract_float_filter, extract_mjd_filter, safe_serialize, result_to_dict, object_as_dict
 from . import db
 from .models import Ztf, Crossmatches, User, Favorite, FavoriteGroup, Watchlist, Classification
-from .routes import favorites_bp, visual_query_bp, lightcurve_bp, features_bp
+from .routes import favorites_bp, filter_bookmarks_bp, visual_query_bp, lightcurve_bp, features_bp
 from .constants.features import FEATURE_COLUMNS, default_feature_plot_columns
 from importlib.metadata import version
 bokeh_version = version("bokeh")
@@ -324,6 +324,7 @@ def register_blueprints(app):
     """Register all blueprints with the Flask app."""
     app.register_blueprint(main_blueprint)
     app.register_blueprint(favorites_bp)
+    app.register_blueprint(filter_bookmarks_bp)
     app.register_blueprint(visual_query_bp)
     app.register_blueprint(lightcurve_bp)
     app.register_blueprint(features_bp)
