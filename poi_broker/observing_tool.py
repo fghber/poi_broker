@@ -19,6 +19,9 @@ from astropy.wcs import WCS
 from timezonefinder import TimezoneFinder
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import logging
+
+logger = logging.getLogger(__name__)
 
 observing_tool_blueprint = Blueprint('observing_tool', __name__) 
 
@@ -54,6 +57,7 @@ def calc_observing_plot():
     try:
         observatory = EarthLocation.of_site(obs_loc)
     except Exception:
+        logger.warning('Unknown observatory location: %s', obs_loc)
         return '<p>Unknown observatory location.</p>', 400
 
     obs_lon, obs_lat = observatory.lon.value, observatory.lat.value
@@ -157,7 +161,6 @@ def calc_observing_plot():
         ax2.set_ylim(ax.get_ylim())
         ax2.set_ylabel('Airmass')
         plt.grid(color = 'grey', linestyle = '--', linewidth = 0.5)
-        #print(altitude_ticks)
         ax2.grid(None)
 
         #plt.show()
@@ -186,7 +189,6 @@ def calc_observing_plot():
     moon_panel = ''
     # 1st: Is the moon up at night?
     night_moon_alt = moon_alt[np.where(sun_alt<0)]
-    #print(night_moon_alt)
     if(np.max(night_moon_alt) < 0):
         moon_panel = 'Moon down'
     else: 

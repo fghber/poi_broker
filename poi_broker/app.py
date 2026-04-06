@@ -15,7 +15,7 @@ from .helpers import extract_numbers, extract_dates, extract_float_filter, extra
 from . import db
 from .models import Ztf, Crossmatches, User, Favorite, FavoriteGroup, Watchlist, Classification
 from .routes import favorites_bp, visual_query_bp, lightcurve_bp, features_bp
-from .constants.features import FEATURE_COLUMNS
+from .constants.features import FEATURE_COLUMNS, default_feature_plot_columns
 from importlib.metadata import version
 bokeh_version = version("bokeh")
 
@@ -31,7 +31,7 @@ def _format_mjd_cached(mjd_value: float) -> str:
 
 @main_blueprint.route('/', methods=['GET'])
 def start():
-    logging.info('Request with request_args:' + json.dumps(request.args))
+    logger.info('Request with request_args: %s', json.dumps(request.args))
     
     page = request.args.get('page', 1, type=int)
 
@@ -44,15 +44,14 @@ def start():
             if date_input:
                 query = extract_mjd_filter(date_input, Ztf.date_alert_mjd, query)
             else:
-                filter_warning_message += 'Date filter cannot be applied - Enter a valid 8-digit integer date of the form yyyymmdd, e.g. "20201207", or range, e.g., "20201207 20201209". You can filter the columns by entering values and then click the "Filter" button.'
+                filter_warning_message += 'Date filter cannot be applied - Enter a valid ISO-date or 8-digit integer date of the form yyyymmdd, e.g. "20201207", or a range, e.g., "20201207 20201209".'
         
         if request.args.get('date_alert_mjd'):
             date_input = extract_numbers(request.args.get('date_alert_mjd'))
-            print(date_input)
             if date_input != None:
                 query = extract_float_filter(date_input, Ztf.date_alert_mjd, query)
             else:
-                filter_warning_message += 'Date filter cannot be applied - Enter a valid 8-digit integer date of the form yyyymmdd, e.g. "20201207", or range, e.g., "20201207 20201209". You can filter the columns by entering values and then click the "Filter" button.'
+                filter_warning_message += 'MJD filter cannot be applied - Enter a valid Modified Julian Date as a number, e.g. "59190.12", a range, e.g. "59190 59191", or a bound with > or <, e.g. ">59190".'
 
         if request.args.get('alert_id'):
             alertId = request.args.get('alert_id', '').strip()
@@ -81,21 +80,21 @@ def start():
             if ra_input != None:
                 query = extract_float_filter(ra_input, Ztf.locus_ra, query, decimals=5)
             else:
-                filter_warning_message += 'Ra filter cannot be applied - Enter a valid number, e.g., "118.61421", or range, e.g., "80 90". You can filter the columns by entering values and then click the "Filter" button.'
+                filter_warning_message += 'Ra filter cannot be applied - Enter a valid number, e.g., "118.61421", or range, e.g., "80 90".'
 
         if request.args.get('locus_dec'):
             dec_input = extract_numbers(request.args.get('locus_dec'))
             if dec_input != None:
                 query = extract_float_filter(dec_input, Ztf.locus_dec, query, decimals=5)
             else:
-                filter_warning_message += 'Dec filter cannot be applied - Enter a valid number, e.g., "-20.02131", or range, e.g., "18.8 19.4". You can filter the columns by entering values and then click the "Filter" button.'
+                filter_warning_message += 'Dec filter cannot be applied - Enter a valid number, e.g., "-20.02131", or range, e.g., "18.8 19.4".'
 
         if request.args.get('magpsf'):
             magpsf_input = extract_numbers(request.args.get('magpsf'))
             if magpsf_input != None:
                 query = extract_float_filter(magpsf_input, Ztf.ant_mag_corrected, query, decimals=3)
             else:
-                filter_warning_message += 'ant_mag_corrected filter cannot be applied - Enter a valid number, e.g., "18.84", or range, e.g., "18.8 19.4". You can filter the columns by entering values and then click the "Filter" button.'
+                filter_warning_message += 'ant_mag_corrected filter cannot be applied - Enter a valid number, e.g., "18.84", or range, e.g., "18.8 19.4".'
 
         if request.args.get('prob_class'):
             prob_class_value = request.args.get('prob_class', '').strip()
@@ -174,7 +173,8 @@ def start():
         observatories = site_names,
         today_utc = current_date,
         bokeh_version = bokeh_version,
-        available_feature_columns = FEATURE_COLUMNS
+        available_feature_columns = FEATURE_COLUMNS,
+        default_feature_plot_columns=default_feature_plot_columns(),
     )
 
 @main_blueprint.route('/help', methods=['GET'])
@@ -196,6 +196,7 @@ def profile():
     try:
         favs = [f.locus_id for f in Favorite.query.filter_by(user_id=current_user.id).order_by(Favorite.created_at.desc()).all()]
     except Exception:
+        logger.exception('Failed to load favorites for profile (user_id=%s)', current_user.id)
         favs = []
     return render_template(
         'profile.html', name=current_user.name, favorites=favs
@@ -218,7 +219,7 @@ def download_alerts_csv():
         response.mimetype = 'text/csv'
         return response
     except Exception as e:
-        logging.error(f'Error downloading CSV for alert_ids {alert_ids}: {e}', exc_info=True)
+        logger.error('Error downloading CSV for alert_ids %s: %s', alert_ids, e, exc_info=True)
         return Response(f'{e}', status=500)
 
 
@@ -285,17 +286,17 @@ def query_crossmatches():
         )
         return response
     except Exception as e:
-        logging.error(f"Error querying crossmatches: {e}", exc_info=True)
+        logger.error('Error querying crossmatches: %s', e, exc_info=True)
         return Response(f"{e}", status=500) # Internal Server Error
 
 # Register Jinja filters
 @main_blueprint.app_template_filter('astro_filter')
-def astro_filter(str):
-    if (str == "g"):
+def astro_filter(passband):
+    if passband == "g":
         return "g"
-    elif (str == "R"):
+    elif passband == "R":
         return "R"
-    elif (str == "i"):
+    elif passband == "i":
         return "i"
     else:
         return ""

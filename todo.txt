@@ -1,3 +1,22 @@
+Fixes
+-
+
+Cleanup
+- align jQuery/Bootstrap versions and integrity tags
+- JSON responses differs on error types and escaping: Some endpoints use jsonify, others build Response/current_app.response_class with json.dumps or safe_serialize (query_features, query_crossmatches).
+- request.query_string.decode('ascii'): Non-ASCII query strings can raise; utf-8 with errors policy is safer.
+
+Considerations
+- consider extending rate-limiting to heavy read routes/endpoints (/query_features, /query_crossmatches, /download_alerts_csv, main /)
+- use a single grouped query to get_favorite_groups (favorites_service.py): For each group it runs Favorite.query.filter_by(group_id=g.id).count() — classic N+1. 
+- Spinner handling logic is repeated across multiple files. Consider refactoring this into a reusable JavaScript module.
+
+New Features
+- Allow users to create custom observatory coordinates for the observing planning tool
+- Save table filters (URL) as bookmark (My Search/Filter)
+- Allow users selecting (up to 10) default features to plot
+
+Future
 - Change column type: ant_magband REAL -> TEXT
 
   ALTER TABLE featuretable ADD COLUMN ant_passband_str TEXT
@@ -20,4 +39,3 @@
     ALTER TABLE new_featuretable RENAME TO featuretable;
     HOWEVER: SQLite happily stores TEXT in a REAL column (Type Affinity). This only matters when moving to PosgreSQL/MySQL
 
-- Check for missing DB indices? See schema SQL

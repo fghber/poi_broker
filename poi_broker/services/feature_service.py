@@ -6,7 +6,7 @@ from flask import current_app
 from .. import db
 from ..models import Ztf
 from ..helpers import object_as_dict, safe_serialize
-from ..constants.features import FEATURE_COLUMN_LIST
+from ..constants.features import FEATURE_COLUMN_LIST, default_feature_plot_columns
 
 logger = logging.getLogger(__name__)
 
@@ -54,22 +54,21 @@ def query_feature_plot_data(locus_id, selected_features=None):
     
     Args:
         locus_id: The locus_id to query
-        selected_features: List of feature column names to load (optional, defaults to first 5)
+        selected_features: List of feature column names to load (optional, defaults via default_feature_plot_columns)
     
     Returns:
         list: Ztf rows with requested feature columns loaded
     """
     try:
-        # Use provided features or default to first 5
         if not selected_features:
-            feature_list = FEATURE_COLUMN_LIST[:5]
+            feature_list = default_feature_plot_columns()
         else:
             # Limit to 10 features for plotting
             feature_list = selected_features[:10]
             # Validate against known features
             feature_list = [f for f in feature_list if f in FEATURE_COLUMN_LIST]
             if not feature_list:
-                feature_list = FEATURE_COLUMN_LIST[:5]
+                feature_list = default_feature_plot_columns()
         
         # Build column list: always include date and mag, plus selected features
         columns_to_load = [Ztf.date_alert_mjd, Ztf.ant_mag_corrected] + [getattr(Ztf, col) for col in feature_list]

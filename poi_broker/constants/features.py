@@ -692,3 +692,23 @@ FEATURE_COLUMN_LIST = [
     'harmonics_chi_per_degree_R',
     'harmonics_chi_per_degree_i',
 ]
+
+# Initial feature-plot multiselect (explicit not derive from FEATURE_COLUMN_LIST).
+DEFAULT_FEATURE_PLOT_COLUMNS = (
+    'feature_amplitude_magn_r',
+    'feature_anderson_darling_normal_magn_r',
+    'feature_beyond_1_std_magn_r',
+    'feature_beyond_2_std_magn_r',
+    'feature_cusum_magn_r',
+)
+
+
+def default_feature_plot_columns():
+    """
+    Return a new list copy of DEFAULT_FEATURE_PLOT_COLUMNS.
+
+    The main UI always applies these when opening a locus, so `/query_featureplot_data`
+    normally receives a non-empty `features` query param. This matches that choice for
+    direct API calls that omit `features` and for rendering the template default.
+    """
+    return list(DEFAULT_FEATURE_PLOT_COLUMNS)

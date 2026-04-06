@@ -643,11 +643,7 @@
     query_features_table(alertId);
     query_locusplot(locus_id);
     //set selected & reload UI:
-    let default_features = ['feature_amplitude_magn_r',
-        'feature_anderson_darling_normal_magn_r',
-        'feature_beyond_1_std_magn_r',
-        'feature_beyond_2_std_magn_r',
-        'feature_cusum_magn_r'];
+    let default_features = {{ default_feature_plot_columns | tojson }};
     $('select[multiple].active.3col').val(default_features);
     $('select[multiple].active.3col').multiselect('reload');
     query_featureplot(locus_id, default_features.join(','));
