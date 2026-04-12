@@ -52,33 +52,37 @@
     <div class="card mb-4 shadow-sm">
         <div class="card-body">
             <h2 class="h4 accent-heading mb-4">Descriptions of Table Values</h2>
-            <div class="row text-monospace">
-                <div class="col-md-3 font-weight-bold text-primary">date</div>
+            <div class="row">
+                <div class="col-md-3 font-weight-bold text-primary text-monospace">date</div>
                 <div class="col-md-9">The date of the alert.</div>
                 <hr class="w-100 my-2 d-none d-md-block">
                 
-                <div class="col-md-3 font-weight-bold text-primary">alert_id</div>
+                <div class="col-md-3 font-weight-bold text-primary text-monospace">alert_id</div>
                 <div class="col-md-9">ZTF transient candidate, unique to an alert.</div>
                 <hr class="w-100 my-2 d-none d-md-block">
                 
-                <div class="col-md-3 font-weight-bold text-primary">ztf_object_id</div>
+                <div class="col-md-3 font-weight-bold text-primary text-monospace">ztf_object_id</div>
                 <div class="col-md-9">Unique ZTF identifier; appears in all alerts for this astronomical object.</div>
                 <hr class="w-100 my-2 d-none d-md-block">
                 
-                <div class="col-md-3 font-weight-bold text-primary">mjd</div>
+                <div class="col-md-3 font-weight-bold text-primary text-monospace">mjd</div>
                 <div class="col-md-9">Observation time at start of exposure (in Modified Julian Date).</div>
                 <hr class="w-100 my-2 d-none d-md-block">
                 
-                <div class="col-md-3 font-weight-bold text-primary">ant_passband</div>
+                <div class="col-md-3 font-weight-bold text-primary text-monospace">ant_passband</div>
                 <div class="col-md-9">Filter name (<code>g, R, i</code>) derived from ZTF <code>fid</code> (<code>1, 2, 3</code>).</div>
                 <hr class="w-100 my-2 d-none d-md-block">
                 
-                <div class="col-md-3 font-weight-bold text-primary">ra / dec</div>
+                <div class="col-md-3 font-weight-bold text-primary text-monospace">ra / dec</div>
                 <div class="col-md-9">Right Ascension and Declination (<code>J2000 deg</code>).</div>
                 <hr class="w-100 my-2 d-none d-md-block">
                 
-                <div class="col-md-3 font-weight-bold text-primary">ant_mag_corrected</div>
+                <div class="col-md-3 font-weight-bold text-primary text-monospace">ant_mag_corrected</div>
                 <div class="col-md-9">Magnitude from PSF-fit photometry measured from difference image, obtained from ANTARES <code>mag</code>.</div>
+                <hr class="w-100 my-2 d-none d-md-block">
+
+                <div class="col-md-3 font-weight-bold text-primary text-monospace">class</div>
+                <div class="col-md-9">POI Broker Object Classification.</div>
             </div>
         </div>
     </div>
@@ -123,16 +127,12 @@
                 <div class="col-md-6">
                     <ul>
                         <li>Light curve plots.</li>
-                        <li>Thumbnails (cutout images)</li>
+                        <li>Thumbnails (three cutouts showing a 1&times;1 arcmin area.)</li>
                         <li>Calculated features over time (tabular data and visualizations).</li>
                         <li>Observing planning (Finder Chart and Planning Tool by observatory location)</li>
                         <li>Catalog Cross-matches of the object</li>
                         <li>Classification</li>
                     </ul>
-                </div>
-                <div class="col-md-6">
-                    <p class="mb-1 font-weight-bold">Thumbnails:</p>
-                    <p class="small text-muted">Each alert contains three cutouts showing a 1&times;1 arcmin area.</p>
                 </div>
             </div>
         </div>
@@ -164,6 +164,25 @@
             <h2 class="h4 accent-heading mb-3">Object Classification</h2>
             <p>Our machine learning classification system analyzes light curve features to automatically categorize astronomical objects. The feature-based classification relies on periodicity, amplitude variations, and morphological characteristics.</p>
             <p>The classification helps astronomers prioritize follow-up observations by identifying potentially interesting objects such as eclipsing binaries, pulsating variables, or transient events. Classifications are updated as new data becomes available, providing an evolving understanding of each object's nature.</p>
+            <p>Currently, the classifier distinguishes the following classes:</p>
+            <div class="row">
+                <div class="col-md-3 font-weight-bold text-primary text-monospace">cvnova</div>
+                <div class="col-md-9">Cataclysmic variables and novae</div>
+                <div class="col-md-3 font-weight-bold text-primary text-monospace">e</div>
+                <div class="col-md-9">Eclipsing binary stars</div>
+                <div class="col-md-3 font-weight-bold text-primary text-monospace">lpv</div>
+                <div class="col-md-9">Long-periodic variables</div>
+                <div class="col-md-3 font-weight-bold text-primary text-monospace">puls</div>
+                <div class="col-md-9">Pulsating variable stars (such as RR Lyrae, Mira, Cepheids)</div>
+                <div class="col-md-3 font-weight-bold text-primary text-monospace">periodic_other</div>
+                <div class="col-md-9">Other periodic variable objects</div>
+                <div class="col-md-3 font-weight-bold text-primary text-monospace">quas</div>
+                <div class="col-md-9">Quasars, QSOs</div>
+                <div class="col-md-3 font-weight-bold text-primary text-monospace">sn</div>
+                <div class="col-md-9">Supernovae</div>
+                <div class="col-md-3 font-weight-bold text-primary text-monospace">yso</div>
+                <div class="col-md-9">Young stellar objects</div>
+            </div>
         </div>
     </div>
 
@@ -219,7 +238,7 @@
             <div class="row">
                 <div class="col-sm-6">
                     <p class="font-weight-bold mb-1">Full-Stream Alert Brokers</p>
-                    <ul class="small">
+                    <ul>
                         <li>Alerce</li>
                         <li>AMPEL</li>
                         <li>ANTARES</li>
@@ -231,7 +250,7 @@
                 </div>
                 <div class="col-sm-6">
                     <p class="font-weight-bold mb-1">Downstream Alert Brokers</p>
-                    <ul class="small">
+                    <ul>
                         <li>SNAPS</li>
                         <li>POI: Variables</li>
                     </ul>
