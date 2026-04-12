@@ -14,7 +14,7 @@ def classification_plot():
 
     alertId = request.args.get('alertId')
     if not alertId:
-        return 'Missing alertId'
+        return ('<div class="no-data alert alert-warning">Missing alertId</div>', '') 
 
     # load values from the SQLite 'classification' table using SQL (no model required)
     # local import to avoid circular import at module import time
@@ -28,7 +28,7 @@ def classification_plot():
     """)
     row = db.session.execute(sql, {'id': alertId}).fetchone()
     if row is None:
-        return f'No classification found for alert_id={alertId}'
+        return (f'<div class="no-data alert alert-warning">No classification data found for alert_id={alertId}</div>', '') 
 
     # ensure numeric values and replace NULL with 0.0
     values = [float(v) if v is not None else 0.0 for v in row]
@@ -134,6 +134,9 @@ def classification_plot():
 
     # Get Classification Chart Components
     script, div = components(p)
+
+    if not p.renderers:
+        return ('<div class="no-data alert alert-warning">There is no classification data to plot!</div>', '')
  
     # Return the components to the HTML template
     return f'{ div }{ script }'
