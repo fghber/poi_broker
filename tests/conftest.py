@@ -86,6 +86,8 @@ def secure_app(tmp_path, monkeypatch):
     monkeypatch.setenv("AUTH_RATE_LIMIT_LOGIN", "3 per minute")
     monkeypatch.setenv("AUTH_RATE_LIMIT_SIGNUP", "2 per minute")
     monkeypatch.setenv("AUTH_RATE_LIMIT_FORGOT_PASSWORD", "2 per minute")
+    monkeypatch.setenv("READ_RATE_LIMIT_LAX", "30 per minute")
+    monkeypatch.setenv("READ_RATE_LIMIT_MEDIUM", "15 per minute")
 
     from poi_broker import create_app, db
 

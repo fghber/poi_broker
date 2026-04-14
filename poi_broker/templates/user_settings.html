@@ -1,0 +1,79 @@
+{% extends 'site.html' %}
+
+{% block extra_head %}
+{{ super() }}
+<link href="/static/css/jquery.multiselect.css" rel="stylesheet" />
+<script src="/static/js/jquery.multiselect.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-4">
+    <div class="col-md-10 col-lg-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Feature Plot Defaults</span>
+                <a href="{{ url_for('main.profile') }}" class="btn btn-sm btn-outline-secondary">Back to Profile</a>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Choose which features should be selected by default when the feature plot modal opens.</p>
+
+                <form method="post" novalidate>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="form-group">
+                        <label for="default_feature_plot_columns">Your Feature Plot Columns</label>
+                        <!--# https://www.npmjs.com/package/@nobleclem/jquery-multiselect -->
+                        <select name="default_feature_plot_columns[]" id="default_feature_plot_columns" multiple="multiple" class="3col active">
+                            {% for feature in available_features %}
+                                <option value="{{ feature }}" {% if feature in selected_features %}selected{% endif %}>{{ feature }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="form-text text-muted">
+                            Use the dropdown and checkboxes to choose features. You can select up to 10. At least one must remain selected when you save.
+                        </small>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save defaults</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block foot %}
+{{ super() }}
+<script>
+  $(function () {
+    $('#default_feature_plot_columns').multiselect({
+      columns: 2,
+      placeholder: 'Select default features',
+      search: true,
+      maxSelected: 10,
+      searchOptions: {
+        'default': 'Search features'
+      },
+      selectAll: false,
+      onOptionClick: function (element, option) {
+        var maxSelect = 10;
+        if ($(element).val().length > maxSelect) {
+          if ($(option).is(':checked')) {
+            var thisVals = $(element).val();
+            thisVals.splice(thisVals.indexOf($(option).val()), 1);
+            $(element).val(thisVals);
+            $(option).prop('checked', false).closest('li').toggleClass('selected');
+          }
+        } else if ($(element).val().length == maxSelect) {
+          $(element).next('.ms-options-wrap')
+            .find('li:not(.selected)').addClass('disabled')
+            .find('input[type="checkbox"]')
+            .attr('disabled', 'disabled');
+        } else {
+          $(element).next('.ms-options-wrap')
+            .find('li.disabled').removeClass('disabled')
+            .find('input[type="checkbox"]')
+            .removeAttr('disabled');
+        }
+      }
+    });
+  });
+</script>
+{% endblock %}

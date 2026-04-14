@@ -339,7 +339,7 @@
         </button>
       </div>
     <!-- ?NOTE: When a new modal is opened the last selected tab is shown, this is intended -->
-      <div class="modal-body">
+      <div class="modal-body position-relative"> {# Allows positioning loading spinner overlay relative to modal body only #}
         <div role="tabpanel">
           <!-- Nav tabs -->
           <ul class="nav nav-tabs" role="tablist">
@@ -502,14 +502,6 @@
                   </div>
 
                 <!-- </form> -->
-                <div id="loading-spinner" class="d-none">
-                  <div class="spinner-overlay">
-                    <div class="spinner-border text-primary" role="status">
-                      <span class="sr-only">Loading...</span>
-                    </div>
-                    <div class="spinner-text mt-2">Loading...</div>
-                  </div>
-                </div>
                 <span id="observing_output"></span>                
                 </p>
               </div>
@@ -526,6 +518,16 @@
                   <span class="ml-8" id="classification_output"></span><br>
                 </p>
               </div>
+          </div>
+
+          <!-- Global loading spinner for the entire modal -->
+          <div id="loading-spinner" class="d-none">
+            <div class="spinner-overlay">
+              <div class="spinner-border text-primary" role="status">
+                <span class="sr-only">Loading...</span>
+              </div>
+              <div class="spinner-text mt-2">Loading...</div>
+            </div>
           </div>
       </div>
       <div class="modal-footer">
@@ -807,6 +809,7 @@
   function query_featureplot(locus_id, selected_features) {
     //console.log(selected_features);
     showLoadingSpinner(1000); // Show after 1 second for feature plot loading
+    console.log('Querying feature plot with URL parameters:', { locus_id, selected_features, date : new Date().toISOString() });
 
     let featureplot_data_url = '/query_featureplot_data?locusId=' + locus_id + '&features=' + selected_features;
     $.ajax({
@@ -821,6 +824,7 @@
         // document.body.appendChild(script);
         $("#feature-plot").html(data);
         hideLoadingSpinner();
+        console.log('Feature plot loaded successfully. ', { locus_id, selected_features, date : new Date().toISOString() });
     }).fail(function() {
         hideLoadingSpinner();
         $("#feature-plot").html('<div class="alert alert-danger">Error loading feature plot data.</div>');

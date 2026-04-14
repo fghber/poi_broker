@@ -12,7 +12,10 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span><i class="fa fa-user-circle-o mr-2"></i>Profile</span>
-                <a href="{{ url_for('auth.security') }}" class="btn btn-sm btn-outline-secondary">Security</a>
+                <div>
+                    <a href="{{ url_for('user_settings.settings') }}" class="btn btn-sm btn-outline-secondary mr-2">Set Defaults</a>
+                    <a href="{{ url_for('auth.security') }}" class="btn btn-sm btn-outline-secondary">Security</a>
+                </div>
             </div>
             <div class="card-body text-center">
                 <h3 class="card-title mb-1">Welcome, {{ name }}!</h3>
@@ -433,9 +436,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 ${items.map(item => `
                     <div class="list-group-item d-flex justify-content-between">
                         <div class="pr-3">
-                            <div class="font-weight-bold">${item.name}</div>
+                            <div class="font-weight-bold">${escapeHtml(item.name)}</div>
                             <div class="small text-muted mb-2">Created ${formatWatchlistDate(item.created_at)}</div>
-                            <div class="watchlist-sql text-muted">${item.sql_where || ''}</div>
+                            <div class="watchlist-sql text-muted">${escapeHtml(item.sql_where || '')}</div>
                         </div>
                         <div class="ml-3">
                             <button type="button" class="btn btn-sm btn-outline-danger remove-watchlist-btn" data-watchlist-id="${item.id}">Delete</button>

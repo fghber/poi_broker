@@ -2,10 +2,14 @@
 
 import logging
 from flask_login import current_user
+from sqlalchemy import func
 from .. import db
 from ..models import Favorite, FavoriteGroup
 
 logger = logging.getLogger(__name__)
+
+# Sentinel to distinguish "no filter specified" from an explicit None (ungrouped)
+_NO_FILTER = object()
 
 
 def get_favorite_status(locus_id):
@@ -28,24 +32,27 @@ def get_favorite_status(locus_id):
     return fav is not None
 
 
-def get_user_favorites(group_id=None):
+def get_user_favorites(group_id=_NO_FILTER):
     """
-    Get all favorites for the current user, optionally filtered by group.
-    
+    Get favorites for the current user.
+
     Args:
-        group_id: Optional group ID to filter by (None returns ungrouped)
-    
+        group_id: If omitted (default), no group filter is applied.
+                  If provided as an integer, returns favorites for that group.
+                  If provided explicitly as None, returns only ungrouped favorites.
+
     Returns:
         list: List of dicts with 'id' and 'locusId'
     """
     if not current_user.is_authenticated:
         return []
-    
+
     query = Favorite.query.filter_by(user_id=current_user.id)
-    
-    if group_id is not None:
+
+    # If caller provided a group_id (including explicit None), filter by it.
+    if group_id is not _NO_FILTER:
         query = query.filter_by(group_id=group_id)
-    
+
     favs = [{'id': r.id, 'locusId': r.locus_id} for r in query.all()]
     return favs
 
@@ -138,17 +145,28 @@ def get_favorite_groups():
     
     try:
         groups = FavoriteGroup.query.filter_by(user_id=current_user.id).order_by(FavoriteGroup.name).all()
+        
+        # Get counts for all groups in a single query
+        counts = db.session.query(
+            Favorite.group_id,
+            func.count(Favorite.id).label('count')
+        ).filter(
+            Favorite.user_id == current_user.id
+        ).group_by(Favorite.group_id).all()
+        
+        count_dict = {group_id: count for group_id, count in counts}
+        
         result = [
             {
                 'id': g.id,
                 'name': g.name,
-                'count': Favorite.query.filter_by(group_id=g.id).count()
+                'count': count_dict.get(g.id, 0)
             }
             for g in groups
         ]
         
         # Add ungrouped count at the beginning
-        ungrouped_count = Favorite.query.filter_by(user_id=current_user.id, group_id=None).count()
+        ungrouped_count = count_dict.get(None, 0)
         result.insert(0, {'id': None, 'name': 'Ungrouped', 'count': ungrouped_count})
         
         return result
