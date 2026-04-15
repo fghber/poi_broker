@@ -1,5 +1,6 @@
 Fixes
--
+[x] change order of Summary: Watchlist <-> Bookmarks
+[x] Rename "Saved Filters" to Bookmarked Filters
 
 Cleanup
 - align jQuery/Bootstrap versions and integrity tags
@@ -7,16 +8,20 @@ Cleanup
 - request.query_string.decode('ascii'): Non-ASCII query strings can raise; utf-8 with errors policy is safer.
 
 Considerations
-- consider extending rate-limiting to heavy read routes/endpoints (/query_features, /query_crossmatches, /download_alerts_csv, main /)
-- use a single grouped query to get_favorite_groups (favorites_service.py): For each group it runs Favorite.query.filter_by(group_id=g.id).count() — classic N+1. 
+[x] consider extending rate-limiting to heavy read routes/endpoints (/query_features, /query_crossmatches, /download_alerts_csv, main /)
+[x] use a single grouped query to get_favorite_groups (favorites_service.py): For each group it runs Favorite.query.filter_by(group_id=g.id).count() — classic N+1. 
 - Spinner handling logic is repeated across multiple files. Consider refactoring this into a reusable JavaScript module.
 
 New Features
 - Allow users to create custom observatory coordinates for the observing planning tool
-- Save table filters (URL) as bookmark (My Search/Filter)
-- Allow users selecting (up to 10) default features to plot
+[x] Save table filters (URL) as bookmark (My Search/Filter)
+[x] Allow users selecting (up to 10) default features to plot
+- Add Bulk Export based on Visual Query (Top 1000/Preview or All)
+  - Create full CSV async, inform user when ready
 
 Future
+- Indepentent Python Client API Export Package 
+- Migrate to more capable DB (PostgreSQL)
 - Change column type: ant_magband REAL -> TEXT
 
   ALTER TABLE featuretable ADD COLUMN ant_passband_str TEXT
