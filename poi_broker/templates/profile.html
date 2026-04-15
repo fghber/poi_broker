@@ -38,13 +38,13 @@
                             <div class="small text-muted">Groups</div>
                             <div class="h5 mb-0" id="summaryGroupsCount">—</div>
                         </div>
-                        <div class="col-6 col-md-3 border-right mt-2 mt-md-0">
-                            <div class="small text-muted">Watchlists</div>
-                            <div class="h5 mb-0" id="summaryWatchlistsCount">—</div>
-                        </div>
                         <div class="col-6 col-md-3 mt-2 mt-md-0">
                             <div class="small text-muted">Bookmarks</div>
                             <div class="h5 mb-0" id="summaryFilterBookmarksCount">—</div>
+                        </div>
+                        <div class="col-6 col-md-3 border-right mt-2 mt-md-0">
+                            <div class="small text-muted">Watchlists</div>
+                            <div class="h5 mb-0" id="summaryWatchlistsCount">—</div>
                         </div>
                     </div>
                 </div>
@@ -75,7 +75,7 @@
         <!-- Saved filter bookmarks -->
         <div id="filterBookmarks" class="card mt-4">
             <div class="card-header">
-                <span>Your Saved Filters</span>
+                <span>Your Bookmarked Filters</span>
             </div>
             <div class="tab-content" id="filterBookmarkPanels">
                 <div class="p-3 text-muted text-center">Loading saved filter...</div>
@@ -207,7 +207,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (Number.isNaN(date.getTime())) {
             return 'Unknown date';
         }
-        return date.toLocaleString();
+        return date.toLocaleDateString();
     }
 
     function renderFilterBookmarks(items) {
@@ -220,9 +220,11 @@ document.addEventListener('DOMContentLoaded', function () {
             <div class="list-group list-group-flush filter-bookmark-list">
                 ${items.map(item => `
                     <div class="list-group-item d-flex justify-content-between align-items-start">
-                        <div class="pr-3">
-                            <a class="font-weight-bold" href="${item.path}">${escapeHtml(item.name)}</a>
-                            <div class="small text-muted mb-1">Created ${formatFilterBookmarkDate(item.created_at)}</div>
+                        <div class="pr-3 flex-grow-1">
+                            <div class="d-flex justify-content-between align-items-baseline">
+                                <a class="font-weight-bold" href="${item.path}">${escapeHtml(item.name)}</a>
+                                <div class="small text-muted mb-1 float-right">Created ${formatFilterBookmarkDate(item.created_at)}</div>
+                            </div>
                             <div class="small text-muted text-break">${decodeURIComponent(item.path || '/')}</div>
                         </div>
                         <div class="ml-2 flex-shrink-0">
@@ -422,7 +424,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return 'Unknown date';
         }
 
-        return date.toLocaleString();
+        return date.toLocaleDateString();
     }
 
     function renderWatchlists(items) {
@@ -435,9 +437,11 @@ document.addEventListener('DOMContentLoaded', function () {
             <div class="list-group list-group-flush watchlist-list">
                 ${items.map(item => `
                     <div class="list-group-item d-flex justify-content-between">
-                        <div class="pr-3">
-                            <div class="font-weight-bold">${escapeHtml(item.name)}</div>
-                            <div class="small text-muted mb-2">Created ${formatWatchlistDate(item.created_at)}</div>
+                        <div class="pr-3 flex-grow-1">
+                            <div class="d-flex justify-content-between align-items-baseline">
+                                <div class="font-weight-bold">${escapeHtml(item.name)}</div>
+                                <div class="small text-muted mb-2">Created ${formatWatchlistDate(item.created_at)}</div>
+                            </div>
                             <div class="watchlist-sql text-muted">${escapeHtml(item.sql_where || '')}</div>
                         </div>
                         <div class="ml-3">
