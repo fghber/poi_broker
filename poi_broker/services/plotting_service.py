@@ -39,6 +39,9 @@ def create_bokeh_lightcurve_figure(lightcurve_data):
     Returns:
         tuple: (html_div, script) from bokeh.embed.components()
     """
+    if not lightcurve_data or all(row.date_alert_mjd is None or row.ant_mag_corrected is None for row in lightcurve_data):
+        return ('<div class="no-data alert alert-warning">No lightcurve data available!</div>', '') 
+
     p = figure(height=350, sizing_mode="stretch_width")
     p.xaxis.axis_label = 'date_alert_mjd'
     p.yaxis.axis_label = 'ant_mag_corrected'
@@ -56,6 +59,9 @@ def create_bokeh_lightcurve_figure(lightcurve_data):
         
         if x_coords:  # Only plot if there's data
             p.scatter(x_coords, y_coords, size=5, color=color, alpha=0.5)
+
+    if not p.renderers:
+        return ('<div class="no-data alert alert-warning">There is no lightcurve data to plot!</div>', '') 
     
     script, div = components(p)
     return div, script
@@ -72,6 +78,12 @@ def create_bokeh_feature_plot(feature_data, feature_list):
     Returns:
         tuple: (html_div, script) from bokeh.embed.components()
     """
+    if not feature_data or all(row.date_alert_mjd is None or row.ant_mag_corrected is None for row in feature_data):
+        return ('<div class="no-data alert alert-warning">There is no feature data to plot available!</div>', '')
+    
+    if not feature_list:
+        return ('<div class="no-data alert alert-warning">No features selected for plotting!</div>', '')
+
     p = figure(height=350, sizing_mode="stretch_width")
     p.xaxis.axis_label = 'date_alert_mjd'
     p.yaxis.axis_label = 'features'
@@ -108,6 +120,9 @@ def create_bokeh_feature_plot(feature_data, feature_list):
         p.add_layout(legend, 'right')
         p.legend.label_text_font_size = '9px'
         p.legend.glyph_width = 12
+
+    if not p.renderers:
+        return ('<div class="no-data alert alert-warning">There is no features data to plot!</div>', '')        
     
     script, div = components(p)
     return div, script

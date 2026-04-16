@@ -110,6 +110,102 @@ def test_authenticated_favorites_crud(auth_client):
     assert r.get_json()["fav"] is False
 
 
+def test_favorite_groups_crud(auth_client):
+    """Test FavoriteGroup CRUD operations independently."""
+    # Create first group
+    r = auth_client.post("/api/favorite-groups", json={"name": "Test Group 1"})
+    assert r.status_code == 201, r.get_data(as_text=True)
+    group1_id = r.get_json()["id"]
+    assert r.get_json()["name"] == "Test Group 1"
+
+    # Create second group
+    r = auth_client.post("/api/favorite-groups", json={"name": "Test Group 2"})
+    assert r.status_code == 201
+    group2_id = r.get_json()["id"]
+
+    # Try to create duplicate group (should fail)
+    r = auth_client.post("/api/favorite-groups", json={"name": "Test Group 1"})
+    assert r.status_code == 409
+    assert "already exists" in r.get_json()["error"]
+
+    # List groups - should have 2 groups plus Ungrouped
+    r = auth_client.get("/api/favorite-groups")
+    assert r.status_code == 200
+    groups = r.get_json()["groups"]
+    assert len(groups) == 3  # Ungrouped + 2 groups
+    group_names = [g["name"] for g in groups]
+    assert "Test Group 1" in group_names
+    assert "Test Group 2" in group_names
+    assert "Ungrouped" in group_names
+
+    # All groups should have count 0 initially
+    for g in groups:
+        assert g["count"] == 0
+
+    # Add favorites to groups
+    r = auth_client.post("/api/favorite", json={"locusId": "group-test-1", "fav": True, "groupId": group1_id})
+    assert r.status_code == 200
+
+    r = auth_client.post("/api/favorite", json={"locusId": "group-test-2", "fav": True, "groupId": group1_id})
+    assert r.status_code == 200
+
+    r = auth_client.post("/api/favorite", json={"locusId": "group-test-3", "fav": True, "groupId": group2_id})
+    assert r.status_code == 200
+
+    # Check group counts updated
+    r = auth_client.get("/api/favorite-groups")
+    assert r.status_code == 200
+    groups = r.get_json()["groups"]
+    group_dict = {g["name"]: g for g in groups}
+    assert group_dict["Test Group 1"]["count"] == 2
+    assert group_dict["Test Group 2"]["count"] == 1
+    assert group_dict["Ungrouped"]["count"] == 0
+
+    # Move favorite from group1 to group2
+    fav_id = None
+    r = auth_client.get("/api/favorites", query_string={"groupId": group1_id})
+    assert r.status_code == 200
+    favs = r.get_json()["favorites"]
+    assert len(favs) == 2
+    fav_id = favs[0]["id"]
+
+    r = auth_client.patch(f"/api/favorite/{fav_id}/group", json={"groupId": group2_id})
+    assert r.status_code == 200
+
+    # Check counts updated after move
+    r = auth_client.get("/api/favorite-groups")
+    assert r.status_code == 200
+    groups = r.get_json()["groups"]
+    group_dict = {g["name"]: g for g in groups}
+    assert group_dict["Test Group 1"]["count"] == 1
+    assert group_dict["Test Group 2"]["count"] == 2
+
+    # Delete group1 (should orphan favorites)
+    r = auth_client.delete(f"/api/favorite-groups/{group1_id}")
+    assert r.status_code == 200
+
+    # Check group1 is gone, favorites moved to Ungrouped
+    r = auth_client.get("/api/favorite-groups")
+    assert r.status_code == 200
+    groups = r.get_json()["groups"]
+    group_names = [g["name"] for g in groups]
+    assert "Test Group 1" not in group_names
+    assert "Test Group 2" in group_names
+    assert "Ungrouped" in group_names
+    group_dict = {g["name"]: g for g in groups}
+    assert group_dict["Test Group 2"]["count"] == 2
+    assert group_dict["Ungrouped"]["count"] == 1  # The moved favorite
+
+    # Delete group2
+    r = auth_client.delete(f"/api/favorite-groups/{group2_id}")
+    assert r.status_code == 200
+
+    # Clean up favorites
+    for locus_id in ["group-test-1", "group-test-2", "group-test-3"]:
+        r = auth_client.post("/api/favorite", json={"locusId": locus_id, "fav": False})
+        assert r.status_code == 200
+
+
 def test_authenticated_visual_query(auth_client):
     # The UI requires at least one valid rule before preview/save.
     minimal_rules = {
@@ -238,3 +334,38 @@ def test_lightcurve_and_features_smoke(client):
 
     response = client.get("/download_alerts_csv")
     assert response.status_code == 400
+
+
+def test_read_routes_rate_limited(secure_client):
+    """Test that heavy read routes are rate limited."""
+    # Test LAX limit (30 per minute) for main page
+    for i in range(31):
+        response = secure_client.get("/")
+        if i < 30:
+            assert response.status_code == 200
+        else:
+            assert response.status_code == 429  # Rate limited
+
+    # Test LAX limit for /query_features
+    for i in range(31):
+        response = secure_client.get("/query_features", query_string={"alert_id": "missing-alert"})
+        if i < 30:
+            assert response.status_code in (404, 500)
+        else:
+            assert response.status_code == 429
+
+    # Test LAX limit for /query_crossmatches
+    for i in range(31):
+        response = secure_client.get("/query_crossmatches", query_string={"locusId": "locus-1"})
+        if i < 30:
+            assert response.status_code == 200
+        else:
+            assert response.status_code == 429
+
+    # Test MEDIUM limit (15 per minute) for /download_alerts_csv
+    for i in range(16):
+        response = secure_client.get("/download_alerts_csv")
+        if i < 15:
+            assert response.status_code == 400
+        else:
+            assert response.status_code == 429

@@ -6,6 +6,7 @@ from flask import Blueprint, Response, request, jsonify, current_app
 from ..services.feature_service import query_features_by_alert_id, query_feature_plot_data, get_available_features
 from ..services.plotting_service import create_bokeh_feature_plot
 from ..helpers import safe_serialize
+from .. import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,7 @@ features_bp = Blueprint('features', __name__)
 
 
 @features_bp.route('/query_features', methods=['GET'])
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
 def query_features():
     """
     Get all features for a given alert_id.

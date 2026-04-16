@@ -69,12 +69,14 @@ def build_app_config(base_dir):
 	auth_forgot_limit = os.environ.get('AUTH_RATE_LIMIT_FORGOT_PASSWORD', '5 per hour').strip() or '5 per hour'
 	auth_reset_limit = os.environ.get('AUTH_RATE_LIMIT_RESET_PASSWORD', '10 per hour').strip() or '10 per hour'
 	auth_change_pw_limit = os.environ.get('AUTH_RATE_LIMIT_CHANGE_PASSWORD', '10 per hour').strip() or '10 per hour'
+	read_rate_limit_lax = os.environ.get('READ_RATE_LIMIT_LAX', '30 per minute').strip() or '30 per minute'
+	read_rate_limit_medium = os.environ.get('READ_RATE_LIMIT_MEDIUM', '15 per minute').strip() or '15 per minute'
 
 	config = {
 		'DEBUG': debug_flag,
 		'TESTING': testing_flag,
 		'TEMPLATES_AUTO_RELOAD': True,
-		'APP_VERSION': '3.0.2',
+		'APP_VERSION': '3.0.3',
 		'SQLALCHEMY_DATABASE_URI': db_uri,
 		'SQLALCHEMY_BINDS': {
 			'users': login_db_uri,
@@ -97,6 +99,8 @@ def build_app_config(base_dir):
 		'AUTH_RATE_LIMIT_FORGOT_PASSWORD': auth_forgot_limit,
 		'AUTH_RATE_LIMIT_RESET_PASSWORD': auth_reset_limit,
 		'AUTH_RATE_LIMIT_CHANGE_PASSWORD': auth_change_pw_limit,
+		'READ_RATE_LIMIT_LAX': read_rate_limit_lax,
+		'READ_RATE_LIMIT_MEDIUM': read_rate_limit_medium,
 	}
 
 	return config, db_path, login_db_path

@@ -12,10 +12,11 @@ import re
 import json
 
 from .helpers import extract_numbers, extract_dates, extract_float_filter, extract_mjd_filter, safe_serialize, result_to_dict, object_as_dict
-from . import db
+from . import db, limiter
 from .models import Ztf, Crossmatches, User, Favorite, FavoriteGroup, Watchlist, Classification
 from .routes import favorites_bp, filter_bookmarks_bp, visual_query_bp, lightcurve_bp, features_bp
 from .constants.features import FEATURE_COLUMNS, default_feature_plot_columns
+from .user_settings import user_settings_bp, get_saved_feature_plot_columns, UserSettings  # noqa: F401 - imported to register model
 from importlib.metadata import version
 bokeh_version = version("bokeh")
 
@@ -30,6 +31,7 @@ def _format_mjd_cached(mjd_value: float) -> str:
 
 
 @main_blueprint.route('/', methods=['GET'])
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
 def start():
     logger.info('Request with request_args: %s', json.dumps(request.args))
     
@@ -174,7 +176,9 @@ def start():
         today_utc = current_date,
         bokeh_version = bokeh_version,
         available_feature_columns = FEATURE_COLUMNS,
-        default_feature_plot_columns=default_feature_plot_columns(),
+        default_feature_plot_columns=(get_saved_feature_plot_columns(current_user.id)
+                                      if current_user.is_authenticated
+                                      else default_feature_plot_columns()),
     )
 
 @main_blueprint.route('/help', methods=['GET'])
@@ -203,6 +207,7 @@ def profile():
     )
 
 @main_blueprint.route('/download_alerts_csv', methods=['GET'])
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_MEDIUM', '15 per minute'))
 def download_alerts_csv():
     """Download featuretable + classification fields for multiple alert_ids as CSV."""
     alert_ids = [x.strip() for x in request.args.getlist('alert_id') if x and x.strip()]
@@ -267,6 +272,7 @@ def _build_alerts_csv(alert_ids):
 
 
 @main_blueprint.route('/query_crossmatches', methods=['GET'])
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
 def query_crossmatches():
     """Query crossmatches for a given locus id."""
     locusId = request.args.get('locusId') # ex: locusname="ANT2018fywy2"
@@ -328,3 +334,4 @@ def register_blueprints(app):
     app.register_blueprint(visual_query_bp)
     app.register_blueprint(lightcurve_bp)
     app.register_blueprint(features_bp)
+    app.register_blueprint(user_settings_bp)

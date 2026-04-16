@@ -19,7 +19,7 @@ Our alert broker, called *Point of Interest*, is tailored towards the needs of a
 
 *Point of Interest* differs from other brokers in the focus on updates on variable stars, thus running a rather specific than the full analysis chain of streamed data. As a consequence, the broker is rather lightweight. *Point of Interest* users are encouraged to design their own on-sky regions they want receive updates for (such as for planned follow-up campaigns) or select from a list of on-sky regions which are particularly interesting for variable star observers, such as stellar streams, globular clusters and dwarf galaxies.
 
-## Usage
+## Installation
 This repository contains the web frontend, including a small database for testing purposes.
 
 After downloading the package, install all required packages for development:
@@ -40,11 +40,23 @@ Database locations are configured through environment variables:
 
 Both values may be absolute paths or paths relative to the project root. By default the app assumes both files live in a sibling directory named `_broker_db` outside the repository, for example:
 
-`../_broker_db/ztf_alerts_stream.db`
+```
+../_broker_db/ztf_alerts_stream.db
+../_broker_db/users.db
+```
 
-`../_broker_db/users.db`
+> [!NOTE]
+> If you don't have the database files, you can create them using the alerts and user database schema files found in the `/tools` folder. Sample alerts data can be found in the same directory.
 
-This is intentional: the main alerts database is typically too large to keep inside the repository.
+```
+sqlite3 alerts.db < alertsdb_schema.sql
+sqlite3 users.db < usersdb_schema.sql 
+sqlite3 alerts.db < alerts_dump.sql 
+```
+The main alerts database is intentionally excluded because it is too large to keep inside the repository.
+
+
+## Usage
 
 Start the web app from the terminal from the **project root** (the folder that **contains** the _sub-folder_ `poi_boker`) with 
 
