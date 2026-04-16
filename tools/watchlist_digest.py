@@ -63,9 +63,16 @@ from typing import cast
 from urllib.parse import quote
 
 from astropy.time import Time
+from dotenv import load_dotenv
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 WORKSPACE_ROOT = SCRIPT_DIR.parent
+
+# Load .env file from script directory
+dotenv_path = SCRIPT_DIR / ".env"
+if dotenv_path.exists():
+    load_dotenv(dotenv_path)
+
 if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
