@@ -225,7 +225,7 @@ def download_alerts_csv():
         return response
     except Exception as e:
         logger.error('Error downloading CSV for alert_ids %s: %s', alert_ids, e, exc_info=True)
-        return Response(f'{e}', status=500)
+        return Response('Error downloading CSV for selected alert ids!', status=500)
 
 
 def _build_alerts_csv(alert_ids):
@@ -293,7 +293,7 @@ def query_crossmatches():
         return response
     except Exception as e:
         logger.error('Error querying crossmatches: %s', e, exc_info=True)
-        return Response(f"{e}", status=500) # Internal Server Error
+        return Response('Error querying crossmatches for selected locus id!', status=500) # Internal Server Error: TODO:Return JSON error message instead of string?
 
 # Register Jinja filters
 @main_blueprint.app_template_filter('astro_filter')
