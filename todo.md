@@ -7,7 +7,10 @@
 - JSON responses differs on error types and escaping: Some endpoints use jsonify, others build Response/current_app.response_class with json.dumps or safe_serialize (query_features, query_crossmatches).
 - request.query_string.decode('ascii'): Non-ASCII query strings can raise; utf-8 with errors policy is safer.
 - implement `get_flashed_messages(with_categories=True)` globally for all categoires used: 'danger', 'success', 'info',  'warning'
-- apply db.session.commit() pattern
+- apply db.session.commit() pattern when
+  - Violating a unique constraint (email column)
+  - Violating a foreign key constraint
+  - Violating a NOT NULL constraint
   ```
     try:
         db.session.commit()

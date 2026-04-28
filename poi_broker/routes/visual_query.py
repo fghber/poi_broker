@@ -5,6 +5,7 @@ import json
 import time
 from flask import Blueprint, jsonify, request, render_template
 from flask_login import login_required, current_user
+from sqlalchemy.exc import IntegrityError
 from .. import db
 from ..models import Watchlist
 from ..services.query_service import get_preview_sql, get_query_match_count, build_query_from_rules
@@ -38,9 +39,9 @@ def preview_query():
         sql_preview = get_preview_sql(rules_payload)
         return jsonify({'sql': sql_preview})
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return jsonify({'error': str(e)}), 400 # The actual error is included intentinally here since it's likely to be a helpful message about what's wrong with the rules payload
     except Exception as e:
-        logger.error('Error in preview_query', exc_info=True)
+        logger.error(f'Error in preview_query: {str(e)}', exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
@@ -61,12 +62,13 @@ def export_query():
         count = get_query_match_count(rules_payload)
         return jsonify({'count': count})
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        logger.error(f'ValueError in export_query: {str(e)}', exc_info=True)
+        return jsonify({'error': 'Invalid query rules provided.'}), 400
     except Exception as e:
-        logger.error('Error in export_query', exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        logger.error(f'Error in export_query: {str(e)}', exc_info=True)
+        return jsonify({'error': 'An error occurred while exporting.'}), 500
 
-
+#NOTE: Watchlist data is strictly private per user and never shared
 @visual_query_bp.route('/api/watchlist', methods=['POST'])
 @login_required
 def save_watchlist():
@@ -103,18 +105,18 @@ def save_watchlist():
             created_at=now_epoch,
         )
         db.session.add(watchlist)
-        try:
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-            return jsonify({'error': f"A watchlist named '{name}' already exists"}), 409
+        db.session.commit()
 
         return jsonify({'id': watchlist.id, 'name': watchlist.name}), 201
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'error': f"A watchlist named '{name}' already exists!"}), 409
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        logger.error(f"ValueError in save_watchlist: {str(e)}", exc_info=True)
+        return jsonify({'error': 'Unable to to save invalid querybuilder rules!'}), 406
     except Exception as e:
-        logger.error('Error in save_watchlist', exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error in save_watchlist: {str(e)}", exc_info=True)
+        return jsonify({'error': 'An error occurred while saving the watchlist.'}), 500
 
 
 @visual_query_bp.route('/api/watchlist', methods=['GET'])
@@ -129,8 +131,8 @@ def list_watchlists():
         ]
         return jsonify(result)
     except Exception as e:
-        logger.error('Error in list_watchlists', exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error in list_watchlists: {str(e)}", exc_info=True)
+        return jsonify({'error': 'An error occurred while listing watchlists.'}), 500
 
 
 @visual_query_bp.route('/api/watchlist/<int:wid>', methods=['DELETE'])
@@ -143,7 +145,10 @@ def delete_watchlist(wid):
             return jsonify({'error': 'Not found'}), 404
         db.session.delete(watchlist)
         db.session.commit()
-        return '', 204
+        return jsonify({'success': True}), 200
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'error': 'Cannot delete watchlist because it is in use.'}), 409
     except Exception as e:
-        logger.error('Error in delete_watchlist', exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error in delete_watchlist: {str(e)}", exc_info=True)
+        return jsonify({'error': 'An error occurred while deleting the watchlist.'}), 500

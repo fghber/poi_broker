@@ -10,6 +10,7 @@ from urllib.parse import urlencode
 from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
 
+from sqlalchemy.exc import IntegrityError
 from .. import db
 from ..models import FilterBookmark
 
@@ -138,8 +139,16 @@ def create_filter_bookmark():
         created_at=datetime.now(timezone.utc),
     )
     db.session.add(row)
-    db.session.commit()
-
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'error': 'A bookmark with this name already exists.'}), 409
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f'Database error during commit: {str(e)}', exc_info=True)
+        return jsonify({'error': 'Unable to create filter bookmark.'}), 500
+    
     payload = _row_to_api_dict(row)
     return jsonify(payload), 201
 
@@ -151,5 +160,14 @@ def delete_filter_bookmark(bookmark_id: int):
     if row is None:
         return jsonify({'error': 'Not found'}), 404
     db.session.delete(row)
-    db.session.commit()
-    return '', 204
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'error': 'Cannot delete bookmark because it is in use.'}), 409
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f'Database error during commit: {str(e)}', exc_info=True)
+        return jsonify({'error': 'Unable to delete filter bookmark.'}), 500
+    
+    return jsonify({'success': True}), 200

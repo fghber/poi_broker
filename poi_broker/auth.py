@@ -1,6 +1,7 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, make_response
 from flask_login import login_user, logout_user, login_required
 from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy.exc import IntegrityError
 from .models import User
 from . import db
 import secrets
@@ -166,7 +167,17 @@ def signup_post():
     
     #only add the user to the database if the email was sent successfully to avoid creating unverified accounts with invalid emails
     db.session.add(new_user)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback() #'Resource already exists or constraint violated' # 409: should be rare since we already check for existing email, but could happen in a race condition
+        flash('Failed to create user. Please sign-in with existing account or try signing up again later.') 
+        return redirect(url_for('auth.signup'))
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f'Database error during commit: {str(e)}', exc_info=True)
+        flash('Failed to create user. Please try signing up again later.') 
+        return redirect(url_for('auth.signup'))
 
     flash('Welcome! A verification email has been sent to your address. Please check your inbox.')
     return redirect(url_for('auth.login'))
@@ -187,17 +198,33 @@ def verify_email(token):
     # Mark email as verified and clear the token
     user.email_verified = True
     user.email_verification_token = None
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f'Database error during commit: {str(e)}', exc_info=True)
+        flash('Failed to verify email. Please try again later.')
+        return redirect(url_for('auth.signup'))
     
     flash('Email verified successfully! You can now log in.')
     return redirect(url_for('auth.login'))
 
 
-@auth_blueprint.route('/logout')
+@auth_blueprint.route('/logout', methods=['POST'])
 @login_required
 def logout():
     logout_user()
-    return redirect(url_for('main.start'))
+    resp = make_response(redirect(url_for('main.start')))
+    # Explicitly clear session cookie with secure flags
+    resp.set_cookie(
+        current_app.config.get('SESSION_COOKIE_NAME', 'session'),
+        '',
+        expires=0,
+        httponly=True,
+        secure=current_app.config.get('SESSION_COOKIE_SECURE', True),
+        samesite=current_app.config.get('SESSION_COOKIE_SAMESITE', 'Lax')
+    )
+    return resp
 
 @auth_blueprint.route('/forgot-password')
 def forgot_password():
@@ -217,7 +244,13 @@ def forgot_password_post():
         # Generate reset token
         user.reset_token = secrets.token_urlsafe(32)
         user.reset_token_expires = _utc_now_epoch() + int(timedelta(hours=1).total_seconds())
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f'Database error during commit: {str(e)}', exc_info=True)
+            flash('Failed to generate password reset link. Please try again later.')
+            return redirect(url_for('auth.forgot_password'))
         
         # Send email with reset link and expiration time
         result = send_email(
@@ -269,7 +302,13 @@ def reset_password_post(token):
     user.password = generate_password_hash(password)
     user.reset_token = None
     user.reset_token_expires = None
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f'Database error during commit: {str(e)}', exc_info=True)
+        flash('Failed to update password. Please try again later.')
+        return redirect(url_for('auth.reset_password', token=token))
 
     flash('Password updated. Please log in.')
     return redirect(url_for('auth.login'))
@@ -321,8 +360,14 @@ def change_password():
     
     # Update password
     current_user.password = generate_password_hash(new_password)
-    db.session.commit()
-    
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f'Database error during commit: {str(e)}', exc_info=True)
+        flash('Failed to change password. Please try again later.')
+        return redirect(url_for('auth.security'))
+
     flash('Password changed successfully.')
     return redirect(url_for('auth.security'))
 

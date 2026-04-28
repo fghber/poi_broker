@@ -312,7 +312,9 @@ def test_authenticated_watchlist_crud(auth_client):
 
     # Delete watchlist
     r = auth_client.delete(f"/api/watchlist/{wl_id}")
-    assert r.status_code == 204
+    assert r.status_code == 200
+    assert r.is_json
+    assert r.get_json().get("success") is True
 
 
 def test_lightcurve_and_features_smoke(client):

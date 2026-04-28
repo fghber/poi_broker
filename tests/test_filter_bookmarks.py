@@ -45,8 +45,9 @@ def test_filter_bookmarks_crud(auth_client):
     assert match["name"] == "My locus"
 
     r = auth_client.delete(f"/api/filter-bookmarks/{bookmark_id}")
-    assert r.status_code == 204
-    assert r.get_data(as_text=True) == ""
+    assert r.status_code == 200
+    assert r.is_json
+    assert r.get_json().get("success") is True
 
     r = auth_client.get("/api/filter-bookmarks")
     assert r.status_code == 200
