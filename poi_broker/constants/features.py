@@ -341,9 +341,6 @@ FEATURE_COLUMNS = {
     'harmonics_phi_6_g': 'harmonics_phi_6_g',
     'harmonics_phi_6_R': 'harmonics_phi_6_R',
     'harmonics_phi_6_i': 'harmonics_phi_6_i',
-    'harmonics_phi_7_g': 'harmonics_phi_7_g',
-    'harmonics_phi_7_R': 'harmonics_phi_7_R',
-    'harmonics_phi_7_i': 'harmonics_phi_7_i',
     
     # Harmonics MSE - multi-band
     'harmonics_mse_g': 'harmonics_mse_g',
@@ -678,9 +675,6 @@ FEATURE_COLUMN_LIST = [
     'harmonics_phi_6_g',
     'harmonics_phi_6_R',
     'harmonics_phi_6_i',
-    'harmonics_phi_7_g',
-    'harmonics_phi_7_R',
-    'harmonics_phi_7_i',
     
     # Harmonics MSE - multi-band
     'harmonics_mse_g',
