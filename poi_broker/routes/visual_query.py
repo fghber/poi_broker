@@ -107,7 +107,7 @@ def save_watchlist():
         db.session.add(watchlist)
         db.session.commit()
 
-        return jsonify({'id': watchlist.id, 'name': watchlist.name}), 201
+        return jsonify({'status': 'ok', 'id': watchlist.id, 'name': watchlist.name}), 201
     except IntegrityError:
         db.session.rollback()
         return jsonify({'error': f"A watchlist named '{name}' already exists!"}), 409
@@ -129,7 +129,7 @@ def list_watchlists():
             {'id': w.id, 'name': w.name, 'sql_where': w.sql_where, 'created_at': w.created_at}
             for w in rows
         ]
-        return jsonify(result)
+        return jsonify({'watchlists': result})
     except Exception as e:
         logger.error(f"Error in list_watchlists: {str(e)}", exc_info=True)
         return jsonify({'error': 'An error occurred while listing watchlists.'}), 500
@@ -145,7 +145,7 @@ def delete_watchlist(wid):
             return jsonify({'error': 'Not found'}), 404
         db.session.delete(watchlist)
         db.session.commit()
-        return jsonify({'success': True}), 200
+        return jsonify({'status': 'ok'}), 200
     except IntegrityError:
         db.session.rollback()
         return jsonify({'error': 'Cannot delete watchlist because it is in use.'}), 409

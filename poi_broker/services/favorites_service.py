@@ -216,7 +216,7 @@ def create_favorite_group(name):
         db.session.add(group)
         db.session.commit()
         
-        return {'id': group.id, 'name': group.name}, 201
+        return {'status': 'ok', 'id': group.id, 'name': group.name}, 201
     except IntegrityError:
         db.session.rollback()
         return {'error': 'A group with this name already exists.'}, 409

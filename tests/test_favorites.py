@@ -159,12 +159,12 @@ def test_favorites_validation(auth_client):
     # Missing locusId
     r = auth_client.post("/api/favorite", json={"fav": True})
     assert r.status_code == 400
-    assert "Missing locusId" in r.get_json()["status"]
+    assert "Missing locusId" in r.get_json()["error"]
 
     # Invalid JSON
     r = auth_client.post("/api/favorite", data="invalid json")
     assert r.status_code == 400
-    assert "Invalid or missing JSON body" in r.get_json()["status"]
+    assert "Invalid or missing JSON body" in r.get_json()["error"]
 
     # Empty group name
     r = auth_client.post("/api/favorite-groups", json={"name": ""})

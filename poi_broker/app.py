@@ -153,9 +153,20 @@ def start():
             if sort__mag_order == 'asc':
                 query = query.order_by(Ztf.ant_mag_corrected.asc())
 
+        # Project the classification label directly to avoid per-row lazy loads.
+        query = query.with_entities(
+            Ztf.date_alert_mjd,
+            Ztf.alert_id,
+            Ztf.ztf_object_id,
+            Ztf.ant_passband,
+            Ztf.locus_id,
+            Ztf.locus_ra,
+            Ztf.locus_dec,
+            Ztf.ant_mag_corrected,
+            Classification.prob_class.label('prob_class'),
+        )
 
         #latest = db.session.query(Ztf).order_by(Ztf.jd.desc()).first() # ? IDEA: show latest update date
-        query = query.options(db.load_only(Ztf.alert_id, Ztf.ztf_object_id, Ztf.date_alert_mjd, Ztf.ant_passband, Ztf.locus_id, Ztf.locus_ra, Ztf.locus_dec, Ztf.ant_mag_corrected))
         #print(query.statement.compile(compile_kwargs={"literal_binds": True})) #DEBUG: print the resulting SQL query
         paginator = query.paginate(page=page, per_page=100, error_out=True)
 

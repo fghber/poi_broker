@@ -22,22 +22,17 @@ def query_features():
     """
     alert_id = request.args.get('alert_id')
     if not alert_id:
-        return Response('Missing alert_id', status=400)
+        return jsonify({'error': 'Missing alert_id'}), 400
 
     try:
         data = query_features_by_alert_id(alert_id)
         if data is None:
             return jsonify({'error': 'No feature record found for alert_id'}), 404
 
-        response = current_app.response_class(
-            response=json.dumps(data),
-            status=200,
-            mimetype='application/json'
-        )
-        return response
+        return jsonify(data)
     except Exception as e:
         logger.error(f'Error querying features: {str(e)}', exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to query features.'}), 500
 
 
 @features_bp.route('/query_featureplot_data', methods=['GET'])

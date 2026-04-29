@@ -107,7 +107,7 @@ def list_filter_bookmarks():
         .order_by(FilterBookmark.created_at.desc())
         .all()
     )
-    return jsonify([_row_to_api_dict(r) for r in rows])
+    return jsonify({'filterBookmarks': [_row_to_api_dict(r) for r in rows]})
 
 
 @filter_bookmarks_bp.route('/filter-bookmarks', methods=['POST'])
@@ -150,7 +150,7 @@ def create_filter_bookmark():
         return jsonify({'error': 'Unable to create filter bookmark.'}), 500
     
     payload = _row_to_api_dict(row)
-    return jsonify(payload), 201
+    return jsonify({'status': 'ok', **payload}), 201
 
 
 @filter_bookmarks_bp.route('/filter-bookmarks/<int:bookmark_id>', methods=['DELETE'])
@@ -170,4 +170,4 @@ def delete_filter_bookmark(bookmark_id: int):
         logger.error(f'Database error during commit: {str(e)}', exc_info=True)
         return jsonify({'error': 'Unable to delete filter bookmark.'}), 500
     
-    return jsonify({'success': True}), 200
+    return jsonify({'status': 'ok'}), 200

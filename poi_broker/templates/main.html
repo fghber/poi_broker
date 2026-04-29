@@ -92,12 +92,6 @@
             <i class="fa fa-bookmark fa-lg" aria-hidden="true"></i> 
           </button>
           {% endif %}
-          <!-- <a href="/" class="btn btn-secondary">
-          <span class="fa-stack fa-lg">
-            <i class="fa fa-filter fa-stack-1x" style="font-size:22px" aria-hidden="true"></i>
-            <i class="fa fa-ban fa-stack-2x text-danger" style="-webkit-text-stroke: 1px background-color;"
-              aria-hidden="true"></i>
-          </span></a> -->
           <a href="/" class="btn btn-danger">
             <i class="fa fa-close fa-lg" title="Clear" aria-label="Clear"></i> Clear
           </a>
@@ -106,74 +100,6 @@
       <!--{# TODO: HTML Validation: Some id's are duplicated, etc https://validator.w3.org/nu/ #}-->
         <div class="row">
 
-          <!--{# <div class="form-row">
-              <div class="col">
-                <label for="time__gt">time (lower)</label>
-                <input type="date" class="form-control form-control-sm" id="time__gt" name="time__gt" value="{{ request.args.time__gt }}" placeholder="Lower">
-              </div>
-              <div class="col">
-                <label for="time__gt">time (upper)</label>
-                <input type="date" class="form-control form-control-sm" id="time__lt" name="time__lt" value="{{ request.args.time__lt }}" placeholder="Upper">
-              </div>
-            </div>
-      
-            <div class="form-row">
-              <div class="col">
-                <label for="time__since">time since</label>
-                <input type="number" step="any" class="form-control form-control-sm" id="time__since" name="time__since" value="{{ request.args.time__since }}" placeholder="seconds">
-              </div>
-            </div>
-
-          <div class="form-group">
-              <label for="cone">Cone Search</label>
-              <input type="text" class="form-control form-control-sm" id="cone" name="cone" value="{{ request.args.cone }}">
-              <small class="form-text text-muted">Format: ra,dec,radius in degrees.</small>
-            </div>
-
-           <div class="form-group">
-              <label for="objectcone">Cone Search (object)</label>
-              <input type="text" class="form-control form-control-sm" id="cone" name="objectcone" value="{{ request.args.objectcone }}">
-              <small class="form-text text-muted">
-                Format: Object name,radius in degrees. Object name lookups via <a href="https://simbad2k.lco.global" title="Simbad2k">Simbad2k</a>.
-              </small>
-            </div>
-      
-            <div class="form-group">
-              <label for="objectidps">Nearby Objects</label>
-              <input type="text" class="form-control form-control-sm" id="objectidps" name="objectidps" value="{{ request.args.objectidps }}">
-              <small class="form-text text-muted">ID from PS1 catalog.</small>
-            </div>
-
-          <div id="equatorial_coords">
-              <p>Equatorial Coords ra & dec</p>    
-
-            </div>
-
-          <div id="galactic_coords">
-              <p>Galactic Coords</p>
-              <label for="l__gt">l</label>
-              <div class="form-row">
-                <div class="col">
-                  <input type="number" step="any" class="form-control form-control-sm" id="l__gt" name="l__gt" value="{{ request.args.l__gt }}" placeholder="Lower">
-                </div>
-                <div class="col">
-                   <input type="number" step="any" class="form-control form-control-sm" id="l__lt" name="l__lt" value="{{ request.args.l__lt }}" placeholder="Upper">
-                </div>
-              </div>
-      
-              <label for="b__gt">b</label>
-              <div class="form-row">
-                <div class="col">
-                  <input type="number" step="any" class="form-control form-control-sm" id="b__gt" name="b__gt" value="{{ request.args.b__gt }}" placeholder="Lower">
-                </div>
-                <div class="col">
-                   <input type="number" step="any" class="form-control form-control-sm" id="b__lt" name="b__lt" value="{{ request.args.b__lt }}" placeholder="Upper">
-                </div>
-              </div>
-            </div>  <div class="form-group">
-              <label for="sigmapsf__lte">sigmapsf &lt;= </label>
-              <input type="number" step="any" class="form-control form-control-sm" id="sigmapsf__lte" name="sigmapsf__lte" value="{{ request.args.sigmapsf__lte }}">
-            </div> #}-->
         </div>
 
         <table class="table table-sm table-striped table-hover table-auto">
@@ -197,27 +123,27 @@
               <th>
                 <!-- <div class="form-group"> -->
                 <!-- <label for="date">date</label> -->
-                <input type="text" class="form-control form-control-sm" id="date" name="date"
+                <input type="text" class="form-control form-control-sm" id="input-date" name="date"
                   value="{{ request.args.date }}">
                 <!-- </div> -->
               </th>
               <th>
                 <!-- <div class="form-group"> -->
                 <!-- <label for="alert_id">alert_id</label> -->
-                <input type="text" class="form-control form-control-sm" id="alert_id" name="alert_id"
+                <input type="text" class="form-control form-control-sm" id="input-alert_id" name="alert_id"
                   value="{{ request.args.alert_id }}">
                 <!-- </div> -->
               </th>
               <th>
                 <!-- <div class="form-group"> -->
                 <!-- <label for="ztf_object_id">ztf_object_id</label> -->
-                <input type="text" class="form-control form-control-sm" id="ztf_object_id" name="ztf_object_id"
+                <input type="text" class="form-control form-control-sm" id="input-ztf_object_id" name="ztf_object_id"
                   value="{{ request.args.ztf_object_id }}">
                 <!-- </div> -->
               </th>
               <th>
                 <!-- <label for="jd">jd</label> -->
-                <input type="text" class="form-control form-control-sm" id="date_alert_mjd" name="date_alert_mjd" 
+                <input type="text" class="form-control form-control-sm" id="input-date_alert_mjd" name="date_alert_mjd" 
                   value="{{ request.args.date_alert_mjd }}"> <!-- TODO: not sortable?! -->
               </th>
               <th>
@@ -240,17 +166,17 @@
               </th>
               <th>
                 <!-- <label for="ra">ra</label> -->
-                <input type="text" class="form-control form-control-sm" id="locus_id" name="locus_id" 
+                <input type="text" class="form-control form-control-sm" id="input-locus_id" name="locus_id" 
                   value="{{ request.args.locus_id }}">
               </th>              
               <th>
                 <!-- <label for="ra">ra</label> -->
-                <input type="text" class="form-control form-control-sm" id="locus_ra" name="locus_ra" 
+                <input type="text" class="form-control form-control-sm" id="input-locus_ra" name="locus_ra" 
                   value="{{ request.args.locus_ra }}">
               </th>
               <th>
                 <!-- <label for="dec">dec</label> -->
-                <input type="text" class="form-control form-control-sm" id="locus_dec" name="locus_dec"
+                <input type="text" class="form-control form-control-sm" id="input-locus_dec" name="locus_dec"
                   value="{{ request.args.locus_dec }}">
               </th>
               <th>
@@ -310,7 +236,7 @@
               <td>{{ '%.5f'|format(alert.locus_ra) }}</td>
               <td>{{ '%.5f'|format(alert.locus_dec) }}</td>
               <td>{{ alert.ant_mag_corrected | mag_filter }}</td>
-              <td>{{ alert.classification.prob_class if alert.classification else '' }}</td>
+              <td>{{ alert.prob_class or '' }}</td>
               <td>
                 <input type="checkbox" class="row-download-checkbox" value="{{ alert.alert_id }}" aria-label="Select row {{ alert.alert_id }}">
               </td>
@@ -543,18 +469,30 @@
     const toastId = 'auth-required-toast';
     let toast = document.getElementById(toastId);
     if (!toast) {
-      toast = document.createElement('div');
+      if (!showAuthRequiredToast.template) {
+        const template = document.createElement('template');
+        template.innerHTML = `
+          <div class="alert alert-warning alert-dismissible fade show" role="alert">
+            <span data-cell="message"></span>
+            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+              <span aria-hidden="true">&times;</span>
+            </button>
+          </div>
+        `;
+        showAuthRequiredToast.template = template;
+      }
+
+      toast = showAuthRequiredToast.template.content.firstElementChild.cloneNode(true);
       toast.id = toastId;
-      toast.className = 'alert alert-warning alert-dismissible fade show';
-      toast.setAttribute('role', 'alert');
       toast.style.position = 'fixed';
       toast.style.top = '16px';
       toast.style.right = '16px';
       toast.style.zIndex = '9999';
       toast.style.maxWidth = '360px';
-      toast.innerHTML = 'Log-in or Sign-Up to use this feature.' +
-        '<button type="button" class="close" data-dismiss="alert" aria-label="Close">' +
-        '<span aria-hidden="true">&times;</span></button>';
+      const message = toast.querySelector('[data-cell="message"]');
+      if (message) {
+        message.textContent = 'Log-in or Sign-Up to use this feature.';
+      }
       document.body.appendChild(toast);
     }
 
@@ -674,6 +612,7 @@
     $('.row-download-checkbox').prop('checked', $(this).is(':checked'));
   });
 
+  // NOTE: Not considered a hot-path since only used for individual object downloads, so not debounced, etc.
   $(document).on('change', '.row-download-checkbox', function () {
     const total = $('.row-download-checkbox').length;
     const selected = $('.row-download-checkbox:checked').length;
@@ -793,15 +732,32 @@
 
   function query_features_table(alert_id) {
     let backend_url = `/query_features?alert_id=${alert_id}`;
-    //alert(backend_url);
+    const output = document.getElementById('features_table_output');
+
+    if (!output || !alert_id) {
+      return;
+    }
+
     $.ajax({
       type: 'GET',
       url: backend_url,
       dataType: 'json',
-      complete: function(r){
-        //console.log(r.responseText);
-        var json_obj = JSON.parse(r.responseText);
-        $('body').find('#features_table_output').html(json2featurestable(json_obj));
+      success: function(response) {
+        output.className = '';
+        renderFeaturesTable('#features_table_output', response);
+      },
+      error: function(xhr, status, error) {
+        console.error('Failed to load feature data:', status, error);
+
+        const response = xhr.responseJSON;
+        const message = (response && response.error) || 'Failed to load feature data.';
+
+        // Keep the previous successful state if refresh fails.
+        const hasRenderedContent = output.childElementCount > 0 || output.textContent.trim().length > 0;
+        if (!hasRenderedContent) {
+          output.textContent = message;
+          output.className = 'alert alert-danger';
+        }
       }
     });
   }
@@ -959,7 +915,7 @@
       success: function(response) {
         try {
           if (Array.isArray(response) && response.length > 0) {
-            $('#crossmatches_table_output').html(json2crossmatchestable(response));
+            renderCrossmatchesTable('#crossmatches_table_output', response);
           }
         } catch (err) {
           console.error('Error processing crossmatches response:', err);
@@ -990,38 +946,162 @@
     $('body').find('#crossmatches_footer_output').html(footer);
   }
 
-  
-  //feature_table specific as of now
-  function json2featurestable(json_obj) {
-    var stable = '<table class="table table-sm table-striped">';
-        for (let key in json_obj) {
-          if (json_obj[key] != null) {
-            let value = json_obj[key];
-            //console.log(key, value);
-            //fstring += key + ': ' + value + '<br>';
-            stable += `<tr><td>${key}</td><td>${value}</td></tr>`;
-          }
-        }
-        stable += '</table>';
-        return stable;
+  const templateHtmlById = {
+    'features-table-template': '<table class="table table-sm table-striped"></table>',
+    'features-table-row-template': `
+      <tr>
+        <td data-cell="feature-key"></td>
+        <td data-cell="feature-value"></td>
+      </tr>
+    `,
+    'crossmatches-table-template': `
+      <div>
+        <h5 data-cell="locus-header"></h5>
+        <table class="table table-sm table-striped">
+          <thead>
+            <tr>
+              <th>catalog</th>
+              <th>object</th>
+              <th>ra_cat</th>
+              <th>dec_cat</th>
+              <th>separation(mas)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    `,
+    'crossmatches-table-row-template': `
+      <tr>
+        <td data-cell="catalog"></td>
+        <td data-cell="object"></td>
+        <td data-cell="ra_cat"></td>
+        <td data-cell="dec_cat"></td>
+        <td data-cell="separation"></td>
+      </tr>
+    `
+  };
+
+  const templateCache = {};
+
+  function getInlineTemplate(templateId) {
+    if (!Object.prototype.hasOwnProperty.call(templateHtmlById, templateId)) {
+      return null;
+    }
+
+    if (!templateCache[templateId]) {
+      const template = document.createElement('template');
+      template.innerHTML = templateHtmlById[templateId].trim();
+      templateCache[templateId] = template;
+    }
+
+    return templateCache[templateId];
   }
 
-  function json2crossmatchestable(json_obj) {
-    locus_id = json_obj[0]['locus_id'];
-    var header = "<h5>Locus ID: " + locus_id + "</h5>";
-    var ctable = '<table class="table table-sm table-striped">';
-    ctable += '<thead><th>catalog</th><th>object</th><th>ra_cat</th><th>dec_cat</th><th>separation(mas)</th></thead>';
-        for (let key in json_obj) {
-          ctable += '<tr>';
-          ctable += `<td>${json_obj[key].catalog}</td>`;
-          ctable += `<td>${json_obj[key].object}</td>`;
-          ctable += `<td>${json_obj[key].ra_cat}</td>`;
-          ctable += `<td>${json_obj[key].dec_cat}</td>`;
-          ctable += `<td>${json_obj[key].separation.toPrecision(3)}</td>`;
-          ctable += '</tr>';
-        }
-        ctable += '</table>';
-        return header + ctable;
+  
+  function cloneTemplate(templateId) {
+    const template = getInlineTemplate(templateId);
+    if (!template) {
+      return null;
+    }
+
+    return template.content.cloneNode(true);
+  }
+
+  function setCells(root, values) {
+    Object.entries(values).forEach(([name, value]) => {
+      const cell = root.querySelector(`[data-cell="${name}"]`);
+      if (cell) {
+        cell.textContent = value == null ? '' : String(value);
+      }
+    });
+  }
+
+  function appendTemplateRows(tbody, rowTemplateId, rows, mapRow) {
+    rows.forEach(rowData => {
+      const rowFragment = cloneTemplate(rowTemplateId);
+      if (!rowFragment) {
+        return;
+      }
+
+      const row = rowFragment.querySelector('tr');
+      if (!row) {
+        return;
+      }
+
+      setCells(row, mapRow(rowData));
+      tbody.appendChild(row);
+    });
+  }
+
+  // feature_table specific as of now
+  function renderFeaturesTable(targetSelector, json_obj) {
+    const target = document.querySelector(targetSelector);
+    if (!target) {
+      return;
+    }
+
+    target.textContent = '';
+
+    const tableFragment = cloneTemplate('features-table-template');
+    if (!tableFragment) {
+      return;
+    }
+
+    const table = tableFragment.querySelector('table');
+    if (!table) {
+      return;
+    }
+
+    const rows = Object.entries(json_obj || {})
+      .filter(([, value]) => value != null)
+      .map(([key, value]) => ({ key, value }));
+
+    appendTemplateRows(table, 'features-table-row-template', rows, rowData => ({
+      'feature-key': rowData.key,
+      'feature-value': rowData.value
+    }));
+
+    target.appendChild(tableFragment);
+  }
+
+  function renderCrossmatchesTable(targetSelector, rows) {
+    const target = document.querySelector(targetSelector);
+    if (!target || !Array.isArray(rows) || rows.length === 0) {
+      return;
+    }
+
+    target.textContent = '';
+
+    const tableFragment = cloneTemplate('crossmatches-table-template');
+    if (!tableFragment) {
+      return;
+    }
+
+    const header = tableFragment.querySelector('[data-cell="locus-header"]');
+    const tbody = tableFragment.querySelector('tbody');
+    if (!tbody) {
+      return;
+    }
+
+    if (header) {
+      header.textContent = `Locus ID: ${rows[0].locus_id == null ? '' : String(rows[0].locus_id)}`;
+    }
+
+    appendTemplateRows(tbody, 'crossmatches-table-row-template', rows, rowData => {
+      const sep = Number(rowData.separation);
+      const sepText = Number.isFinite(sep) ? sep.toPrecision(3) : rowData.separation;
+
+      return {
+        catalog: rowData.catalog,
+        object: rowData.object,
+        ra_cat: rowData.ra_cat,
+        dec_cat: rowData.dec_cat,
+        separation: sepText
+      };
+    });
+
+    target.appendChild(tableFragment);
   }
 </script>
 

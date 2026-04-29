@@ -61,11 +61,11 @@ def api_favorite_post():
     """
     data = request.get_json(silent=True)
     if data is None:
-        return jsonify({'status': 'Invalid or missing JSON body'}), 400
+        return jsonify({'error': 'Invalid or missing JSON body'}), 400
     
     locus_id = data.get('locusId')
     if not locus_id:
-        return jsonify({'status': 'Missing locusId'}), 400
+        return jsonify({'error': 'Missing locusId'}), 400
     
     fav_flag = bool(data.get('fav'))
     group_id = data.get('groupId')
