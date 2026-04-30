@@ -307,12 +307,14 @@ def test_authenticated_watchlist_crud(auth_client):
     # List watchlists
     r = auth_client.get("/api/watchlist")
     assert r.status_code == 200
-    names = [w["name"] for w in r.get_json()]
+    names = [w["name"] for w in r.get_json()["watchlists"]]
     assert "Smoke Watchlist" in names
 
     # Delete watchlist
     r = auth_client.delete(f"/api/watchlist/{wl_id}")
-    assert r.status_code == 204
+    assert r.status_code == 200
+    assert r.is_json
+    assert r.get_json().get("status") == "ok"
 
 
 def test_lightcurve_and_features_smoke(client):
@@ -325,6 +327,7 @@ def test_lightcurve_and_features_smoke(client):
 
     response = client.get("/query_features", query_string={"alert_id": "missing-alert"})
     assert response.status_code in (404, 500)
+    assert response.is_json
 
     response = client.get("/query_featureplot_data", query_string={"locusId": "locus-1"})
     assert response.status_code == 200
@@ -334,6 +337,13 @@ def test_lightcurve_and_features_smoke(client):
 
     response = client.get("/download_alerts_csv")
     assert response.status_code == 400
+
+
+def test_query_features_missing_alert_id_returns_json_error(client):
+    response = client.get("/query_features")
+    assert response.status_code == 400
+    assert response.is_json
+    assert response.get_json()["error"] == "Missing alert_id"
 
 
 def test_read_routes_rate_limited(secure_client):

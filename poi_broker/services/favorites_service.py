@@ -3,6 +3,7 @@
 import logging
 from flask_login import current_user
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from .. import db
 from ..models import Favorite, FavoriteGroup
 
@@ -64,7 +65,7 @@ def toggle_favorite(locus_id, fav_flag, group_id=None):
     Args:
         locus_id: The locus_id to favorite
         fav_flag: True to add, False to remove
-        group_id: Optional group to assign to (can be None for ungrouped)
+        group_id: Optional group to assign to (None for ungrouped). Always None when a favorite is added in the main UI, but can be used to move existing favorites between groups.
     
     Returns:
         dict: Status dict with 'status': 'ok' or error message
@@ -83,7 +84,11 @@ def toggle_favorite(locus_id, fav_flag, group_id=None):
                 fav = Favorite(user_id=current_user.id, locus_id=locus_id, group_id=group_id)
                 db.session.add(fav)
             else:
-                # Update group if specified
+                # Update group if specified, Validate group_id before updating
+                if group_id is not None:
+                    group = FavoriteGroup.query.filter_by(id=group_id, user_id=current_user.id).first()
+                    if not group:
+                        return {'error': 'group not found'}, 404
                 fav.group_id = group_id
             db.session.commit()
         else:
@@ -92,10 +97,14 @@ def toggle_favorite(locus_id, fav_flag, group_id=None):
                 db.session.commit()
         
         return {'status': 'ok'}, 200
+    
+    except IntegrityError:
+        db.session.rollback()
+        return {'error': 'The specified favorite or group cannot be toggled.'}, 409
     except Exception as e:
         logger.error(f'Error toggling favorite for locus_id {locus_id}: {str(e)}', exc_info=True)
         db.session.rollback()
-        return {'error': str(e)}, 500
+        return {'error': 'An error occurred while toggling the favorite.'}, 500
 
 
 def update_favorite_group(favorite_id, group_id):
@@ -127,10 +136,14 @@ def update_favorite_group(favorite_id, group_id):
         db.session.commit()
         
         return {'status': 'ok', 'groupId': group_id}, 200
+    
+    except IntegrityError:
+        db.session.rollback()
+        return {'error': 'Unable to update favorite group. The specified group is not accessible.'}, 409
     except Exception as e:
         logger.error(f'Error updating favorite group for favorite_id {favorite_id}: {str(e)}', exc_info=True)
         db.session.rollback()
-        return {'error': str(e)}, 500
+        return {'error': 'An error occurred while updating the favorite group.'}, 500
 
 
 def get_favorite_groups():
@@ -197,17 +210,20 @@ def create_favorite_group(name):
         # Check if group already exists
         existing = FavoriteGroup.query.filter_by(user_id=current_user.id, name=name).first()
         if existing:
-            return {'error': 'group already exists'}, 409
+            return {'error': 'A group with this name already exists.'}, 409
         
         group = FavoriteGroup(user_id=current_user.id, name=name)
         db.session.add(group)
         db.session.commit()
         
-        return {'id': group.id, 'name': group.name}, 201
+        return {'status': 'ok', 'id': group.id, 'name': group.name}, 201
+    except IntegrityError:
+        db.session.rollback()
+        return {'error': 'A group with this name already exists.'}, 409
     except Exception as e:
         logger.error(f'Error creating favorite group: {str(e)}', exc_info=True)
         db.session.rollback()
-        return {'error': str(e)}, 500
+        return {'error': 'An error occurred while creating the favorite group.'}, 500
 
 
 def delete_favorite_group(group_id):
@@ -232,9 +248,12 @@ def delete_favorite_group(group_id):
         Favorite.query.filter_by(group_id=group_id).update({'group_id': None})
         db.session.delete(group)
         db.session.commit()
-        
+
         return {'status': 'ok'}, 200
+    except IntegrityError:
+        db.session.rollback()
+        return {'error': 'Unable to delete favorite group. It may still have associated favorites.'}, 409
     except Exception as e:
         logger.error(f'Error deleting favorite group {group_id}: {str(e)}', exc_info=True)
         db.session.rollback()
-        return {'error': str(e)}, 500
+        return {'error': 'Error deleting favorite group.'}, 500

@@ -5,38 +5,6 @@ from flask import flash, redirect, url_for
 from datetime import datetime, timezone
 
 
-"""
-BEGIN;
-CREATE INDEX IF NOT EXISTS idx_featuretable_date_alert_mjd
-ON featuretable(date_alert_mjd);
-
-CREATE INDEX IF NOT EXISTS idx_featuretable_alert_id
-ON featuretable(alert_id);
-
-CREATE INDEX IF NOT EXISTS idx_featuretable_ztf_object_id
-ON featuretable(ztf_object_id);
-
-CREATE INDEX IF NOT EXISTS idx_featuretable_locus_id
-ON featuretable(locus_id);
-
-CREATE INDEX IF NOT EXISTS idx_featuretable_ant_passband
-ON featuretable(ant_passband);
-
-CREATE INDEX IF NOT EXISTS idx_featuretable_locus_ra
-ON featuretable(locus_ra);
-
-CREATE INDEX IF NOT EXISTS idx_featuretable_locus_dec
-ON featuretable(locus_dec);
-
-CREATE INDEX IF NOT EXISTS idx_classification_alert_id
-ON classification(alert_id);
-COMMIT;
-
-ANALYZE;
-
-CREATE INDEX idx_featuretable_ant_mag_corrected
-ON featuretable(ant_mag_corrected)
-"""
 class Ztf(db.Model):
     __tablename__ = 'featuretable'
     #id = db.Column(db.Integer, primary_key=True)
@@ -312,9 +280,6 @@ class Ztf(db.Model):
     harmonics_phi_6_g = db.Column(db.Float)
     harmonics_phi_6_R = db.Column(db.Float)
     harmonics_phi_6_i = db.Column(db.Float)
-    harmonics_phi_7_g = db.Column(db.Float)
-    harmonics_phi_7_R = db.Column(db.Float)
-    harmonics_phi_7_i = db.Column(db.Float)
     harmonics_mse_g = db.Column(db.Float)
     harmonics_mse_R = db.Column(db.Float)
     harmonics_mse_i = db.Column(db.Float)
@@ -363,53 +328,7 @@ class Classification(db.Model):
     p_yso = db.Column(db.Float)
     prob_class = db.Column(db.String)
 
-# class Gaiadr3_variability(db.Model):
-#     __tablename__ = 'gaiadr3_variability'
-#     source_id = db.Column(db.Integer, primary_key=True) #ot a real PK
-#     ra = db.Column(db.Float)
-#     dec = db.Column(db.Float)
-#     phot_g_mean_mag = db.Column(db.Float)
-#     phot_rp_mean_mag = db.Column(db.Float)
-#     in_vari_classification_result = db.Column(db.Integer)
-#     in_vari_rrlyrae = db.Column(db.Integer)
-#     in_vari_cepheid = db.Column(db.Integer)
-#     in_vari_planetary_transit = db.Column(db.Integer)
-#     in_vari_short_timescale = db.Column(db.Integer)
-#     in_vari_long_period_variable = db.Column(db.Integer)
-#     in_vari_eclipsing_binary = db.Column(db.Integer)
-#     in_vari_rotation_modulation = db.Column(db.Integer)
-#     in_vari_ms_oscillator = db.Column(db.Integer)
-#     in_vari_agn = db.Column(db.Integer)
-#     in_vari_microlensing = db.Column(db.Integer)
-#     in_vari_compact_companion = db.Column(db.Integer)
 
-"""
-
-TODO: Add table initialization scripts here or in a separate file, or use Flask-Migrate for migrations.
-CREATE TABLE user (
-    id INTEGER PRIMARY KEY,
-    email VARCHAR(100) NOT NULL UNIQUE,
-    password VARCHAR(100) NOT NULL,
-    name VARCHAR(1000),
-    role VARCHAR(20) NOT NULL DEFAULT 'user',
-    email_verified INTEGER DEFAULT 0,
-    email_verification_token VARCHAR(128),
-    reset_token VARCHAR(128),
-    reset_token_expires INTEGER,
-    created_at INTEGER DEFAULT (strftime('%s', 'now'))
-);
-
-CREATE INDEX ix_user_email_verification_token ON user(email_verification_token);
-CREATE INDEX ix_user_reset_token ON user(reset_token);
-
--- Add new columns to user table
-ALTER TABLE user ADD COLUMN email_verified INTEGER DEFAULT 0;
-ALTER TABLE user ADD COLUMN email_verification_token VARCHAR(128);
-
--- Index email_verification_token for fast lookups
-CREATE INDEX IF NOT EXISTS ix_user_email_verification_token 
-ON user(email_verification_token);
-"""
 class User(UserMixin, db.Model):
     __bind_key__ = 'users' # route this model to the users DB
     __tablename__ = 'user'
@@ -448,17 +367,6 @@ def role_required(role):
     return decorator
 
 
-"""
-CREATE TABLE favorite_group (
-  id INTEGER PRIMARY KEY,
-  user_id INTEGER NOT NULL,
-  name TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  UNIQUE(user_id, name),
-  FOREIGN KEY(user_id) REFERENCES user(id) ON DELETE CASCADE
-);
-CREATE INDEX ix_favorite_group_user_id ON favorite_group(user_id);
-"""
 class FavoriteGroup(db.Model):
     __bind_key__ = 'users'
     __tablename__ = 'favorite_group'
@@ -473,21 +381,7 @@ class FavoriteGroup(db.Model):
     def __repr__(self):
         return f"<FavoriteGroup {self.name}>"
 
-"""
-CREATE TABLE favorite (
-  id INTEGER PRIMARY KEY,
-  user_id INTEGER NOT NULL,
-  locus_id TEXT NOT NULL,
-  group_id INTEGER,
-  created_at TEXT NOT NULL,
-  UNIQUE(user_id, locus_id),
-  FOREIGN KEY(user_id) REFERENCES user(id) ON DELETE CASCADE,
-  FOREIGN KEY(group_id) REFERENCES favorite_group(id) ON DELETE SET NULL
-);
-CREATE INDEX ix_favorite_user_id ON favorite(user_id);
-CREATE INDEX ix_favorite_locus_id ON favorite(locus_id);
-CREATE INDEX ix_favorite_group_id ON favorite(group_id);
-"""
+
 class Favorite(db.Model):
     __bind_key__ = 'users'
     __tablename__ = 'favorite'
@@ -503,18 +397,7 @@ class Favorite(db.Model):
     def __repr__(self):
         return f"<Favorite {self.locus_id}>"
 
-# DDL for watchlist table (run once against users.db):
-# CREATE TABLE watchlist (
-#     id INTEGER PRIMARY KEY,
-#     user_id INTEGER NOT NULL,
-#     name TEXT NOT NULL,
-#     rules_json TEXT NOT NULL,
-#     sql_where TEXT NOT NULL,
-#     created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-#     UNIQUE(user_id, name),
-#     FOREIGN KEY(user_id) REFERENCES user(id) ON DELETE CASCADE
-# );
-# CREATE INDEX ix_watchlist_user_id ON watchlist(user_id);
+
 class Watchlist(db.Model):
     __bind_key__ = 'users'
     __tablename__ = 'watchlist'
@@ -531,18 +414,7 @@ class Watchlist(db.Model):
     def __repr__(self):
         return f"<Watchlist {self.name}>"
 
-"""
-DDL for filter_bookmark (run once against users.db):
-CREATE TABLE filter_bookmark (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    name VARCHAR(200) NOT NULL,
-    query_json TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
-);
-CREATE INDEX ix_filter_bookmark_user_id ON filter_bookmark(user_id);
-"""
+
 class FilterBookmark(db.Model):
     __bind_key__ = 'users'
     __tablename__ = 'filter_bookmark'
@@ -555,3 +427,17 @@ class FilterBookmark(db.Model):
 
     def __repr__(self):
         return f"<FilterBookmark {self.name!r}>"
+    
+
+class UserSettings(db.Model):
+    __bind_key__ = 'users'
+    __tablename__ = 'user_settings'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True)
+    default_feature_plot_columns = db.Column(db.Text, nullable=True)
+
+    __table_args__ = (db.UniqueConstraint('user_id', name='uix_user_settings_user_id'),)
+
+    def __repr__(self):
+        return f"<UserSettings user_id={self.user_id}>"

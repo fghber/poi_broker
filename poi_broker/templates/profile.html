@@ -188,6 +188,52 @@ document.addEventListener('DOMContentLoaded', function () {
         setSummaryValue(summaryFilterBookmarksCount, count);
     }
 
+    function showToast(message, type = 'info', duration = 5000) {
+        const toastContainer = document.getElementById('toastContainer');
+        if (!toastContainer) return;
+
+        if (!showToast.template) {
+            const template = document.createElement('template');
+            template.innerHTML = `
+                <div class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header">
+                        <strong class="mr-auto"></strong>
+                        <button type="button" class="ml-2 mb-1 close" data-dismiss="toast" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="toast-body"></div>
+                </div>
+            `;
+            showToast.template = template;
+        }
+
+        const normalizedType = (type === 'success' || type === 'error') ? type : 'info';
+        const bgClass = normalizedType === 'success' ? 'bg-success' : normalizedType === 'error' ? 'bg-danger' : 'bg-info';
+        const textClass = 'text-white';
+
+        const toastElement = showToast.template.content.firstElementChild.cloneNode(true);
+        const header = toastElement.querySelector('.toast-header');
+        const title = toastElement.querySelector('strong');
+        const closeButton = toastElement.querySelector('button.close');
+        const body = toastElement.querySelector('.toast-body');
+
+        header.classList.add(bgClass, textClass);
+        closeButton.classList.add(textClass);
+        body.classList.add(bgClass, textClass);
+        title.textContent = normalizedType.charAt(0).toUpperCase() + normalizedType.slice(1);
+        body.textContent = message == null ? '' : String(message);
+
+        toastContainer.appendChild(toastElement);
+        $(toastElement).toast({ delay: duration });
+        $(toastElement).toast('show');
+
+        // Remove from DOM after hiding
+        toastElement.addEventListener('hidden.bs.toast', function () {
+            toastElement.remove();
+        });
+    }
+
     function escapeHtml(str) {
         if (str == null) {
             return '';
@@ -241,7 +287,7 @@ document.addEventListener('DOMContentLoaded', function () {
         fetch('/api/filter-bookmarks')
             .then(r => r.json())
             .then(data => {
-                const items = Array.isArray(data) ? data : [];
+                const items = Array.isArray(data.filterBookmarks) ? data.filterBookmarks : [];
                 updateFilterBookmarkSummary(items);
                 renderFilterBookmarks(items);
             })
@@ -267,12 +313,16 @@ document.addEventListener('DOMContentLoaded', function () {
         .then(r => r.json())
         .then(data => {
             if (data.error) {
-                alert('Error: ' + data.error);
+                showToast(data.error, 'error');
             } else {
+                showToast('Group created successfully', 'success');
                 loadGroups(getActiveTabId());
             }
         })
-        .catch(e => console.error(e));
+        .catch(e => {
+            console.error(e);
+            showToast('Failed to create group', 'error');
+        });
     });
 
     function getActiveTabId() {
@@ -458,7 +508,7 @@ document.addEventListener('DOMContentLoaded', function () {
         fetch('/api/watchlist')
             .then(r => r.json())
             .then(data => {
-                const items = data || [];
+                const items = Array.isArray(data.watchlists) ? data.watchlists : [];
                 updateWatchlistSummary(items);
                 renderWatchlists(items);
             })
@@ -481,8 +531,24 @@ document.addEventListener('DOMContentLoaded', function () {
                 },
                 body: JSON.stringify({ locusId: locus, fav: false })
             })
-            .then(() => loadGroups())
-            .catch(e => console.error(e));
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to remove favorite');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.error) {
+                        showToast(data.error, 'error');
+                    } else {
+                        showToast('Favorite removed', 'success');
+                        loadGroups();
+                    }
+                })
+                .catch(e => {
+                    console.error(e);
+                    showToast('Failed to remove favorite', 'error');
+                });
         }
 
         if (e.target.classList.contains('move-fav-btn') || e.target.closest('.move-fav-btn')) {
@@ -501,8 +567,24 @@ document.addEventListener('DOMContentLoaded', function () {
                 method: 'DELETE',
                 headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content') }
             })
-                .then(() => loadGroups())
-                .catch(e => console.error(e));
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to delete group');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.error) {
+                        showToast(data.error, 'error');
+                    } else {
+                        showToast('Group deleted successfully', 'success');
+                        loadGroups();
+                    }
+                })
+                .catch(e => {
+                    console.error(e);
+                    showToast('Failed to delete group', 'error');
+                });
         }
 
         if (e.target.classList.contains('remove-watchlist-btn')) {
@@ -517,11 +599,19 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (!response.ok) {
                         throw new Error('Failed to delete watchlist');
                     }
-                    loadWatchlists();
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.error) {
+                        showToast(data.error, 'error');
+                    } else {
+                        showToast('Watchlist deleted', 'success');
+                        loadWatchlists();
+                    }
                 })
                 .catch(error => {
                     console.error(error);
-                    alert('Failed to delete watchlist.');
+                    showToast('Failed to delete watchlist', 'error');
                 });
         }
 
@@ -537,11 +627,19 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (!response.ok) {
                         throw new Error('Failed to delete filter bookmark');
                     }
-                    loadFilterBookmarks();
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.error) {
+                        showToast(data.error, 'error');
+                    } else {
+                        showToast('Filter bookmark deleted', 'success');
+                        loadFilterBookmarks();
+                    }
                 })
                 .catch(error => {
                     console.error(error);
-                    alert('Failed to delete filter bookmark.');
+                    showToast('Failed to delete filter bookmark', 'error');
                 });
         }
     });
@@ -567,16 +665,17 @@ document.addEventListener('DOMContentLoaded', function () {
         .then(data => {
             console.log('Response data:', data);
             if (data.error) {
-                alert('Error: ' + data.error);
+                showToast(data.error, 'error');
             } else {
                 console.log('Move successful, closing modal and reloading groups');
+                showToast('Favorite moved successfully', 'success');
                 $('#moveToGroupModal').modal('hide');
                 loadGroups(getActiveTabId());
             }
         })
         .catch(e => {
             console.error('Fetch error:', e);
-            alert('Failed to move favorite: ' + e.message);
+            showToast('Failed to move favorite', 'error');
         });
     });
 

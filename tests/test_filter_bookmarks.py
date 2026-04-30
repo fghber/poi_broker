@@ -37,7 +37,7 @@ def test_filter_bookmarks_crud(auth_client):
 
     r = auth_client.get("/api/filter-bookmarks")
     assert r.status_code == 200
-    items = r.get_json()
+    items = r.get_json()["filterBookmarks"]
     assert isinstance(items, list)
     assert len(items) >= 1
     match = next((x for x in items if x["id"] == bookmark_id), None)
@@ -45,12 +45,13 @@ def test_filter_bookmarks_crud(auth_client):
     assert match["name"] == "My locus"
 
     r = auth_client.delete(f"/api/filter-bookmarks/{bookmark_id}")
-    assert r.status_code == 204
-    assert r.get_data(as_text=True) == ""
+    assert r.status_code == 200
+    assert r.is_json
+    assert r.get_json().get("status") == "ok"
 
     r = auth_client.get("/api/filter-bookmarks")
     assert r.status_code == 200
-    ids = [x["id"] for x in r.get_json()]
+    ids = [x["id"] for x in r.get_json()["filterBookmarks"]]
     assert bookmark_id not in ids
 
 
