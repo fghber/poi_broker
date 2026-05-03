@@ -1,42 +1,19 @@
-name: Python Test Coverage
+name: Post coverage comment
 
 on:
-  push:
-    branches: [ "main" ] # or "master" depending on your default branch
-  pull_request:
-    branches: [ "main" ]
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
 
 jobs:
-  test:
+  post_coverage_comment:
     runs-on: ubuntu-latest
-
+    if: github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    - name: Post coverage comment
+      uses: py-cov-action/python-coverage-comment-action@v3
       with:
-        python-version: '3.12' # Adjust based on your project's version
-        cache: 'pip'
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt # Adjust if your dependencies are named differently
-        pip install pytest pytest-cov
-
-    - name: Run pytest and generate coverage report
-      run: |
-        pytest --cov=poi_broker --cov-report=xml tests/
-
-    - name: Upload coverage report
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage-report
-        path: coverage.xml
-        
-    - name: Create Coverage Badge
-          uses: tj-actions/coverage-badge-yaml@v2 # Or use a comment action like below
-          # For a direct comment, you can use:
-          # uses: py-cov-action/python-coverage-comment-action@v3
+        GITHUB_TOKEN: ${{ github.token }}
