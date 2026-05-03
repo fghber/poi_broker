@@ -35,3 +35,8 @@ jobs:
       with:
         name: coverage-report
         path: coverage.xml
+        
+    - name: Create Coverage Badge
+          uses: tj-actions/coverage-badge-yaml@v2 # Or use a comment action like below
+          # For a direct comment, you can use:
+          # uses: py-cov-action/python-coverage-comment-action@v3
