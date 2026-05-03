@@ -71,6 +71,32 @@ def auth_client(app):
 
 
 @pytest.fixture()
+def user_factory(app):
+    from werkzeug.security import generate_password_hash
+    from poi_broker import db
+    from poi_broker.models import User
+
+    def factory(
+        email: str = "user@example.com",
+        password: str = "Password123!",
+        name: str = "Test User",
+        verified: bool = True,
+    ):
+        with app.app_context():
+            user = User(
+                email=email,
+                password=generate_password_hash(password),
+                name=name,
+                email_verified=verified,
+            )
+            db.session.add(user)
+            db.session.commit()
+            return user
+
+    return factory
+
+
+@pytest.fixture()
 def secure_app(tmp_path, monkeypatch):
     """App fixture with CSRF and auth rate limiting enabled for security tests."""
     alerts_db = tmp_path / "alerts_secure_test.db"
