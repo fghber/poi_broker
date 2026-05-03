@@ -11,3 +11,4 @@ matplotlib==3.*
 timezonefinder[numba]
 email-validator
 pytest
+pytest-cov
