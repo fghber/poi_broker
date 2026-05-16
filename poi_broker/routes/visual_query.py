@@ -39,10 +39,10 @@ def preview_query():
         sql_preview = get_preview_sql(rules_payload)
         return jsonify({'sql': sql_preview})
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400 # The actual error is included intentinally here since it's likely to be a helpful message about what's wrong with the rules payload
+        return jsonify({'error': str(e)}), 400 # The actual error is included intentinally here since it is probably tells what's wrong with the rules payload
     except Exception as e:
         logger.error(f'Error in preview_query: {str(e)}', exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e)}), 500 # The actual error is included intentinally here since it is probably tells what's wrong with the rules payload
 
 
 @visual_query_bp.route('/api/export-query', methods=['POST'])

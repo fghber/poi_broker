@@ -125,4 +125,9 @@ th.sortable:hover::after {
   font-weight: 500;
 }
 
+/* Visual style for disabled favorite controls for unauthenticated users */
+.fav.unauth-disabled, .fav[aria-disabled="true"] {
+  opacity: 0.55;
+}
+
 

@@ -31,181 +31,153 @@ observing_tool_blueprint = Blueprint('observing_tool', __name__)
 # def show():
 #     site_names = EarthLocation.get_site_names()
 
+"""
+
+"""
 @observing_tool_blueprint.route('/query_observing_plot')
 def calc_observing_plot():
-    
-    #http://localhost:5000/query_observing_plot?obs_loc=Rubin%20Observatory&obs_date=2024-11-14&obs_tz=option_utc&ra=101.28715533&dec=16.71611586
-    #/query_observing_data?obs_loc=ALMA&obs_date=2025-01-13&obs_tz=option_utc&ra=15.7574139&dec=16.215272799999994
-
-    obs_loc = request.args.get('obs_loc') #EarthLocation.of_site('Rubin Observatory')
-    obs_date = request.args.get('obs_date')
-    obs_tz = request.args.get('obs_tz')
-    ra_value = request.args.get('ra')
-    dec_value = request.args.get('dec')
-
-    if not obs_loc or not obs_date or ra_value is None or dec_value is None:
-        return '<p>Missing required query parameters: obs_loc, obs_date, ra, dec</p>', 400
-
     try:
-        year, month, day = obs_date.split("-")
-        ra = float(ra_value)
-        dec = float(dec_value)
-    except (ValueError, TypeError):
-        return '<p>Invalid parameter format. Expected obs_date=YYYY-MM-DD and numeric ra/dec.</p>', 400
+        # Parse query parameters
+        obs_loc = request.args.get('obs_loc') #E.g. #EarthLocation.of_site('Rubin Observatory') TODO: we could also allow users to specify lat/lon instead of site name, but that would require more complex parsing and error handling. For now, let's just stick with site names.
+        obs_date = request.args.get('obs_date')
+        obs_tz = request.args.get('obs_tz')
+        ra_value = request.args.get('ra')
+        dec_value = request.args.get('dec')
 
-    # Observatory location
-    try:
-        observatory = EarthLocation.of_site(obs_loc)
-    except Exception:
-        logger.warning('Unknown observatory location: %s', obs_loc)
-        return '<p>Unknown observatory location.</p>', 400
+        if not obs_loc or not obs_date or ra_value is None or dec_value is None:
+            return '<p>Missing required query parameters: obs_loc, obs_date, ra, dec</p>', 400
 
-    obs_lon, obs_lat = observatory.lon.value, observatory.lat.value
-    #0. do not generate any plots if the object is not visible from the observatory
-    if (obs_lat - dec >=90):
-        return f"<p>Object is not visible from your location: declination = {dec} degree, observatory latitude {obs_lat} degree</p>"
+        try:
+            year, month, day = obs_date.split('-')
+            ra = float(ra_value)
+            dec = float(dec_value)
+        except (ValueError, TypeError):
+            return '<p>Invalid parameter format. Expected obs_date=YYYY-MM-DD and numeric ra/dec.</p>', 400
 
-    tf = TimezoneFinder()
-    timezone_name = tf.timezone_at(lng=obs_lon, lat=obs_lat)
-    if timezone_name is None:
-        return '<p>Failed to determine timezone for selected observatory.</p>', 400
-    tz = ZoneInfo(timezone_name)
+        # Observatory location
+        try:
+            observatory = EarthLocation.of_site(obs_loc)
+        except Exception:
+            logger.warning('Unknown observatory location: %s', obs_loc)
+            return '<p>Unknown observatory location.</p>', 400
 
-    #stellar_object = SkyCoord(ra=101.28715533*u.deg, dec=16.71611586*u.deg)
-    stellar_object = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
+        obs_lon, obs_lat = observatory.lon.value, observatory.lat.value
+        # Do not generate any plots if the object is not visible from the observatory
+        if (obs_lat - dec >= 90):
+            return f"<p>Object is not visible from your location: declination = {dec} degree, observatory latitude {obs_lat} degree</p>"
 
-    # Time settings
-    midnight_utc = Time(f'{year}-{month}-{day} 00:00:00', scale='utc') #values are already in the correct format no :02d etc needed
-    #t_utc = Time(midnight_utc, format='isot', scale='utc') # ? no use
-    midnight_zone = midnight_utc.to_datetime(timezone=tz)
-    delta_midnight = np.linspace(-12, 12, 1000) * u.hour
-    times_range_utc = midnight_utc + delta_midnight
-    times_range_zone = midnight_utc + delta_midnight + (tz.utcoffset(midnight_zone).total_seconds() / (60*60)  )*u.hour #potential bug?
+        tf = TimezoneFinder()
+        timezone_name = tf.timezone_at(lng=obs_lon, lat=obs_lat)
+        if timezone_name is None:
+            return '<p>Failed to determine timezone for selected observatory.</p>', 400
+        tz = ZoneInfo(timezone_name)
 
-    frame = AltAz(obstime=times_range_utc, location=observatory)
-    
-    object_altazs = stellar_object.transform_to(frame)
-    #object_airmass = object_altazs.secz # ? Not used
+        stellar_object = SkyCoord(ra=ra * u.deg, dec=dec * u.deg) #e.g. SkyCoord(ra=101.28715533*u.deg, dec=16.71611586*u.deg)
 
-    moon = get_body("moon", times_range_utc, location=observatory)
-    moon_altazs = moon.transform_to(frame)
-    moon_alt = moon_altazs.alt.value
+        # Time settings
+        midnight_utc = Time(f'{year}-{month}-{day} 00:00:00', scale='utc')
+        midnight_zone = midnight_utc.to_datetime(timezone=tz)
+        delta_midnight = np.linspace(-12, 12, 1000) * u.hour
+        times_range_utc = midnight_utc + delta_midnight
+        times_range_zone = midnight_utc + delta_midnight + (tz.utcoffset(midnight_zone).total_seconds() / (60 * 60)) * u.hour
 
-    sun = get_body("sun", times_range_utc, location=observatory)
-    sun_altazs = sun.transform_to(frame)
-    sun_alt = sun_altazs.alt.value
+        frame = AltAz(obstime=times_range_utc, location=observatory)
+        object_altazs = stellar_object.transform_to(frame)
 
-    # (Nested) Observing Plot function (to structure code better)
-    def observing_plot():
-        plt.style.use(astropy_mpl_style)
-        plt.figure(figsize=(8,6.5))
-        #plt.margins(0.01, tight=True) #The default margins are rcParams["axes.xmargin"] (default: 0.05) and rcParams["axes.ymargin"] (default: 0.05).
-        quantity_support()
-        ax = plt.gca()
-        
-        if(obs_tz == 'option_utc'):
-            timetoplot = times_range_utc
-            ax.set_xlabel("Time starting {0} [UTC]".format(min(timetoplot).datetime.date()))
+        moon = get_body('moon', times_range_utc, location=observatory)
+        moon_altazs = moon.transform_to(frame)
+        moon_alt = moon_altazs.alt.value
+
+        sun = get_body('sun', times_range_utc, location=observatory)
+        sun_altazs = sun.transform_to(frame)
+        sun_alt = sun_altazs.alt.value
+
+        def observing_plot():
+            plt.style.use(astropy_mpl_style)
+            plt.figure(figsize=(8, 6.5))
+            quantity_support()
+            ax = plt.gca()
+
+            if obs_tz == 'option_utc':
+                timetoplot = times_range_utc
+                ax.set_xlabel("Time starting {0} [UTC]".format(min(timetoplot).datetime.date()))
+            else:
+                timetoplot = times_range_zone
+                utcoffset = tz.utcoffset(midnight_zone).total_seconds() / (60 * 60)
+                ax.set_xlabel("Time starting {0} [{1}, UTC{2}]".format(min(timetoplot).datetime.date(), tz, f'{utcoffset:+.0f}'))
+
+            # Format the time axis
+            xlo, xhi = (timetoplot[0]), (timetoplot[-1])
+            ax.set_xlim([xlo.plot_date, xhi.plot_date])
+            date_formatter = dates.DateFormatter('%H:%M')
+            ax.xaxis.set_major_formatter(date_formatter)
+            plt.setp(ax.get_xticklabels(), rotation=30, ha='right')
+
+            plt.fill_between(
+                timetoplot.datetime,
+                0 * u.deg,
+                90 * u.deg,
+                sun_altazs.alt < -0 * u.deg,
+                color='0.5',
+                zorder=0,
+            )
+
+            plt.fill_between(
+                timetoplot.datetime,
+                0 * u.deg,
+                90 * u.deg,
+                sun_altazs.alt < -18 * u.deg,
+                color='k',
+                zorder=0,
+            )
+
+            plt.plot(timetoplot.datetime, moon_altazs.alt.value, c='lightblue', label='moon')
+            plt.plot(timetoplot.datetime, object_altazs.alt.value, c='orange', label='object')
+
+            plt.legend(bbox_to_anchor=(1.0, 1.1), ncol=2)
+
+            plt.ylabel('Altitude [deg]')
+            ax.set_ylim(0, 90)
+            airmass_ticks = np.array([1, 2, 3])
+            altitude_ticks = 90 - np.degrees(np.arccos(1 / airmass_ticks))
+
+            ax2 = ax.twinx()
+            ax2.set_yticks(altitude_ticks)
+            ax2.set_yticklabels(airmass_ticks)
+            ax2.set_ylim(ax.get_ylim())
+            ax2.set_ylabel('Airmass')
+            plt.grid(color='grey', linestyle='--', linewidth=0.5)
+            ax2.grid(None)
+
+            # Create an in-memory buffer
+            img_io = io.BytesIO()
+            plt.savefig(img_io, format='png')
+            img_io.seek(0)
+
+            img_data = base64.b64encode(img_io.getvalue()).decode('utf-8')
+            img_obs = f"data:image/png;base64,{img_data}"
+            plt.close()
+            return img_obs
+
+        # 1: Create observing plot
+        obs_img = observing_plot()
+
+        # 2: Create moon panel
+        moon_panel = ''
+        night_moon_alt = moon_alt[np.where(sun_alt < 0)]
+        if np.max(night_moon_alt) < 0:
+            moon_panel = 'Moon down'
         else:
-            timetoplot = times_range_zone
-            utcoffset = tz.utcoffset(midnight_zone).total_seconds() / (60*60)
-            ax.set_xlabel("Time starting {0} [{1}, UTC{2}]".format(min(timetoplot).datetime.date(), tz,f'{utcoffset:+.0f}'))
-        
-        
-        # Format the time axis
-        xlo, xhi = (timetoplot[0]), (timetoplot[-1])
-        ax.set_xlim([xlo.plot_date, xhi.plot_date])
-        date_formatter = dates.DateFormatter('%H:%M')
-        ax.xaxis.set_major_formatter(date_formatter)
-        plt.setp(ax.get_xticklabels(), rotation=30, ha='right')
+            moon_separation = moon.separation(stellar_object, origin_mismatch='ignore')
+            moon_panel = get_moon_phase_panel(observatory, midnight_utc, moon_separation)
 
-        plt.fill_between(
-            timetoplot.datetime,
-            0 * u.deg,
-            90 * u.deg,
-            sun_altazs.alt < -0 * u.deg,
-            color="0.5",
-            zorder=0,
-        )
-
-        plt.fill_between(
-        timetoplot.datetime,
-        0 * u.deg,
-        90 * u.deg,
-        sun_altazs.alt < -18 * u.deg,
-        color="k",
-        zorder=0,
-        )
-                
-                
-        plt.plot(
-            timetoplot.datetime,
-            moon_altazs.alt.value,c="lightblue", label="moon")
-
-        plt.plot(
-            timetoplot.datetime,
-            object_altazs.alt.value,c="orange", label="object")
-
-        plt.legend(bbox_to_anchor=(1.0, 1.1),ncol=2)
-        
-    
-        plt.ylim(0, )
-        plt.ylabel("Altitude [deg]")
-        ax.set_ylim(0,90)
-        airmass_ticks = np.array([1, 2, 3])
-        altitude_ticks = 90 - np.degrees(np.arccos(1/airmass_ticks))
-
-        ax2 = ax.twinx()
-        ax2.set_yticks(altitude_ticks)
-        ax2.set_yticklabels(airmass_ticks)
-        ax2.set_ylim(ax.get_ylim())
-        ax2.set_ylabel('Airmass')
-        plt.grid(color = 'grey', linestyle = '--', linewidth = 0.5)
-        ax2.grid(None)
-
-        #plt.show()
-        # Create an in-memory buffer
-        img_io = io.BytesIO()
-        plt.savefig(img_io, format='png')
-        img_io.seek(0)
-
-        # Option a: Create a response with the image data
-        #response = make_response(img_io.read())
-        #response.headers['Content-Type'] = 'image/png'
-        # Option b : Encode image to base64
-        img_data = base64.b64encode(img_io.getvalue()).decode('utf-8')
-        img_obs = f"data:image/png;base64,{img_data}"
-        # Close plot
-        plt.close()
-        return img_obs
-
-    #1: Create an observing plot
-    obs_img = observing_plot()
-
-    #2: Create a finder chart (obsolete: downloading fits files from NASA SkyView is too slow/does not work reliablely)
-    #finder_img = plot_finder_image(stellar_object)
-
-    #3: Create Moon Panel
-    moon_panel = ''
-    # 1st: Is the moon up at night?
-    night_moon_alt = moon_alt[np.where(sun_alt<0)]
-    if(np.max(night_moon_alt) < 0):
-        moon_panel = 'Moon down'
-    else: 
-        #Moon up
-        moon_separation = moon.separation(stellar_object, origin_mismatch="ignore")
-        moon_panel = get_moon_phase_panel(observatory, midnight_utc, moon_separation)
-
-    #messier1 = FixedTarget.from_name("M1")
-    # ra=101.28715533
-    # dec=16.71611586
-    # target = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
-
-    #return response
-    return f'''<hr><div class="row">
-        <div class="col-md-7"><img src="{obs_img}"></div>
-        <div class="col-md-5">{moon_panel}</div>
-    </div>'''
+        return f'''<hr><div class="row">
+            <div class="col-md-7"><img src="{obs_img}"></div>
+            <div class="col-md-5">{moon_panel}</div>
+        </div>'''
+    except Exception:
+        logger.exception('Unhandled error while generating observing plot')
+        return '<p>Internal server error while generating observing plot. Check server logs for details.</p>', 500
 
 def get_moon_phase_panel(observatory, midnight_utc, moon_separation):
     #angle of the tilt of the Moon will be different as seen from different latitudes. 

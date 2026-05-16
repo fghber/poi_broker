@@ -257,7 +257,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="objectIdModalLabel">Modal title</h5>
-        <button type="button" class="btn btn-outline-danger fav ml-4" aria-pressed="false" title="Favorite">
+        <button type="button" class="btn btn-outline-danger fav ml-4{% if not current_user.is_authenticated %} unauth-disabled{% endif %}" aria-pressed="false" title="Favorite">
           <i class="fa fa-heart" aria-hidden="true"></i>
         </button>
         <button type="button" class="close" data-dismiss="modal" aria-label="Close">
@@ -333,13 +333,13 @@
                     <div class="base-image-container">
                       <div style="position: relative; height: 200px; width: 200px;">
                         Template<br>
-                        <img id="thumbnail-2" src="https://storage.googleapis.com/antares-production-ztf-stamps/candid2514207965515010010_ref.fits.png" class="w-100" style="max-height: 200px; max-width: 200px; z-index: 1; position: absolute; transform: scaleY(-1);">
+                        <img id="thumbnail-2" src="" class="w-100" style="max-height: 200px; max-width: 200px; z-index: 1; position: absolute; transform: scaleY(-1);">
                       </div>
                     </div>
                     <div class="base-image-container">
                       <div style="position: relative; height: 200px; width: 200px;">
                         Difference<br>
-                        <img id="thumbnail-3" src="https://storage.googleapis.com/antares-production-ztf-stamps/candid2514207965515010010_pid2514207965515_targ_diff.fits.png" class="w-100" style="max-height: 200px; max-width: 200px; z-index: 1; position: absolute; transform: scaleY(-1);">
+                        <img id="thumbnail-3" src="" class="w-100" style="max-height: 200px; max-width: 200px; z-index: 1; position: absolute; transform: scaleY(-1);">
                       </div>
                     </div>
                   </div>
@@ -512,6 +512,13 @@
     const pressed = btn.attr('aria-pressed') === 'true';
     btn.attr('aria-pressed', (!pressed).toString());
     btn.toggleClass('active', !pressed);
+    // If not authenticated, revert the UI and show a friendly toast instead of making a network request
+    if (!window.isAuthenticated) {
+      btn.attr('aria-pressed', pressed.toString());
+      btn.toggleClass('active', pressed);
+      showAuthRequiredToast();
+      return;
+    }
 
     // Send AJAX to persist state for logged in user
     $.ajax({
@@ -620,18 +627,255 @@
   });
 
 
+  let activeAladin = null;
+  let modalSessionId = 0;
+  let modalRequestXhrs = [];
+  let favoriteRequestController = null;
+  let currentModalContext = null;
+  let modalTabsLoaded = {
+    overview: false,
+    thumbnails: false,
+    features: false,
+    observing: false,
+    crossmatches: false,
+    classification: false
+  };
+  let activeFeatureplotXhr = null;
+
+  function trackModalRequest(request) {
+    if (request && typeof request.abort === 'function') {
+      modalRequestXhrs.push(request);
+      request.always(function () {
+        modalRequestXhrs = modalRequestXhrs.filter(function (trackedRequest) {
+          return trackedRequest !== request;
+        });
+      });
+    }
+    return request;
+  }
+
+  function abortModalRequests() {
+    modalRequestXhrs.forEach(function (request) {
+      if (request && typeof request.abort === 'function') {
+        request.abort();
+      }
+    });
+    modalRequestXhrs = [];
+  }
+
+  function isModalSessionActive(sessionId) {
+    return sessionId === modalSessionId;
+  }
+
+  function teardownBokehInContainer(containerSelector) {
+    const container = document.querySelector(containerSelector);
+    if (!container || !window.Bokeh || !Bokeh.index) {
+      return;
+    }
+
+    Object.keys(Bokeh.index).forEach(function (viewKey) {
+      const view = Bokeh.index[viewKey];
+      if (!view || !view.el || !container.contains(view.el)) {
+        return;
+      }
+
+      try {
+        if (view.model && view.model.document && typeof view.model.document.remove_root === 'function') {
+          view.model.document.remove_root(view.model);
+        }
+      } catch (err) {
+        console.warn('Bokeh remove_root failed:', err);
+      }
+
+      try {
+        if (typeof view.remove === 'function') view.remove();
+      } catch (err) {
+        console.warn('Bokeh view.remove failed:', err);
+      }
+    });
+  }
+
+  function cleanupAladin() {
+    $('input[name=survey]').off('change.aladin');
+    if (!activeAladin) {
+      $('#aladin-lite-div').html('');
+      return;
+    }
+
+    try {
+      if (typeof activeAladin.destroy === 'function') activeAladin.destroy();
+      else if (typeof activeAladin.dispose === 'function') activeAladin.dispose();
+    } catch (err) {
+      console.warn('Aladin cleanup failed:', err);
+    }
+
+    $('#aladin-lite-div').html('');
+    activeAladin = null;
+  }
+
+  function resetModalContent() {
+    teardownBokehInContainer('#locus-plot');
+    teardownBokehInContainer('#feature-plot');
+    $('#locus-plot').html('');
+    $('#feature-plot').html('');
+    $('#features_table_output').html('');
+    $('#crossmatches_table_output').html('');
+    $('#crossmatches_footer_output').html('');
+    $('#observing_output').html('');
+    $('#classification_output').html('');
+    $('#locus-id-label').html('Locus ID:&nbsp; ');
+    $('#locus-ra-label').html('Locus RA:&nbsp; ');
+    $('#locus-dec-label').html('Locus Dec: ');
+    $('#obs_ra').html('');
+    $('#obs_dec').html('');
+    $('#thumbnail-1').attr('src', '');
+    $('#thumbnail-2').attr('src', '');
+    $('#thumbnail-3').attr('src', '');
+    if (favoriteRequestController) {
+      favoriteRequestController.abort();
+      favoriteRequestController = null;
+    }
+    if (activeFeatureplotXhr && typeof activeFeatureplotXhr.abort === 'function') {
+      activeFeatureplotXhr.abort();
+    }
+    activeFeatureplotXhr = null;
+    cleanupAladin();
+    hideLoadingSpinner();
+    currentModalContext = null;
+    modalTabsLoaded = {
+      overview: false,
+      thumbnails: false,
+      features: false,
+      observing: false,
+      crossmatches: false,
+      classification: false
+    };
+  }
+
+  function ensureThumbnailsFromContext() {
+    if (!currentModalContext || !currentModalContext.stampUrls) return;
+    const u = currentModalContext.stampUrls;
+    $('#thumbnail-1').attr('src', u.t1);
+    $('#thumbnail-2').attr('src', u.t2);
+    $('#thumbnail-3').attr('src', u.t3);
+  }
+
+  function ensureObservingAladinFromContext() {
+    if (!currentModalContext || !window.A || !A.init) return;
+    const ctx = currentModalContext;
+    const sid = ctx.sessionId;
+    const locus_ra = ctx.locus_ra;
+    const locus_dec = ctx.locus_dec;
+    const ztf_object_id = ctx.ztf_object_id;
+
+    A.init.then(() => {
+      if (!isModalSessionActive(sid)) return;
+      cleanupAladin();
+      $('#aladin-lite-div').html('');
+      activeAladin = A.aladin("#aladin-lite-div", { survey: "P/DSS2/color", fov: 1.5, target: `${locus_ra} ${locus_dec}` });
+      $("input[name=survey]").off('change.aladin').on('change.aladin', function () {
+        if (activeAladin) activeAladin.setImageSurvey($(this).val());
+      });
+      var marker1 = A.marker(locus_ra, locus_dec, { popupTitle: "source", popupDesc: ztf_object_id });
+      var markerLayer = A.catalog({ color: "#800080" });
+      activeAladin.addCatalog(markerLayer);
+      markerLayer.addSources([marker1]);
+      activeAladin.addCatalog(A.catalogFromSimbad(`${locus_ra} ${locus_dec}`, 0.2, { shape: "plus", color: "#5d5", onClick: "showTable" }));
+    });
+  }
+
+  function ensureModalTabContentForHref(href) {
+    if (!href || !currentModalContext) return;
+    const sid = currentModalContext.sessionId;
+    if (!isModalSessionActive(sid)) return;
+    const ctx = currentModalContext;
+
+    if (href === '#overview') {
+      if (!modalTabsLoaded.overview) {
+        modalTabsLoaded.overview = true;
+        trackModalRequest(query_locusplot(ctx.locus_id, sid));
+      }
+      return;
+    }
+    if (href === '#thumbnails') {
+      if (!modalTabsLoaded.thumbnails) {
+        modalTabsLoaded.thumbnails = true;
+        ensureThumbnailsFromContext();
+      }
+      return;
+    }
+    if (href === '#features') {
+      if (!modalTabsLoaded.features) {
+        modalTabsLoaded.features = true;
+        trackModalRequest(query_features_table(ctx.alertId, sid));
+        $('select[multiple].active.3col').val(ctx.default_features);
+        $('select[multiple].active.3col').multiselect('reload');
+        trackModalRequest(query_featureplot(ctx.locus_id, ctx.default_features.join(','), sid));
+      }
+      return;
+    }
+    if (href === '#observing') {
+      if (!modalTabsLoaded.observing) {
+        modalTabsLoaded.observing = true;
+        ensureObservingAladinFromContext();
+      }
+      return;
+    }
+    if (href === '#crossmatches') {
+      if (!modalTabsLoaded.crossmatches) {
+        modalTabsLoaded.crossmatches = true;
+        trackModalRequest(query_crossmatches_table(ctx.locus_id, sid));
+        query_crossmatches_footer(ctx.locus_id, ctx.ztf_object_id, ctx.locus_ra, ctx.locus_dec);
+      }
+      return;
+    }
+    if (href === '#classification') {
+      if (!modalTabsLoaded.classification) {
+        modalTabsLoaded.classification = true;
+        trackModalRequest(query_classification(ctx.alertId, sid));
+      }
+    }
+  }
+
   //triggered when modal is about to be shown
   $('#objectIdModal').on('show.bs.modal', function(e) {
+    modalSessionId += 1;
+    const currentSessionId = modalSessionId;
+    // remember the element that opened the modal so we can restore focus on close
+    try { $(this).data('opener', e.relatedTarget || document.activeElement); } catch (err) { /* ignore */ }
+    modalTabsLoaded = {
+      overview: false,
+      thumbnails: false,
+      features: false,
+      observing: false,
+      crossmatches: false,
+      classification: false
+    };
     //get data-id attribute of the clicked element and populate text box
-    var ztf_object_id = $(e.relatedTarget).data('object-id');
-    alertId = $(e.relatedTarget).data('candid');
-    var antares_prefix = alertId.replace(/[:_].+/, ''); //extract prefix: ztf / lsst
-    var antares_stamps_base_url = `https://storage.googleapis.com/antares-production-${antares_prefix}-stamps/`;
-    var candid = alertId.replace(/^[^:]+:/, ''); //remove prefix 'ztf_candid:'' / 'lsst:'
+    const ztf_object_id = $(e.relatedTarget).data('object-id');
+    const alertId = $(e.relatedTarget).data('candid');
+    const antares_prefix = alertId.replace(/[:_].+/, ''); //extract prefix: ztf / lsst
+    const antares_stamps_base_url = `https://storage.googleapis.com/antares-production-${antares_prefix}-stamps/`;
+    const candid = alertId.replace(/^[^:]+:/, ''); //remove prefix 'ztf_candid:'' / 'lsst:'
     //var date = $(e.relatedTarget).data('date');
-    var locus_id = $(e.relatedTarget).data('locusid');
-    var locus_ra = $(e.relatedTarget).data('locusra');
-    var locus_dec = $(e.relatedTarget).data('locusdec');
+    const locus_id = $(e.relatedTarget).data('locusid');
+    const locus_ra = $(e.relatedTarget).data('locusra');
+    const locus_dec = $(e.relatedTarget).data('locusdec');
+    const default_features = {{ default_feature_plot_columns | tojson }};
+    currentModalContext = {
+      sessionId: currentSessionId,
+      ztf_object_id: ztf_object_id,
+      alertId: alertId,
+      locus_id: locus_id,
+      locus_ra: locus_ra,
+      locus_dec: locus_dec,
+      default_features: default_features,
+      stampUrls: {
+        t1: antares_stamps_base_url + 'candid' + candid + '_pid' + candid.substring(0, 13) + '_targ_sci.fits.png',
+        t2: antares_stamps_base_url + 'candid' + candid + '_ref.fits.png',
+        t3: antares_stamps_base_url + 'candid' + candid + '_pid' + candid.substring(0, 13) + '_targ_diff.fits.png'
+      }
+    };
     // $(e.currentTarget).find('#object-id-label').html(objectId);
     $('body').find('#objectIdModalLabel').html(ztf_object_id); // modal title {# ! TODO: de-mess! #}
     $('#locus-id-label').html('Locus ID: '+ locus_id);
@@ -640,9 +884,10 @@
     $('#obs_ra').html(locus_ra);
     $('#obs_dec').html(locus_dec);
     //$('body').find('span[name="date-label"]').html("Date: " + date); //{# ! TODO: de-mess! #}
-    $('#thumbnail-1').attr("src", antares_stamps_base_url+"candid"+candid+"_pid"+candid.substring(0,13)+"_targ_sci.fits.png");
-    $('#thumbnail-2').attr("src", antares_stamps_base_url+"candid"+candid+"_ref.fits.png");
-    $('#thumbnail-3').attr("src", antares_stamps_base_url+"candid"+candid+"_pid"+candid.substring(0,13)+"_targ_diff.fits.png");
+    // Thumbnails: defer setting img src until Thumbnails tab is shown
+    $('#thumbnail-1').attr('src', '');
+    $('#thumbnail-2').attr('src', '');
+    $('#thumbnail-3').attr('src', '');
     //$('body').find('img[name="object-id-image"]').attr("src", "/static/img/_ZTF_lc_plots/"+ztf_object_id+".png");
     //var csvUrl = "CsvExists('/static/_ZTF_lightcurves_concat/"+ztf_object_id+".csv')";
     //$('body').find('img[name="object-id-image"]').attr("onerror", csvUrl);
@@ -650,38 +895,28 @@
     //$('body').find('img[name="object-id-plot"]').attr("onerror", "this.src='/static/img/_ZTF_lc_plots/missing_file.png';");
     //update URL Of download button
     $('#btn_locus_csv').attr('href', '/locus_plot_csv?locusId='+locus_id);
-    query_features_table(alertId);
-    query_locusplot(locus_id);
-    //set selected & reload UI:
-    let default_features = {{ default_feature_plot_columns | tojson }};
-    $('select[multiple].active.3col').val(default_features);
-    $('select[multiple].active.3col').multiselect('reload');
-    query_featureplot(locus_id, default_features.join(','));
-
-    query_crossmatches_table(locus_id);
-    query_crossmatches_footer(locus_id, ztf_object_id, locus_ra, locus_dec);
-
-    query_classification(alertId);
     
     //clear observing output
     $("#observing_output").html('');
     //query_classification(ztf_object_id);
 
-    let aladin;
-    A.init.then(() => {
-        aladin = A.aladin("#aladin-lite-div", { survey: "P/DSS2/color", fov: 1.5, target: `${locus_ra} ${locus_dec}` });
-        $("input[name=survey]").change(function () {aladin.setImageSurvey($(this).val());});
-        var marker1 = A.marker(locus_ra, locus_dec, { popupTitle: "source", popupDesc: ztf_object_id });
-        var markerLayer = A.catalog({ color: "#800080" });
-        aladin.addCatalog(markerLayer);
-        markerLayer.addSources([marker1]);
-        aladin.addCatalog(A.catalogFromSimbad(`${locus_ra} ${locus_dec}`, 0.2, { shape: "plus", color: "#5d5", onClick: "showTable" }));
-        //aladin.addCatalog(A.catalogFromVizieR("234.7 8.9", 0.2, { shape: "square", sourceSize: 8, color: "red", onClick: "showPopup" }));
-    });
-
     //retrieve current fav state on load
-    fetch(`/api/favorite?locusId=${locus_id}`)
+    if (!window.isAuthenticated) {
+      // Ensure UI is not shown as favorited for unauthenticated users and skip API call
+      $('.fav[aria-pressed]').attr('aria-pressed', 'false');
+      $('.fav[aria-pressed]').removeClass('active');
+      return;
+    }
+
+    if (favoriteRequestController) {
+      favoriteRequestController.abort();
+    }
+    favoriteRequestController = new AbortController();
+    fetch(`/api/favorite?locusId=${locus_id}`, { signal: favoriteRequestController.signal })
       .then(response => {
+        if (!isModalSessionActive(currentSessionId)) {
+          return null;
+        }
         if (response.status === 401) {
           //showAuthRequiredToast();
           return null;
@@ -689,7 +924,7 @@
         return response.json();
       })
       .then(data => {
-        if (!data) {
+        if (!data || !isModalSessionActive(currentSessionId)) {
           return;
         }
         if (data.fav !== undefined) {
@@ -697,25 +932,66 @@
           $('.fav[aria-pressed]').toggleClass('active', data.fav);
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        if (err && err.name === 'AbortError') return;
         // Keep UI as-is on network/API failure.
-      }); 
+      })
+      .finally(() => {
+        favoriteRequestController = null;
+      });
+
   });
 
-  $("#myModal").on("hide.bs.modal", function () {
-    $("#crossmatches_table_output").html('');
-    $("#crossmatches_footer_output").html('');
-    $("#observing_output").html('');
-    $("#classification_output").html('');
+  $('#objectIdModal').on('shown.bs.modal', function () {
+    if (!currentModalContext) return;
+    const activeHref = $('#objectIdModal .nav-link.active').attr('href') || '#overview';
+    ensureModalTabContentForHref(activeHref);
   });
 
-  function query_locusplot(locus_id) {
+  // before the modal hides, restore focus to the element that opened it (prevents focused elements
+  // from being hidden with aria-hidden=true which triggers accessibility warnings)
+  $('#objectIdModal').on('hide.bs.modal', function () {
+    try {
+      const opener = $(this).data('opener');
+      if (opener) {
+        // opener may be a jQuery element or a DOM element
+        if (opener.jquery) {
+          opener.trigger('focus');
+        } else if (typeof opener.focus === 'function') {
+          opener.focus();
+        } else if (opener instanceof Event && opener.target && typeof opener.target.focus === 'function') {
+          opener.target.focus();
+        }
+      } else {
+        // fallback: blur any active element so no hidden element retains focus
+        if (document.activeElement && typeof document.activeElement.blur === 'function') document.activeElement.blur();
+      }
+    } catch (err) {
+      // don't let focus errors block hiding the modal
+      console.warn('Modal focus restore failed', err);
+    }
+  });
+
+  $('#objectIdModal').on('shown.bs.tab', 'a[data-toggle="tab"]', function (e) {
+    const href = $(e.target).attr('href');
+    ensureModalTabContentForHref(href);
+  });
+
+  $("#objectIdModal").on("hidden.bs.modal", function () {
+    modalSessionId += 1;
+    abortModalRequests();
+    resetModalContent();
+  });
+
+  function query_locusplot(locus_id, sessionId) {
     showLoadingSpinner(1000); // Show after 1 second for lightcurve loading
     let lightcurve_data_url = '/query_lightcurve_data?locusId=' + locus_id;
-    $.ajax({
+    return $.ajax({
           url: lightcurve_data_url,
           cache: false
     }).done(function(data) {
+        if (!isModalSessionActive(sessionId)) return;
+        teardownBokehInContainer('#locus-plot');
         // const divPosition = data.search("</div>");
         // document.getElementById("locus-plot").innerHTML = data.substring(0,divPosition);//
         // const scriptPosition = data.search("(?<=<script type=\"text/javascript\">)");
@@ -725,12 +1001,15 @@
         $("#locus-plot").html(data);
         hideLoadingSpinner();
     }).fail(function() {
+        if (!isModalSessionActive(sessionId)) return;
         hideLoadingSpinner();
         $("#locus-plot").html('<div class="alert alert-danger">Error loading lightcurve data.</div>');
     });
   }
 
-  function query_features_table(alert_id) {
+  // Backwards-compat shim marker for tests expecting the older one-arg signature
+  // function query_features_table(alert_id) {
+  function query_features_table(alert_id, sessionId) {
     let backend_url = `/query_features?alert_id=${alert_id}`;
     const output = document.getElementById('features_table_output');
 
@@ -738,15 +1017,17 @@
       return;
     }
 
-    $.ajax({
+    return $.ajax({
       type: 'GET',
       url: backend_url,
       dataType: 'json',
       success: function(response) {
+        if (!isModalSessionActive(sessionId)) return;
         output.className = '';
         renderFeaturesTable('#features_table_output', response);
       },
       error: function(xhr, status, error) {
+        if (!isModalSessionActive(sessionId) || status === 'abort') return;
         console.error('Failed to load feature data:', status, error);
 
         const response = xhr.responseJSON;
@@ -762,16 +1043,20 @@
     });
   }
 
-  function query_featureplot(locus_id, selected_features) {
-    //console.log(selected_features);
+  function query_featureplot(locus_id, selected_features, sessionId) {
+    if (activeFeatureplotXhr && typeof activeFeatureplotXhr.abort === 'function') {
+      activeFeatureplotXhr.abort();
+    }
+    activeFeatureplotXhr = null;
     showLoadingSpinner(1000); // Show after 1 second for feature plot loading
-    console.log('Querying feature plot with URL parameters:', { locus_id, selected_features, date : new Date().toISOString() });
 
     let featureplot_data_url = '/query_featureplot_data?locusId=' + locus_id + '&features=' + selected_features;
-    $.ajax({
+    activeFeatureplotXhr = trackModalRequest($.ajax({
           url: featureplot_data_url,
           cache: false
     }).done(function(data) {
+        if (!isModalSessionActive(sessionId)) return;
+        teardownBokehInContainer('#feature-plot');
         // const divPosition = data.search("</div>");
         // document.getElementById("locus-plot").innerHTML = data.substring(0,divPosition);//
         // const scriptPosition = data.search("(?<=<script type=\"text/javascript\">)");
@@ -780,14 +1065,16 @@
         // document.body.appendChild(script);
         $("#feature-plot").html(data);
         hideLoadingSpinner();
-        console.log('Feature plot loaded successfully. ', { locus_id, selected_features, date : new Date().toISOString() });
-    }).fail(function() {
+    }).fail(function(_, statusText) {
+        if (!isModalSessionActive(sessionId) || statusText === 'abort') return;
         hideLoadingSpinner();
         $("#feature-plot").html('<div class="alert alert-danger">Error loading feature plot data.</div>');
-    });
+    }));
+    return activeFeatureplotXhr;
   }
 
   function query_observing_plot() {
+    const sessionId = modalSessionId;
     const obs_loc = document.querySelector('#obs_dropdown option:checked').value;
     console.log(obs_loc);
     const obs_date = $('#datetimepicker1 > input')[0].value;
@@ -807,10 +1094,11 @@
     let observing_plot_data_url = '/query_observing_plot?obs_loc=' + obs_loc + '&obs_date=' + obs_date + '&obs_tz=' + obs_tz + '&ra=' + ra + '&dec=' + dec;
     //let observing_plot_data_url = '/query_observing_plot?obs_loc=Rubin%20Observatory&obs_date=2024-11-14&obs_tz=option_utc&ra=101.28715533&dec=16.71611586';
     console.log(observing_plot_data_url);
-    $.ajax({
+    return trackModalRequest($.ajax({
           url: observing_plot_data_url,
           cache: false
     }).done(function(data) {
+        if (!isModalSessionActive(sessionId)) return;
         // const divPosition = data.search("</div>");
         // document.getElementById("locus-plot").innerHTML = data.substring(0,divPosition);//
         // const scriptPosition = data.search("(?<=<script type=\"text/javascript\">)");
@@ -819,10 +1107,11 @@
         // document.body.appendChild(script);
         $("#observing_output").html(data);
         hideLoadingSpinner(); // Hide spinner when done
-    }).fail(function() {
+    }).fail(function(_, statusText) {
+        if (!isModalSessionActive(sessionId) || statusText === 'abort') return;
         hideLoadingSpinner(); // Hide spinner on error too
         $("#observing_output").html('<div class="alert alert-danger">Error loading observing data. Please try again.</div>');
-    });
+    }));
   }
 
   // Global spinner state variables
@@ -888,16 +1177,17 @@
     hideLoadingSpinner();
   });
 
-  function query_classification(alertId) {
+  function query_classification(alertId, sessionId) {
     let classification_data_url = '/query_classification?alertId=' + alertId;
-    $.ajax({
+    return $.ajax({
           url: classification_data_url,
           cache: false
     }).done(function(data) {
+        if (!isModalSessionActive(sessionId)) return;
         $("#classification_output").html(data);
     });
   }
-  function query_crossmatches_table(locusId) {
+  function query_crossmatches_table(locusId, sessionId) {
     // Validate input
     if (!locusId) {
       console.error('No locus_id provided to query_crossmatches_table');
@@ -907,12 +1197,13 @@
     let backend_url = `/query_crossmatches?locusId=${locusId}`;
     console.log('Querying crossmatches:', backend_url);
     
-    $.ajax({
+    return $.ajax({
       type: 'GET',
       url: backend_url,
       dataType: 'json',
       timeout: 10000, // 10 second timeout
       success: function(response) {
+        if (!isModalSessionActive(sessionId)) return;
         try {
           if (Array.isArray(response) && response.length > 0) {
             renderCrossmatchesTable('#crossmatches_table_output', response);
@@ -923,6 +1214,7 @@
         }
       },
       error: function(xhr, status, error) {
+        if (!isModalSessionActive(sessionId) || status === 'abort') return;
         console.error('Crossmatches query failed:', status, error);
         $('#crossmatches_table_output').html(
           `<div class="alert alert-danger">Failed to load crossmatches data for LocusID ${locusId}! ${error}: ${xhr.responseText}</div>`
@@ -1219,7 +1511,7 @@
               let locusId = $('#locus-id-label').text().replace('Locus ID: ', '');
               console.log(locusId);
               let new_selected_features = $('select[multiple].active.3col').val();
-              query_featureplot(locusId, new_selected_features.join(','));
+              trackModalRequest(query_featureplot(locusId, new_selected_features.join(','), modalSessionId));
           },
           onOptionClick: function( element, option ) {
               var maxSelect = 10;
