@@ -2,7 +2,7 @@
 
 |Name                                       | Stmts  | Miss |Cover|
 |-------------------------------------------|--------|------|-----|
-|poi_broker\__init__.py                     |   79   |   5  |  94%|
+|poi_broker\__init__.py                     |   89   |   6  |  93%|
 |poi_broker\app.py                          |  225   | 126  |  44%|
 |poi_broker\auth.py                         |  277   | 135  |  51%|
 |poi_broker\classification.py               |   55   |   1  |  98%|
@@ -10,7 +10,7 @@
 |poi_broker\constants\features.py           |    5   |   0  | 100%|
 |poi_broker\helpers.py                      |   82   |   4  |  95%|
 |poi_broker\models.py                       |  389   |  18  |  95%|
-|poi_broker\observing_tool.py               |  157   |  22  |  86%|
+|poi_broker\observing_tool.py               |  161   |  25  |  84%|
 |poi_broker\querybuilder_translator.py      |   82   |  31  |  62%|
 |poi_broker\routes\__init__.py              |    6   |   0  | 100%|
 |poi_broker\routes\favorites.py             |   66   |   2  |  97%|
@@ -26,4 +26,4 @@
 |poi_broker\settings.py                     |   50   |   7  |  86%|
 |poi_broker\user_settings.py                |   62   |  15  |  76%|
 |-------------------------------------------|--------|------|-----|
-|TOTAL                                      | 2079   | 512  |  75%|
+|TOTAL                                      | 2093   | 516  |  75%|

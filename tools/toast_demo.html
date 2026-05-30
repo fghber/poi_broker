@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Toast Notifications Demo</title>
+    <!-- Bootstrap 4 CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.3.1/css/bootstrap.min.css">
+    <!-- Bootstrap 4 Icons (Font Awesome fallback) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <style>
+        body {
+            padding: 2rem;
+            background-color: #f5f5f5;
+        }
+        .demo-section {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+    </style>
+</head>
+<body>
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
+
+    <div class="container">
+        <h1 class="mb-4">Bootstrap 4 Toast Notifications Demo</h1>
+
+        <div class="demo-section">
+            <h2>Toast Types</h2>
+            <p class="text-muted">Click buttons to trigger different toast notifications.</p>
+            <div class="button-group">
+                <button class="btn btn-success" id="successBtn">
+                    <i class="fa fa-check-circle"></i> Success Toast
+                </button>
+                <button class="btn btn-danger" id="errorBtn">
+                    <i class="fa fa-exclamation-circle"></i> Error Toast
+                </button>
+                <button class="btn btn-info" id="infoBtn">
+                    <i class="fa fa-info-circle"></i> Info Toast
+                </button>
+            </div>
+        </div>
+
+        <div class="demo-section">
+            <h2>Custom Messages</h2>
+            <div class="form-group">
+                <label for="customMessage">Message:</label>
+                <input type="text" class="form-control" id="customMessage" placeholder="Enter toast message" value="This is a custom message!">
+            </div>
+            <div class="form-group">
+                <label for="customType">Type:</label>
+                <select class="form-control" id="customType">
+                    <option value="success">Success</option>
+                    <option value="error">Error</option>
+                    <option value="info" selected>Info</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="customDuration">Duration (ms):</label>
+                <input type="number" class="form-control" id="customDuration" value="5000" min="1000" step="1000">
+            </div>
+            <button class="btn btn-primary" id="customBtn">
+                <i class="fa fa-bell"></i> Show Custom Toast
+            </button>
+        </div>
+
+        <div class="demo-section">
+            <h2>Rapid Fire</h2>
+            <p class="text-muted">Test multiple toasts in sequence.</p>
+            <button class="btn btn-warning" id="rapidBtn">
+                <i class="fa fa-flash"></i> Show 3 Toasts Rapidly
+            </button>
+        </div>
+    </div>
+
+    <!-- jQuery -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+    <!-- Popper.js (required for Bootstrap dropdowns/tooltips) -->
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
+    <!-- Bootstrap 4 JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.3.1/js/bootstrap.min.js"></script>
+
+    <script>
+        /**
+         * Display a toast notification
+         * @param {string} message - The message to display
+         * @param {string} type - The type of toast: 'success', 'error', or 'info' (default: 'info')
+         * @param {number} duration - How long to show the toast in milliseconds (default: 5000)
+         */
+        function showToast(message, type = 'info', duration = 5000) {
+            const toastContainer = document.getElementById('toastContainer');
+            if (!toastContainer) return;
+
+            const toastId = 'toast-' + Date.now();
+            const bgClass = type === 'success' ? 'bg-success' : type === 'error' ? 'bg-danger' : 'bg-info';
+            const textClass = 'text-white';
+
+            const toastHtml = `
+                <div id="${toastId}" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header ${bgClass} ${textClass}">
+                        <strong class="mr-auto">${type.charAt(0).toUpperCase() + type.slice(1)}</strong>
+                        <button type="button" class="ml-2 mb-1 close ${textClass}" data-dismiss="toast" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="toast-body ${bgClass} ${textClass}">
+                        ${message}
+                    </div>
+                </div>
+            `;
+
+            toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+            const toastElement = document.getElementById(toastId);
+            $(toastElement).toast({ delay: duration });
+            $(toastElement).toast('show');
+
+            // Remove from DOM after hiding
+            toastElement.addEventListener('hidden.bs.toast', function() {
+                toastElement.remove();
+            });
+        }
+
+        // Event listeners for demo buttons
+        document.getElementById('successBtn').addEventListener('click', function() {
+            showToast('Operation completed successfully!', 'success', 5000);
+        });
+
+        document.getElementById('errorBtn').addEventListener('click', function() {
+            showToast('An error occurred. Please try again.', 'error', 5000);
+        });
+
+        document.getElementById('infoBtn').addEventListener('click', function() {
+            showToast('This is an informational message.', 'info', 5000);
+        });
+
+        document.getElementById('customBtn').addEventListener('click', function() {
+            const message = document.getElementById('customMessage').value || 'No message provided';
+            const type = document.getElementById('customType').value;
+            const duration = parseInt(document.getElementById('customDuration').value);
+            showToast(message, type, duration);
+        });
+
+        document.getElementById('rapidBtn').addEventListener('click', function() {
+            showToast('First toast', 'info', 3000);
+            setTimeout(() => showToast('Second toast', 'success', 3000), 1000);
+            setTimeout(() => showToast('Third toast', 'error', 3000), 2000);
+        });
+
+        // Demo on page load
+        window.addEventListener('load', function() {
+            setTimeout(() => {
+                showToast('Welcome! Click buttons to test toasts.', 'info', 4000);
+            }, 500);
+        });
+    </script>
+</body>
+</html>

@@ -79,7 +79,7 @@ Also, inspect the browser developer console (F12) to see if there are any errors
 
 ### Testing, Debugging and Profiling
 
-For now, only a basic `pytest` smoke test for the main route exists. Run the tests before commiting changes.
+So far, basic `pytest` smoke test for the main route and some unit tests exist. Run all tests before commiting changes.
 
 ```
 (poi_brokerenv) λ pytest -q
@@ -87,13 +87,26 @@ For now, only a basic `pytest` smoke test for the main route exists. Run the tes
 
 It is highly recommended to debug the app in a capable IDE like VS Code to leverage built-in debugging capabilities.
 
-To set breakpoints in the CLI use pdb
+To set breakpoints in the CLI use pdb or the more modern `breakpoint()` function, for example in a route handler:
 ```
 import pdb
 from pprint import pprint
 ...
 pdb.set_trace()
 ```
+
+Use traceback to output the stack trace of an exception, for example in an error handler:
+```
+import traceback
+
+try:
+    ...
+except Exception:
+    tb = traceback.format_exc()
+    return f"<pre>{tb}</pre>", 500
+
+```
+
 
 Use the logger class to log output to the app.log file instead of `print`'ing to the console
 ```

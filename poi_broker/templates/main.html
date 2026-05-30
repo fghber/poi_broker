@@ -673,26 +673,224 @@
       return;
     }
 
+    // Runtime: force aggressive mode only
+    const mode = 'aggressive';
+    const diag = Boolean(window.BOKEH_TEARDOWN_DIAGNOSTICS);
+    if (diag && !window._bokehTeardownStats) window._bokehTeardownStats = [];
+
+    const preIndexCount = Object.keys(Bokeh.index || {}).length;
+    let docsCleared = 0, modelsRemoved = 0, viewsRemoved = 0, indexDeleted = 0;
+    let orphansRemoved = 0, globalDocsWiped = 0, globalIndexCleared = 0;
+
+    // Map each Bokeh Document to its views so we can decide safe cleanup
+    const docMap = new Map();
     Object.keys(Bokeh.index).forEach(function (viewKey) {
       const view = Bokeh.index[viewKey];
-      if (!view || !view.el || !container.contains(view.el)) {
-        return;
-      }
-
-      try {
-        if (view.model && view.model.document && typeof view.model.document.remove_root === 'function') {
-          view.model.document.remove_root(view.model);
-        }
-      } catch (err) {
-        console.warn('Bokeh remove_root failed:', err);
-      }
-
-      try {
-        if (typeof view.remove === 'function') view.remove();
-      } catch (err) {
-        console.warn('Bokeh view.remove failed:', err);
-      }
+      if (!view || !view.el || !view.model || !view.model.document) return;
+      const doc = view.model.document;
+      const entry = docMap.get(doc) || { views: [] };
+      entry.views.push({ key: viewKey, view: view });
+      docMap.set(doc, entry);
     });
+
+    // For each document, determine if any of its views live outside the container.
+    // If all roots are contained in the container, clearing the whole document is safe
+    docMap.forEach(function (entry, doc) {
+      const anyOutside = entry.views.some(function (v) {
+        return !(v.view.el && container.contains(v.view.el));
+      });
+
+      entry.views.forEach(function (vEntry) {
+        const key = vEntry.key;
+        const view = vEntry.view;
+        const inside = view.el && container.contains(view.el);
+        if (!inside) return; // skip views that are not inside this container
+
+        try {
+          if (!anyOutside) {
+            // If aggressive/global mode, clear the entire document for maximal memory reclamation
+            if ((mode === 'aggressive' || mode === 'global') && typeof doc.clear === 'function') {
+              doc.clear();
+              docsCleared += 1;
+            } else if (typeof doc.remove_root === 'function') {
+              doc.remove_root(view.model);
+              modelsRemoved += 1;
+            }
+          } else {
+            // Document is shared; remove only this model/root
+            if (typeof doc.remove_root === 'function') {
+              doc.remove_root(view.model);
+              modelsRemoved += 1;
+            }
+          }
+        } catch (err) {
+          console.warn('Bokeh document cleanup failed:', err);
+        }
+
+        try {
+          if (typeof view.remove === 'function') {
+            view.remove();
+            viewsRemoved += 1;
+          }
+        } catch (err) {
+          console.warn('Bokeh view.remove failed:', err);
+        }
+
+        try {
+          if (mode === 'aggressive' || mode === 'global') {
+            delete Bokeh.index[key];
+            indexDeleted += 1;
+          }
+        } catch (err) {
+          // ignore deletion errors
+        }
+      });
+    });
+
+    // Orphaned views sweep: remove views that are detached from the document (not in DOM)
+    try {
+      Object.keys(Bokeh.index || {}).forEach(function (viewKey) {
+        try {
+          const view = Bokeh.index[viewKey];
+          if (!view) return;
+          const el = view.el;
+          const attached = el && document.body.contains(el);
+          if (!attached) {
+            if (typeof view.remove === 'function') {
+              view.remove();
+              orphansRemoved += 1;
+            }
+            if (view.model && view.model.document && typeof view.model.document.remove_root === 'function') {
+              try { view.model.document.remove_root(view.model); } catch (e) { /* ignore */ }
+            }
+            try { delete Bokeh.index[viewKey]; } catch (e) { /* ignore */ }
+          }
+        } catch (err) {
+          /* ignore per-view errors */
+        }
+      });
+    } catch (err) { /* ignore */ }
+
+    // Global wipe (last-resort): clear Bokeh.documents and fully empty Bokeh.index
+    if (mode === 'global') {
+      try {
+        const docs = Bokeh.documents;
+        if (docs) {
+          try {
+            if (Array.isArray(docs)) {
+              docs.forEach(function (d) { try { if (d && typeof d.clear === 'function') d.clear(); } catch (e) {} });
+              docs.length = 0;
+              globalDocsWiped += 1;
+            } else if (typeof docs.clear === 'function') {
+              docs.clear();
+              globalDocsWiped += 1;
+            } else if (typeof docs === 'object') {
+              Object.keys(docs).forEach(function (k) {
+                try { const d = docs[k]; if (d && typeof d.clear === 'function') d.clear(); } catch (e) {}
+                try { delete docs[k]; } catch (e) {}
+              });
+              globalDocsWiped += 1;
+            }
+          } catch (e) { /* ignore */ }
+        }
+      } catch (err) { /* ignore */ }
+
+      try {
+        Object.keys(Bokeh.index || {}).forEach(function (k) {
+          try {
+            const v = Bokeh.index[k];
+            if (v && typeof v.remove === 'function') v.remove();
+            if (v && v.model && v.model.document && typeof v.model.document.remove_root === 'function') {
+              try { v.model.document.remove_root(v.model); } catch (e) { /* ignore */ }
+            }
+          } catch (e) { /* ignore per-view */ }
+          try { delete Bokeh.index[k]; globalIndexCleared += 1; } catch (e) { /* ignore */ }
+        });
+      } catch (err) { /* ignore */ }
+    }
+
+    // Remove any leftover <script> tags inside the container to avoid leaving inactive script nodes
+    try {
+      const scripts = container.querySelectorAll('script');
+      scripts.forEach(function (s) { if (s.parentNode) s.parentNode.removeChild(s); });
+    } catch (err) { /* ignore */ }
+
+    // Finally, clear the container HTML
+    try { container.innerHTML = ''; } catch (err) { /* ignore */ }
+
+    const postIndexCount = Object.keys(Bokeh.index || {}).length;
+
+    if (diag) {
+      const stat = {
+        container: containerSelector,
+        mode: mode,
+        preIndexCount: preIndexCount,
+        postIndexCount: postIndexCount,
+        docsCleared: docsCleared,
+        modelsRemoved: modelsRemoved,
+        viewsRemoved: viewsRemoved,
+        indexDeleted: indexDeleted,
+        orphansRemoved: orphansRemoved,
+        globalDocsWiped: globalDocsWiped,
+        globalIndexCleared: globalIndexCleared,
+        timestamp: Date.now()
+      };
+      window._bokehTeardownStats.push(stat);
+      try { console.info('[BOKEH-TEARDOWN]', stat); } catch (e) { /* ignore */ }
+    }
+  }
+
+  function globalWipe() {
+    if (!window.Bokeh) return false;
+    const diag = Boolean(window.BOKEH_TEARDOWN_DIAGNOSTICS);
+    if (diag && !window._bokehTeardownStats) window._bokehTeardownStats = [];
+    const preIndexCount = Object.keys(Bokeh.index || {}).length;
+    let docsCleared = 0, indexCleared = 0, viewsRemoved = 0;
+
+    try {
+      const docs = Bokeh.documents;
+      if (docs) {
+        if (Array.isArray(docs)) {
+          docs.forEach(function (d) { try { if (d && typeof d.clear === 'function') d.clear(); docsCleared++; } catch (e) {} });
+          docs.length = 0;
+        } else if (typeof docs.clear === 'function') {
+          try { docs.clear(); docsCleared++; } catch (e) {}
+        } else if (typeof docs === 'object') {
+          Object.keys(docs).forEach(function (k) { try { const d = docs[k]; if (d && typeof d.clear === 'function') d.clear(); } catch (e) {} try { delete docs[k]; docsCleared++; } catch (e) {} });
+        }
+      }
+    } catch (e) { /* ignore */ }
+
+    try {
+      Object.keys(Bokeh.index || {}).forEach(function (k) {
+        try {
+          const v = Bokeh.index[k];
+          if (v && typeof v.remove === 'function') { v.remove(); viewsRemoved++; }
+          if (v && v.model && v.model.document && typeof v.model.document.remove_root === 'function') {
+            try { v.model.document.remove_root(v.model); } catch (e) { /* ignore */ }
+          }
+        } catch (e) { /* ignore per-view */ }
+        try { delete Bokeh.index[k]; indexCleared++; } catch (e) { /* ignore */ }
+      });
+    } catch (e) { /* ignore */ }
+
+    const postIndexCount = Object.keys(Bokeh.index || {}).length;
+
+    if (diag) {
+      const stat = {
+        mode: 'global-wipe',
+        preIndexCount: preIndexCount,
+        postIndexCount: postIndexCount,
+        docsCleared: docsCleared,
+        viewsRemoved: viewsRemoved,
+        indexCleared: indexCleared,
+        timestamp: Date.now()
+      };
+      window._bokehTeardownStats.push(stat);
+      try { console.info('[BOKEH-GLOBAL-WIPE]', stat); } catch (e) { /* ignore */ }
+    }
+
+    return true;
   }
 
   function cleanupAladin() {
@@ -981,6 +1179,11 @@
     modalSessionId += 1;
     abortModalRequests();
     resetModalContent();
+
+    // allow synchronous cleanup to finish, then perform a page-global wipe
+    setTimeout(function () {
+      try { globalWipe(); } catch (e) { console.warn('globalWipe failed', e); }
+    }, 250);
   });
 
   function query_locusplot(locus_id, sessionId) {
@@ -992,13 +1195,33 @@
     }).done(function(data) {
         if (!isModalSessionActive(sessionId)) return;
         teardownBokehInContainer('#locus-plot');
-        // const divPosition = data.search("</div>");
-        // document.getElementById("locus-plot").innerHTML = data.substring(0,divPosition);//
-        // const scriptPosition = data.search("(?<=<script type=\"text/javascript\">)");
-        // var script = document.createElement('script');
-        // script.innerHTML = data.substring(scriptPosition, data.length-10);
-        // document.body.appendChild(script);
-        $("#locus-plot").html(data);
+
+        // Safely insert the returned components HTML (div + script) without leaving raw
+        // script tags in the DOM. Extract div and script, append the div and evaluate the
+        // script in a local scope so the browser can GC its compiled function after teardown.
+        try {
+          const container = document.getElementById('locus-plot');
+          if (container) {
+            const tmp = document.createElement('div');
+            tmp.innerHTML = data;
+            const newDiv = tmp.querySelector('div');
+            const scriptElem = tmp.querySelector('script');
+            container.innerHTML = '';
+            if (newDiv) container.appendChild(newDiv);
+            if (scriptElem) {
+              const rawJs = scriptElem.textContent || scriptElem.innerText || '';
+              try {
+                const fn = new Function(rawJs);
+                fn();
+              } catch (err) {
+                console.error('Failed to execute Bokeh component script safely:', err);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Error inserting Bokeh components into #locus-plot:', err);
+          document.getElementById('locus-plot').innerHTML = data;
+        }
         hideLoadingSpinner();
     }).fail(function() {
         if (!isModalSessionActive(sessionId)) return;
@@ -1057,13 +1280,30 @@
     }).done(function(data) {
         if (!isModalSessionActive(sessionId)) return;
         teardownBokehInContainer('#feature-plot');
-        // const divPosition = data.search("</div>");
-        // document.getElementById("locus-plot").innerHTML = data.substring(0,divPosition);//
-        // const scriptPosition = data.search("(?<=<script type=\"text/javascript\">)");
-        // var script = document.createElement('script');
-        // script.innerHTML = data.substring(scriptPosition, data.length-10);
-        // document.body.appendChild(script);
-        $("#feature-plot").html(data);
+
+        try {
+          const container = document.getElementById('feature-plot');
+          if (container) {
+            const tmp = document.createElement('div');
+            tmp.innerHTML = data;
+            const newDiv = tmp.querySelector('div');
+            const scriptElem = tmp.querySelector('script');
+            container.innerHTML = '';
+            if (newDiv) container.appendChild(newDiv);
+            if (scriptElem) {
+              const rawJs = scriptElem.textContent || scriptElem.innerText || '';
+              try {
+                const fn = new Function(rawJs);
+                fn();
+              } catch (err) {
+                console.error('Failed to execute Bokeh component script safely:', err);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Error inserting Bokeh components into #feature-plot:', err);
+          document.getElementById('feature-plot').innerHTML = data;
+        }
         hideLoadingSpinner();
     }).fail(function(_, statusText) {
         if (!isModalSessionActive(sessionId) || statusText === 'abort') return;
@@ -1184,7 +1424,30 @@
           cache: false
     }).done(function(data) {
         if (!isModalSessionActive(sessionId)) return;
-        $("#classification_output").html(data);
+        teardownBokehInContainer('#classification_output');
+        try {
+          const container = document.getElementById('classification_output');
+          if (container) {
+            const tmp = document.createElement('div');
+            tmp.innerHTML = data;
+            const newDiv = tmp.querySelector('div');
+            const scriptElem = tmp.querySelector('script');
+            container.innerHTML = '';
+            if (newDiv) container.appendChild(newDiv);
+            if (scriptElem) {
+              const rawJs = scriptElem.textContent || scriptElem.innerText || '';
+              try {
+                const fn = new Function(rawJs);
+                fn();
+              } catch (err) {
+                console.error('Failed to execute Bokeh component script safely:', err);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Error inserting Bokeh components into #classification_output:', err);
+          document.getElementById('classification_output').innerHTML = data;
+        }
     });
   }
   function query_crossmatches_table(locusId, sessionId) {
