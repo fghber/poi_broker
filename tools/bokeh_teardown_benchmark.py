@@ -3,13 +3,14 @@
 Headless Bokeh teardown benchmark using Playwright.
 
 Usage:
-  python tools/bokeh_teardown_benchmark.py --url http://127.0.0.1:5000 --iterations 50
+    python tools/bokeh_teardown_benchmark.py --url http://127.0.0.1:5000 --iterations 50
 
 Notes:
 - Requires `playwright` to be installed and browsers downloaded: `python -m pip install playwright` and
-  `python -m playwright install chromium`
-- The script enables `window.BOKEH_TEARDOWN_DIAGNOSTICS = true` and `window.BOKEH_TEARDOWN_MODE = 'aggressive'` on the page
-  so the modified teardown will record stats to `window._bokehTeardownStats`.
+    `python -m playwright install chromium`
+- The script enables `window.BOKEH_TEARDOWN_DIAGNOSTICS = true` and clears `window._bokehTeardownStats`
+    on the page. The client now forces a single aggressive teardown mode and performs a page-global
+    `globalWipe()` on modal close; the CLI no longer controls teardown mode.
 """
 import json
 import time
@@ -39,7 +40,7 @@ def wait_for_server(url, timeout=30, interval=0.5):
     return False
 
 
-def run(url="http://127.0.0.1:5000", iterations=50, headless=True, mode='aggressive', wait_timeout=30):
+def run(url="http://127.0.0.1:5000", iterations=50, headless=True, wait_timeout=30):
     results = []
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
@@ -69,7 +70,7 @@ def run(url="http://127.0.0.1:5000", iterations=50, headless=True, mode='aggress
             browser.close()
             return 2
 
-        # ensure modal opener exists
+        # Ensure modal opener exists
         try:
             page.wait_for_selector('a[data-target="#objectIdModal"]', timeout=5000)
         except PlaywrightTimeout:
@@ -78,51 +79,68 @@ def run(url="http://127.0.0.1:5000", iterations=50, headless=True, mode='aggress
             return 2
 
         # Turn on diagnostics and set teardown mode on the page
-        # The client now forces aggressive teardown and performs a global wipe on modal close.
         page.evaluate("() => { window.BOKEH_TEARDOWN_DIAGNOSTICS = true; window._bokehTeardownStats = []; }")
 
         opener_selector = 'a[data-target="#objectIdModal"]'
         close_selector = '#objectIdModal button.close'
+        tab_selectors = ['#overview-tab', '#thumbnails-tab', '#features-tab', '#observing-tab',  '#classification-tab']  # Add more tabs as needed
 
         for i in range(iterations):
             print(f"Iteration {i+1}/{iterations}")
-            # record index before
+            # Record index before
             pre = page.evaluate("() => (window.Bokeh ? Object.keys(Bokeh.index||{}).length : 0)")
 
-            # click opener (use nth if there are many)
+            # Click opener and wait for modal + nav links to be visible
             try:
+                time.sleep(0.5)  # small delay to ensure page is ready for next interaction
                 page.click(opener_selector)
+                page.wait_for_selector('#objectIdModal', state='visible', timeout=5000)
+                page.wait_for_selector('#objectIdModal .nav-link', timeout=5000)
             except Exception as e:
-                print('Failed to click opener:', e, file=sys.stderr)
+                print('Failed to open modal or find modal nav links:', e, file=sys.stderr)
                 break
 
-            # wait for Bokeh views to appear (or small timeout)
-            try:
-                page.wait_for_function("() => window.Bokeh && Object.keys(Bokeh.index||{}).length > 0", timeout=15000)
-            except PlaywrightTimeout:
-                print('Timeout waiting for Bokeh views to initialize', file=sys.stderr)
+            # Click through tabs and wait for each to become active
+            for tab_selector in tab_selectors:
+                try:
+                    time.sleep(0.5)
+                    page.click(tab_selector)
+                except Exception as e:
+                    print(f'Failed to click tab {tab_selector}:', e, file=sys.stderr)
+                    break
 
-            # close modal 
+                # Wait for the tab to have the 'active' class
+                try:
+                    page.wait_for_selector(f"{tab_selector}.active", timeout=10000)
+                except PlaywrightTimeout:
+                    print(f'Timeout waiting for tab {tab_selector} to become active', file=sys.stderr)
+
+            # Close modal
             try:
                 page.click(close_selector)
             except Exception as e:
                 print('Failed to click close button:', e, file=sys.stderr)
 
-            # wait for teardown to run (either registry empty or container empty)
+            # Wait for teardown to run (either registry empty or container empty)
             try:
                 page.wait_for_function("() => (window.Bokeh && Object.keys(Bokeh.index||{}).length === 0) || (document.getElementById('locus-plot') && document.getElementById('locus-plot').children.length === 0)", timeout=10000)
             except PlaywrightTimeout:
-                # not fatal; collect what we have
+                # Not fatal; collect what we have
                 pass
 
             post = page.evaluate("() => (window.Bokeh ? Object.keys(Bokeh.index||{}).length : 0)")
             stats = page.evaluate("() => (window._bokehTeardownStats || []).slice(-1)[0] || null")
-            results.append({ 'iteration': i+1, 'preIndex': pre, 'postIndex': post, 'stat': stats })
+            results.append({ 
+                'iteration': i+1, 
+                'preIndex': pre, 
+                'postIndex': post, 
+                'stat': stats 
+            })
 
-            # small sleep to give the browser some time
+            # Small sleep to give the browser some time
             time.sleep(0.25)
 
-        # collect any console messages and the full stats array
+        # Collect any console messages and the full stats array
         all_stats = page.evaluate("() => (window._bokehTeardownStats || [])")
         browser.close()
 
@@ -143,9 +161,8 @@ if __name__ == '__main__':
     parser.add_argument('--url', default='http://127.0.0.1:5000')
     parser.add_argument('--iterations', type=int, default=50)
     parser.add_argument('--headless', action='store_true', default=True)
-    parser.add_argument('--mode', choices=['safe', 'aggressive', 'global'], default='aggressive',
-                        help='Teardown mode to set on the page before running iterations')
+    # The script no longer accepts a teardown mode; the client forces aggressive teardown.
     parser.add_argument('--wait', type=int, default=30, help='Seconds to wait for target server to accept connections')
     args = parser.parse_args()
-    rc = run(url=args.url, iterations=args.iterations, headless=args.headless, mode=args.mode, wait_timeout=args.wait)
+    rc = run(url=args.url, iterations=args.iterations, headless=args.headless, wait_timeout=args.wait)
     sys.exit(rc)
