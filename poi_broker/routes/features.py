@@ -65,4 +65,4 @@ def query_featureplot_data():
         return f'{div}{script}'
     except Exception as e:
         logger.error(f'Error querying feature plot data: {str(e)}', exc_info=True)
-        return Response(f'Error: {str(e)}', status=500)
+        return Response('Error querying feature plot data', status=500)

@@ -33,11 +33,12 @@
 - Update main table data via AJAX/API calls instead of page loads/GET
 
 # New Features
-- Allow users to create custom observatory coordinates for the observing planning tool
-[x] Save table filters (URL) as bookmark (My Search/Filter)
-[x] Allow users selecting (up to 10) default features to plot
-- Add Bulk Export based on Visual Query (Top 1000/Preview or All)
-  - Create full CSV async, inform user when ready
+- [x] Save table filters (URL) as bookmark (My Search/Filter)
+- [x] Allow users selecting (up to 10) default features to plot
+- [ ] Allow users to create custom observatory coordinates for the observing planning tool
+- [ ] Add Default Observatory Coordinates
+- [ ] Add Bulk Export based on Visual Query (Top 1000/Preview or All)
+  - Create CSV fully async, inform user when ready
 
 # Future
 - Indepentent Python Client API Export Package 

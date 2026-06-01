@@ -2,6 +2,9 @@
 {% block extra_head %}
   {{ super() }}
   {% include 'common_js.html' %}
+  <script>
+    window.isAuthenticated = {{ current_user.is_authenticated | tojson }};
+  </script>
 {% endblock %}
 {% block body %}
   <nav class="navbar navbar-expand-md navbar-light bg-light">

@@ -166,7 +166,8 @@ def start():
             Classification.prob_class.label('prob_class'),
         )
 
-        #latest = db.session.query(Ztf).order_by(Ztf.jd.desc()).first() # ? IDEA: show latest update date
+        #latest = db.session.query(Ztf).order_by(Ztf.date_alert_mjd.desc()).first() # ? IDEA: show latest update date
+        #print(f'Latest alert in DB has date_log={latest.date_log} (UTC {Time(latest.date_alert_mjd, format="mjd").iso})') #DEBUG: print latest alert date in MJD and UTC for debugging
         #print(query.statement.compile(compile_kwargs={"literal_binds": True})) #DEBUG: print the resulting SQL query
         paginator = query.paginate(page=page, per_page=100, error_out=True)
 

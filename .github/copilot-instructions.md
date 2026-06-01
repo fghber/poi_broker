@@ -1,8 +1,8 @@
 # Copilot Cloud Agent Instructions
 
 ## Repository Summary
-- This repository is the Flask web frontend for the Point of Interest (POI) broker, focused on browsing and filtering astronomical alert data (ZTF/LSST-style), plotting lightcurves/features, and managing user watchlists/favorites.
-- The app uses an app-factory pattern and serves HTML templates plus JSON API endpoints.
+- **Context:** This repository is the Flask web frontend for the Point of Interest (POI) broker. Focused on browsing and filtering astronomical alert data (ZTF/LSST-style), plotting lightcurves/features, and managing user watchlists/favorites.
+- **Architecture:** The app uses an app-factory pattern and serves HTML templates plus JSON API endpoints.
 - Runtime data comes from SQLite databases that are expected to live outside the repo by default.
 
 ## Tech Stack and Scope
@@ -11,8 +11,82 @@
 - Backend frameworks/libraries: Flask, Flask-SQLAlchemy, Flask-Login, Flask-WTF, Flask-Limiter.
 - Data/plot libs: Astropy, NumPy, Matplotlib, Bokeh.
 - Storage: SQLite (main alerts DB + separate users/auth DB bind).
-- Frontend assets: Jinja templates, jQuery, Bootstrap 4, static JS/CSS.
+- Frontend assets: Jinja2 templates, jQuery, Bootstrap 4, static JS/CSS.
 - Approximate size: medium monorepo-style app directory with multiple route/service modules and tests.
+
+---
+
+## Coding Standards & Developer Guidelines
+
+### Key Principles
+  - Write concise, technical responses with accurate Python examples.
+  - Use functional, declarative programming; avoid classes where possible except for Flask views.
+  - Prefer iteration and modularization over code duplication.
+  - Use descriptive variable names with auxiliary verbs (e.g., is_active, has_permission).
+  - Use lowercase with underscores for directories and files (e.g., blueprints/user_routes.py).
+  - Favor named exports for routes and utility functions.
+  - Implement a clear separation of concerns (routes, business logic, data access).
+  - Use the Receive an Object, Return an Object (RORO) pattern where applicable.
+
+### Python/Flask
+  - Use def for function definitions.
+  - Use type hints for all function signatures where possible.
+  - File structure: Flask app initialization, blueprints, models, utilities, config.
+  - Avoid unnecessary curly braces in conditional statements.
+  - For single-line statements in conditionals, omit curly braces.
+  - Use concise, one-line syntax for simple conditional statements (e.g., if condition: do_something()).
+
+###  Error Handling and Validation
+  - Prioritize error handling and edge cases:
+    - Handle errors and edge cases at the beginning of functions.
+    - Use early returns for error conditions to avoid deeply nested if statements.
+    - Place the happy path last in the function for improved readability.
+    - Avoid unnecessary else statements; use the if-return pattern instead.
+    - Use guard clauses to handle preconditions and invalid states early.
+    - Implement proper error logging and user-friendly error messages.
+    - Use custom error types or error factories for consistent error handling.
+  - Prioritize stability and fault tolerance
+
+### Flask-Specific Guidelines
+  - Use Flask application factories for better modularity and testing.
+  - Use Flask's application context and request context appropriately.
+  - Organize routes using Flask Blueprints for better code organization.
+  - Implement custom error handlers for different types of exceptions.
+  - Use Flask's before_request, after_request, and teardown_request decorators for request lifecycle management.
+  - Utilize Flask extensions for common functionalities (e.g., Flask-SQLAlchemy, Flask-Migrate).
+  - Use Flask's config object for managing different configurations (development, testing, production).
+  - Use Flask-Login for handling authentication and authorization.
+  - Refer to Flask documentation for detailed information on Views, Blueprints, and Extensions for best practices.
+
+  ### Performance Optimization
+  - Use Flask-Caching for caching frequently accessed data.
+  - Implement database query optimization techniques (e.g., eager loading, indexing).
+  - Use connection pooling for database connections.
+  - Implement proper database session management.
+  - Use background tasks for time-consuming operations (e.g., Celery with Flask).
+
+  ### Database Interaction
+  - Use Flask-SQLAlchemy for ORM operations (models)
+  - Implement database migrations using SQL scripts or Flask-Migrate (not currently set up, but consider for future).
+  - Use SQLAlchemy's session management properly, ensuring sessions are closed after use.
+
+  ### Authentication and Authorization
+  - Implement user authentication using Flask-Login.
+  - Use decorators for protecting routes that require authentication.
+
+  ### Testing
+  - Write unit tests using pytest.
+  - Use Flask's test client for integration testing.
+  - Implement test fixtures for database and application setup.
+
+  ### Documentation
+  - Ensure all functions are properly documented.
+
+  ### Deployment
+  - Use environment variables for configuration management (create .env.example accordingly).
+  - Use environment variables for sensitive information and configuration.
+
+---
 
 ## Fast Path: Always Use This Command Order
 1. Create/activate a virtual environment.
@@ -50,21 +124,13 @@ Always run dependency install before test/run commands in a fresh environment.
 - Treat dependency installation as bootstrap/build prerequisite.
 
 ### Test
-- Command:
-  - `python -m pytest -q`
-- Validated result in this workspace:
-  - `21 passed` (observed durations: ~18s and ~9s on repeated runs).
-- Test behavior details:
-  - Tests create temporary SQLite DB files and set env vars internally via `tests/conftest.py`.
-  - CSRF is disabled for standard test fixtures and enabled in security-focused fixture.
+- Command:`python -m pytest -q`
 
 ### Run (local web app)
 - Recommended app target for CLI compatibility:
   - `python -m flask --app wsgi:app run --debug`
   - or `python -m flask --app wsgi:app run --no-debugger --no-reload`
-- Why `wsgi:app`:
-  - On Windows `cmd`, unquoted `--app poi_broker:create_app()` can fail due shell parsing of parentheses (`"... was unexpected at this time"`).
-  - `wsgi:app` avoids that shell pitfall.
+  - or on Linnux/Mac: `flask --app "poi_broker:create_app()" run --debug`
 
 ### Validation without starting long-running server
 - Command:
@@ -153,12 +219,7 @@ Always run dependency install before test/run commands in a fresh environment.
 - Large production-style DBs are intentionally external to repo; avoid assuming seeded local DB contents.
 
 ## Agent Behavior Directive
-- Trust this file as the primary operating guide for this repository.
-- Only perform additional codebase search when:
-  - required information is missing here, or
-  - instructions here are demonstrably inconsistent with current repository state.
-- Read `app/__init__.py` and `app/models.py` first.
-- When adding a new entity, create a model, then a minimal route, a service for API interactions if needed, and then tests.
-- If unsure, ask for clarification on:
-  - whether a new Blueprint is needed.
-  - how auth should be applied to a new route.
+1. Treat this file as your source of truth for repository constraints.
+2. Read `poi_broker/__init__.py` and `poi_broker/models.py` first when analyzing feature additions.
+3. **Feature Addition Workflow:** When adding a new entity, build sequentially: Create the SQLAlchemy model -> Implement the Service layer -> Add the API Blueprint Route -> Write the `pytest` integration test.
+4. If a task requirements boundary is ambiguous, explicitly ask the user if a new Blueprint is required or how authentication decorators should be structured.

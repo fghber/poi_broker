@@ -1,7 +1,7 @@
 from pathlib import Path
 from datetime import datetime, timezone
 import logging
-from flask import (Flask, render_template, abort, jsonify, request, Response,
+from flask import (Flask, app, render_template, abort, jsonify, request, Response,
                    redirect, url_for, make_response, Blueprint, flash)
 from flask_login import LoginManager, login_required, current_user
 from flask_wtf.csrf import CSRFProtect, CSRFError
@@ -127,6 +127,32 @@ def create_app():
             'app_version': app.config.get('APP_VERSION', ''),
             'current_year': datetime.now(timezone.utc).year,
         }
+    
+    @app.after_request
+    def add_security_headers(resp):
+        # Enable only when behind HTTPS
+        if request.is_secure:
+            resp.headers.setdefault(
+                'Strict-Transport-Security',
+                'max-age=31536000; includeSubDomains; preload'
+            )
+        resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
+        resp.headers.setdefault('X-Frame-Options', 'DENY')
+        resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+        resp.headers.setdefault('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
+        
+        resp.headers.setdefault(
+            'Content-Security-Policy',
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.bokeh.org https://code.jquery.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://code.jquery.com https://fonts.googleapis.com https://cdn.jsdelivr.net; "
+            "font-src 'self' https://fonts.gstatic.com data:; "
+            "connect-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://storage.googleapis.com "
+            "https://alaskybis.cds.unistra.fr https://aladin.cds.unistra.fr https://alasky.unistra.fr https://alasky.cds.unistra.fr https://simbad.cds.unistra.fr "
+            "https://alaskybis.unistra.fr https://casda.csiro.au https://irsa.ipac.caltech.edu https://healpix.ias.u-psud.fr https://skies.esac.esa.int data:; "
+            "img-src 'self' data: https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+        )
+        return resp
     
     # Global error handler for CSRF errors raised by Flask-WTF
     @app.errorhandler(CSRFError)

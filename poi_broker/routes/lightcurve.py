@@ -38,7 +38,7 @@ def query_lightcurve_data():
         return f'{div}{script}'
     except Exception as e:
         logger.error(f'Error querying lightcurve data: {str(e)}', exc_info=True)
-        return Response(f'Error: {str(e)}', status=500)
+        return Response('Error querying lightcurve data', status=500)
 
 
 @lightcurve_bp.route('/locus_plot_csv', methods=['GET'])
@@ -72,4 +72,4 @@ def get_locus_plot():
         )
     except Exception as e:
         logger.error(f'Error exporting lightcurve CSV: {str(e)}', exc_info=True)
-        return Response(f'Error: {str(e)}', status=500)
+        return Response('Error exporting lightcurve CSV', status=500)
