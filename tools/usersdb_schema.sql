@@ -69,6 +69,24 @@ CREATE TABLE
         id INTEGER PRIMARY KEY,
         user_id INTEGER NOT NULL,
         default_feature_plot_columns TEXT,
+        last_selected_observatory_json TEXT,
         FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE,
         UNIQUE (user_id)
 	);
+
+---
+--ALTER TABLE user_settings ADD COLUMN last_selected_observatory_json TEXT;
+
+CREATE TABLE
+    user_observatory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name VARCHAR(100) COLLATE NOCASE NOT NULL,
+        latitude REAL NOT NULL CHECK (latitude >= -90.0 AND latitude <= 90.0),
+        longitude REAL NOT NULL CHECK (longitude >= -180.0 AND longitude <= 180.0),
+        timezone_name VARCHAR(64) NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE,
+        UNIQUE (user_id, name)
+    );
+CREATE INDEX ix_user_observatory_user_id ON user_observatory (user_id);

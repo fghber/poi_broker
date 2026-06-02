@@ -43,6 +43,48 @@
                     </div>
                     <button type="submit" class="btn btn-primary">Save defaults</button>
                 </form>
+
+                  <hr>
+                  <h5>My Observatories</h5>
+                  <p class="text-muted">Create custom observatories for observing planning. Coordinates are validated and timezone is auto-detected from latitude/longitude.</p>
+
+                  <div id="observatory-feedback"></div>
+
+                  <form id="observatory-create-form" class="mb-3" novalidate>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="form-row">
+                      <div class="col-md-4 mb-2">
+                        <label for="obs_name">Name</label>
+                        <input type="text" id="obs_name" class="form-control" maxlength="{{ max_observatory_name_len }}" required>
+                      </div>
+                      <div class="col-md-3 mb-2">
+                        <label for="obs_latitude">Latitude</label>
+                        <input type="number" id="obs_latitude" class="form-control" step="any" min="-90" max="90" required>
+                      </div>
+                      <div class="col-md-3 mb-2">
+                        <label for="obs_longitude">Longitude</label>
+                        <input type="number" id="obs_longitude" class="form-control" step="any" min="-180" max="180" required>
+                      </div>
+                      <div class="col-md-2 mb-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-outline-primary btn-block">Add</button>
+                      </div>
+                    </div>
+                  </form>
+
+                  <div class="table-responsive">
+                    <table class="table table-sm table-striped" id="observatory-table">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Latitude</th>
+                          <th>Longitude</th>
+                          <th>Timezone</th>
+                          <th class="text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody id="observatory-table-body"></tbody>
+                    </table>
+                  </div>
             </div>
         </div>
     </div>
@@ -85,5 +127,171 @@
       }
     });
   });
+
+  (function () {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+      || document.querySelector('input[name="csrf_token"]')?.value
+      || '';
+    const form = document.getElementById('observatory-create-form');
+    const feedback = document.getElementById('observatory-feedback');
+    const tableBody = document.getElementById('observatory-table-body');
+    const initialRows = {{ custom_observatories | tojson }};
+    let rows = Array.isArray(initialRows) ? initialRows.slice() : [];
+    let isCreateInFlight = false;
+    const deletingIds = new Set();
+
+    function renderFeedback(kind, message) {
+      if (!feedback) return;
+      feedback.innerHTML = '';
+      if (!message) return;
+      const div = document.createElement('div');
+      div.className = `alert alert-${kind}`;
+      div.textContent = message;
+      feedback.appendChild(div);
+    }
+
+    function renderRows() {
+      if (!tableBody) return;
+      tableBody.innerHTML = '';
+
+      if (!rows.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 5;
+        td.className = 'text-muted';
+        td.textContent = 'No custom observatories saved yet.';
+        tr.appendChild(td);
+        tableBody.appendChild(tr);
+        return;
+      }
+
+      rows.forEach((row) => {
+        const tr = document.createElement('tr');
+
+        tr.insertCell().textContent = row.name || '';
+        tr.insertCell().textContent = Number(row.latitude).toFixed(6);
+        tr.insertCell().textContent = Number(row.longitude).toFixed(6);
+        tr.insertCell().textContent = row.timezone_name || '';
+
+        const btnCell = tr.insertCell();
+        btnCell.className = 'text-right';
+
+        const btn = Object.assign(document.createElement('button'), {
+          type: 'button',
+          className: 'btn btn-sm btn-outline-danger',
+          textContent: 'Delete'
+        });
+        btn.dataset.observatoryId = row.id;
+
+        btnCell.appendChild(btn);
+        tableBody.appendChild(tr);
+      });
+    }
+
+    async function createObservatory(payload) {
+      const response = await fetch('/api/user-observatories', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create observatory.');
+      }
+      return data;
+    }
+
+    async function deleteObservatory(id) {
+      const response = await fetch(`/api/user-observatories/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'X-CSRFToken': csrfToken,
+        },
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete observatory.');
+      }
+      return data;
+    }
+
+    if (form) {
+      const submitBtn = form.querySelector('button[type="submit"]');
+      form.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        renderFeedback('', '');
+
+        if (isCreateInFlight) return;
+        isCreateInFlight = true;
+
+        if (submitBtn) submitBtn.disabled = true;
+
+        const nameInput = document.getElementById('obs_name');
+        const latInput = document.getElementById('obs_latitude');
+        const lonInput = document.getElementById('obs_longitude');
+
+        const payload = {
+          name: nameInput ? nameInput.value.trim() : '',
+          latitude: latInput ? latInput.value : '',
+          longitude: lonInput ? lonInput.value : '',
+        };
+
+        try {
+          const created = await createObservatory(payload);
+          rows.push(created);
+          rows.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+          renderRows();
+          form.reset();
+          renderFeedback('success', 'Custom observatory saved. Reload the main page to use it in observing planning.');
+        } catch (err) {
+          renderFeedback('warning', err.message || 'Unable to create custom observatory.');
+        } finally {
+          isCreateInFlight = false;
+          if (submitBtn) submitBtn.disabled = false;
+        }
+      });
+    }
+
+    if (tableBody) {
+      tableBody.addEventListener('click', async function (event) {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        const btn = target.closest('button[data-observatory-id]');
+        if (!btn) return;
+
+        const id = Number(btn.getAttribute('data-observatory-id'));
+        if (!Number.isInteger(id)) return;
+        if (deletingIds.has(id)) return;
+
+        deletingIds.add(id);
+        btn.disabled = true;
+
+        try {
+          const deleted = await deleteObservatory(id);
+          rows = rows.filter((row) => row.id !== id);
+          renderRows();
+          if (deleted.warning) {
+            renderFeedback('info', deleted.warning);
+          } else if (deleted.already_deleted) {
+            renderFeedback('info', 'Custom observatory already deleted.');
+          } else {
+            renderFeedback('info', 'Custom observatory deleted.');
+          }
+        } catch (err) {
+          renderFeedback('warning', err.message || 'Unable to delete custom observatory.');
+        } finally {
+          deletingIds.delete(id);
+          btn.disabled = false;
+        }
+      });
+    }
+
+    renderRows();
+  })();
 </script>
 {% endblock %}

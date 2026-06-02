@@ -29,14 +29,15 @@
 
 - [x] consider extending rate-limiting to heavy read routes/endpoints (/query_features, /query_crossmatches, /download_alerts_csv, main /)
 - [x] use a single grouped query to get_favorite_groups (favorites_service.py): For each group it runs Favorite.query.filter_by(group_id=g.id).count() — classic N+1. 
-- Spinner handling logic is repeated across multiple files. Consider refactoring this into a reusable JavaScript module.
+- [x] Consider refactoring the spinner into a reusable JavaScript module.
 - Update main table data via AJAX/API calls instead of page loads/GET
 
 # New Features
 - [x] Save table filters (URL) as bookmark (My Search/Filter)
 - [x] Allow users selecting (up to 10) default features to plot
-- [ ] Allow users to create custom observatory coordinates for the observing planning tool
-- [ ] Add Default Observatory Coordinates
+- [x] Allow users to create custom observatory coordinates for the observing planning tool
+- [x] Add Default Observatory Coordinates -> Last-used becomes the default for the next session
+- [ ] Document new features in the README.md and add a "Changelog" section for future updates
 - [ ] Add Bulk Export based on Visual Query (Top 1000/Preview or All)
   - Create CSV fully async, inform user when ready
 

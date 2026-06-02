@@ -1,3 +1,4 @@
+import logging
 from astropy import units as u
 from astropy.coordinates import EarthLocation
 
@@ -74,3 +75,77 @@ def test_query_observing_plot_generates_image_and_moon_panel(client, monkeypatch
     assert '<img src="data:image/png;base64,' in text
     assert '<div class="col-md-7">' in text
     assert '<div class="col-md-5">' in text
+
+
+def test_query_observing_plot_custom_observatory_recovers_invalid_timezone(auth_client, app, monkeypatch):
+    from poi_broker import db
+    from poi_broker.models import User, UserObservatory
+
+    with app.app_context():
+        user = User.query.filter_by(email='smoketest@example.com').first()
+        assert user is not None
+        row = UserObservatory(
+            user_id=user.id,
+            name='Custom Bad TZ',
+            latitude=52.52,
+            longitude=13.405,
+            timezone_name='Bad/Timezone',
+        )
+        db.session.add(row)
+        db.session.commit()
+        observatory_id = row.id
+
+    import poi_broker.observing_tool as observing_tool
+
+    monkeypatch.setattr(observing_tool.TimezoneFinder, 'timezone_at', lambda self, lng, lat: 'Europe/Berlin')
+
+    response = auth_client.get(
+        '/query_observing_plot',
+        query_string={
+            'obs_loc': f'custom:{observatory_id}',
+            'obs_date': '2025-01-01',
+            'obs_tz': 'option_utc',
+            'ra': '101.28715533',
+            'dec': '16.71611586',
+        },
+    )
+
+    text = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert '<img src="data:image/png;base64,' in text
+
+
+def test_query_observing_plot_builtin_valid_iana_resolution_failure_logs_diagnostics(client, monkeypatch, caplog):
+    import poi_broker.observing_tool as observing_tool
+
+    location = EarthLocation(lat=-23.029 * u.deg, lon=-67.755 * u.deg, height=5000 * u.m)
+
+    monkeypatch.setattr(observing_tool.EarthLocation, 'of_site', lambda site_name: location)
+    monkeypatch.setattr(observing_tool.TimezoneFinder, 'timezone_at', lambda self, lng, lat: 'America/Santiago')
+
+    def fake_zoneinfo(_timezone_name):
+        raise RuntimeError('simulated zoneinfo resolution failure')
+
+    monkeypatch.setattr(observing_tool, 'ZoneInfo', fake_zoneinfo)
+
+    caplog.set_level(logging.WARNING, logger='poi_broker.observing_tool')
+
+    response = client.get(
+        '/query_observing_plot',
+        query_string={
+            'obs_loc': 'builtin:ALMA',
+            'obs_date': '2025-01-01',
+            'obs_tz': 'option_utc',
+            'ra': '101.28715533',
+            'dec': '16.71611586',
+        },
+    )
+
+    text = response.get_data(as_text=True)
+    logs = caplog.text
+
+    assert response.status_code == 400
+    assert 'Failed to determine timezone for selected observatory.' in text
+    assert 'Failed to resolve timezone via ZoneInfo' in logs
+    assert 'America/Santiago' in logs
+    assert 'simulated zoneinfo resolution failure' in logs

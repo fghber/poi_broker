@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, abort, request, make_response
+from flask_login import current_user
 
 import matplotlib 
 matplotlib.use('agg') # OR 'SVG'
@@ -21,19 +22,64 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import logging
 
+from . import db
+from .models import UserObservatory
+from .user_settings import save_last_selected_observatory
+
 logger = logging.getLogger(__name__)
 
 observing_tool_blueprint = Blueprint('observing_tool', __name__) 
 
 # IDEA: Perhaps add a URL prefix observing_tool/
-
 # @observing_tool.route('/observatories')
 # def show():
 #     site_names = EarthLocation.get_site_names()
 
-"""
+def _resolve_zoneinfo(timezone_name):
+    """Return ZoneInfo instance for a timezone string, tolerating minor formatting drift."""
+    if not isinstance(timezone_name, str):
+        return None
 
-"""
+    raw = timezone_name.strip()
+    if not raw:
+        return None
+
+    candidates = [raw]
+
+    # Some values are stored/displayed with a label suffix, e.g. "Europe/Berlin (UTC+2)".
+    if '(' in raw:
+        base = raw.split('(', 1)[0].strip()
+        if base:
+            candidates.append(base)
+
+    normalized = raw.replace('\\', '/').replace(' ', '_')
+    if normalized not in candidates:
+        candidates.append(normalized)
+
+    seen = set()
+    attempted_candidates = []
+    last_error = None
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        attempted_candidates.append(candidate)
+        try:
+            return ZoneInfo(candidate)
+        except Exception as exc:
+            last_error = f'{type(exc).__name__}: {exc}'
+            continue
+
+    logger.warning(
+        'Failed to resolve timezone via ZoneInfo: input=%r candidates=%s last_error=%s',
+        raw,
+        attempted_candidates,
+        last_error,
+    )
+
+    return None
+
+
 @observing_tool_blueprint.route('/query_observing_plot')
 def calc_observing_plot():
     try:
@@ -54,23 +100,67 @@ def calc_observing_plot():
         except (ValueError, TypeError):
             return '<p>Invalid parameter format. Expected obs_date=YYYY-MM-DD and numeric ra/dec.</p>', 400
 
-        # Observatory location
-        try:
-            observatory = EarthLocation.of_site(obs_loc)
-        except Exception:
-            logger.warning('Unknown observatory location: %s', obs_loc)
-            return '<p>Unknown observatory location.</p>', 400
+        selected_payload = None
+        if obs_loc.startswith('custom:'):
+            if not current_user.is_authenticated:
+                return '<p>Authentication required for custom observatories.</p>', 401
 
-        obs_lon, obs_lat = observatory.lon.value, observatory.lat.value
+            custom_id = obs_loc.split(':', 1)[1].strip()
+            if not custom_id.isdigit():
+                return '<p>Invalid custom observatory identifier.</p>', 400
+
+            custom_row = UserObservatory.query.filter_by(
+                id=int(custom_id),
+                user_id=current_user.id,
+            ).first()
+            if custom_row is None:
+                return '<p>Unknown custom observatory.</p>', 400
+
+            observatory = EarthLocation(
+                lat=custom_row.latitude * u.deg,
+                lon=custom_row.longitude * u.deg,
+            )
+            obs_lat = custom_row.latitude
+            obs_lon = custom_row.longitude
+            tz = _resolve_zoneinfo(custom_row.timezone_name)
+            if tz is None:
+                # Fallback by coordinates so malformed legacy values do not break observing plots.
+                fallback_timezone_name = TimezoneFinder().timezone_at(lng=obs_lon, lat=obs_lat)
+                tz = _resolve_zoneinfo(fallback_timezone_name)
+                if tz is None:
+                    logger.warning('Invalid timezone for custom observatory id=%s', custom_row.id)
+                    return '<p>Custom observatory timezone is invalid.</p>', 400
+                logger.warning(
+                    'Recovered invalid timezone for custom observatory id=%s using coords fallback: %s -> %s',
+                    custom_row.id,
+                    custom_row.timezone_name,
+                    fallback_timezone_name,
+                )
+
+            selected_payload = {'source': 'custom', 'id': custom_row.id}
+        else:
+            site_name = obs_loc.split(':', 1)[1].strip() if obs_loc.startswith('builtin:') else obs_loc
+            # Observatory location
+            try:
+                observatory = EarthLocation.of_site(site_name)
+            except Exception:
+                logger.warning('Unknown observatory location: %s', site_name)
+                return '<p>Unknown observatory location.</p>', 400
+
+            obs_lon, obs_lat = observatory.lon.value, observatory.lat.value
+            tf = TimezoneFinder()
+            timezone_name = tf.timezone_at(lng=obs_lon, lat=obs_lat)
+            if timezone_name is None:
+                return '<p>Failed to determine timezone for selected observatory.</p>', 400
+            tz = _resolve_zoneinfo(timezone_name)
+            if tz is None:
+                logger.warning('Invalid timezone for built-in observatory %s (%s)', site_name, timezone_name)
+                return '<p>Failed to determine timezone for selected observatory.</p>', 400
+            selected_payload = {'source': 'builtin', 'name': site_name}
+
         # Do not generate any plots if the object is not visible from the observatory
         if (obs_lat - dec >= 90):
             return f"<p>Object is not visible from your location: declination = {dec} degree, observatory latitude {obs_lat} degree</p>"
-
-        tf = TimezoneFinder()
-        timezone_name = tf.timezone_at(lng=obs_lon, lat=obs_lat)
-        if timezone_name is None:
-            return '<p>Failed to determine timezone for selected observatory.</p>', 400
-        tz = ZoneInfo(timezone_name)
 
         stellar_object = SkyCoord(ra=ra * u.deg, dec=dec * u.deg) #e.g. SkyCoord(ra=101.28715533*u.deg, dec=16.71611586*u.deg)
 
@@ -171,6 +261,14 @@ def calc_observing_plot():
             moon_separation = moon.separation(stellar_object, origin_mismatch='ignore')
             moon_panel = get_moon_phase_panel(observatory, midnight_utc, moon_separation)
 
+        if current_user.is_authenticated and selected_payload is not None:
+            try:
+                save_last_selected_observatory(current_user.id, selected_payload)
+                db.session.commit()
+            except Exception as exc:
+                db.session.rollback()
+                logger.warning('Failed to save last-selected observatory for user_id=%s: %s', current_user.id, exc)
+
         return f'''<hr><div class="row">
             <div class="col-md-7"><img src="{obs_img}"></div>
             <div class="col-md-5">{moon_panel}</div>
@@ -193,8 +291,8 @@ def get_moon_phase_panel(observatory, midnight_utc, moon_separation):
 
     fraction_illuminated = (1 + np.cos(moon_phase_angle_inc))/2.0
     fraction_illuminated_percentage = "{:.0%}".format(fraction_illuminated)
-    angle = np.arctan(np.cos(sun_midnight.dec) * np.sin(sun_midnight.ra - moon_midnight.ra), np.sin(sun_midnight.dec) * np.cos(moon_midnight.dec) -
-                np.cos(sun_midnight.dec) * np.sin(moon_midnight.dec) * np.cos(sun_midnight.ra - moon_midnight.ra)) #technically, the 2nd parameter calls for arctan2, but we are only interested in the sign of the angle, so it does not matter if we use arctan or arctan2 here.
+    angle = np.arctan2(np.cos(sun_midnight.dec) * np.sin(sun_midnight.ra - moon_midnight.ra), np.sin(sun_midnight.dec) * np.cos(moon_midnight.dec) -
+                np.cos(sun_midnight.dec) * np.sin(moon_midnight.dec) * np.cos(sun_midnight.ra - moon_midnight.ra)) 
     phase = 0.5 + 0.5 * moon_phase_angle_inc.value * np.sign(angle.value) / np.pi
 
     phase_name=''
@@ -242,209 +340,3 @@ def get_moon_phase_panel(observatory, midnight_utc, moon_separation):
     #TODO: tilt based on latitude, where I show it on a larger black square
     #this is how it should look like: https://astronomy.stackexchange.com/questions/24711/how-does-the-moon-look-like-from-different-latitudes-of-the-earth
     return html
-
-'''
-def plot_finder_image(coord, survey='DSS', fov_radius=10*u.arcmin,
-                      log=False, ax=None, grid=False, reticle=False,
-                      style_kwargs=None, reticle_style_kwargs=None):
-    """
-    Plot survey image centered on ``target``.
-
-    Survey images are retrieved from NASA Goddard's SkyView service via
-    ``astroquery.skyview.SkyView``.
-
-    If a `~matplotlib.axes.Axes` object already exists, plots the finder image
-    on top. Otherwise, creates a new `~matplotlib.axes.Axes`
-    object with the finder image.
-
-    Parameters
-    ----------
-    target : `~astroplan.FixedTarget`, `~astropy.coordinates.SkyCoord`
-        Coordinates of celestial object
-
-    survey : string
-        Name of survey to retrieve image from. For dictionary of
-        available surveys, use
-        ``from astroquery.skyview import SkyView; SkyView.list_surveys()``.
-        Defaults to ``'DSS'``, the Digital Sky Survey.
-
-    fov_radius : `~astropy.units.Quantity`
-        Radius of field of view of retrieved image. Defaults to 10 arcmin.
-
-    log : bool, optional
-        Take the natural logarithm of the FITS image if `True`.
-        False by default.
-
-    ax : `~matplotlib.axes.Axes` or None, optional.
-        The `~matplotlib.axes.Axes` object to be drawn on.
-        If None, uses the current `~matplotlib.axes.Axes`.
-
-    grid : bool, optional.
-        Grid is drawn if `True`. `False` by default.
-
-    reticle : bool, optional
-        Draw reticle on the center of the FOV if `True`. Default is `False`.
-
-    style_kwargs : dict or `None`, optional.
-        A dictionary of keywords passed into `~matplotlib.pyplot.imshow`
-        to set plotting styles.
-
-    reticle_style_kwargs : dict or `None`, optional
-        A dictionary of keywords passed into `~matplotlib.pyplot.axvline` and
-        `~matplotlib.pyplot.axhline` to set reticle style.
-
-    Returns
-    -------
-    ax : `~matplotlib.axes.Axes`
-        Matplotlib axes with survey image centered on ``target``
-
-    hdu : `~astropy.io.fits.PrimaryHDU`
-        FITS HDU of the retrieved image
-
-
-    Notes
-    -----
-    Dependencies:
-        In addition to Matplotlib, this function makes use of astroquery.
-    """
-
-    #coord = target if not hasattr(target, 'coord') else target.coord
-    #print(coord)
-    position = coord.icrs
-    coordinates = 'icrs'
-    #print(position)
-    #target_name = None if isinstance(target, SkyCoord) else target.name
-
-    hdu = SkyView.get_images(position=position, coordinates=coordinates,survey=survey, radius=fov_radius)[0][0]
-    # Use a multiprocessing to fetch the SkyView image with a timeout to handle the case where the request takes too long
-    #hdu = fetch_skyview_with_timeout(position=position, coordinates=coordinates,survey=survey, radius=fov_radius)
-    if hdu:
-        print("Image fetched successfully!")
-    else:
-        print("Failed to fetch image or request timed out.")
-        #return fallback placeholder image: "Finder chart not available."
-        return "data:image/png;base64,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"
-    
-    wcs = WCS(hdu.header)
-    
-    plt.figure(figsize=(6.5,6.5))
-    #plt.subplots_adjust(right=0.4,left=1.0)
-    #plt.margins(10)
-    # Set up axes & plot styles if needed.
-    if ax is None:
-        ax = plt.gcf().add_subplot(projection=wcs) # this makes the coordinates
-    if style_kwargs is None:
-        style_kwargs = {}
-    style_kwargs = dict(style_kwargs)
-    style_kwargs.setdefault('cmap', 'Greys')
-    style_kwargs.setdefault('origin', 'lower')
-    
-    
-    plt.subplots_adjust(left=0.2, bottom=0.1, right=0.95, top=0.9)
-
-    
-    
-    lon = ax.coords[0]
-    lat = ax.coords[1]
-
-    lon.set_major_formatter('dd:mm:ss.s')
-    lat.set_major_formatter('dd:mm')
-
-    
-    #other option
-
-    #lon.set_major_formatter('d.d')#('dd:mm:ss.s')
-    #lat.set_major_formatter('d.d')#('dd:mm')
-    # https://docs.astropy.org/en/stable/visualization/wcsaxes/ticks_labels_grid.html
-    
-    
-    if log:
-        image_data = np.log(hdu.data)
-    else:
-        image_data = hdu.data
-    ax.imshow(image_data, **style_kwargs)
-    
-    
-
-    # Draw reticle
-#    if reticle:
-#        pixel_width = image_data.shape[0]
-#        inner, outer = 0.03, 0.08
-
-#        if reticle_style_kwargs is None:
-#            reticle_style_kwargs = {}
-#        reticle_style_kwargs.setdefault('linewidth', 2)
-#        reticle_style_kwargs.setdefault('color', 'm')
-
-#        ax.axvline(x=0.5*pixel_width, ymin=0.5+inner, ymax=0.5+outer,
-#                   **reticle_style_kwargs)
-#        ax.axvline(x=0.5*pixel_width, ymin=0.5-inner, ymax=0.5-outer,
-#                   **reticle_style_kwargs)
-#        ax.axhline(y=0.5*pixel_width, xmin=0.5+inner, xmax=0.5+outer,
-#                   **reticle_style_kwargs)
-#        ax.axhline(y=0.5*pixel_width, xmin=0.5-inner, xmax=0.5-outer,
-#                   **reticle_style_kwargs)
-
-    # Labels, title, grid
-    ax.set(xlabel='RA', ylabel='Dec')
-    #if target_name is not None:
-    #    ax.set_title(target_name)
-#    ax.grid(grid)
-    
-    
-    # add marker
-    ax.scatter(coord.ra,coord.dec,marker="+",c='r',s=150) ####### for this, use a symbol instead that is a cross that is empty at the center; color red
-
-    # Redraw the figure for interactive sessions.
-#    ax.figure.canvas.draw()
-
-    # Create an in-memory buffer
-    img_io = io.BytesIO()
-    plt.savefig(img_io, format='png')
-    img_io.seek(0)
-
-    # Option a: Create a response with the image data
-    #response = make_response(img_io.read())
-    #response.headers['Content-Type'] = 'image/png'
-    # Option b : Encode image to base64
-    img_data = base64.b64encode(img_io.getvalue()).decode('utf-8')
-    img_finder = f"data:image/png;base64,{img_data}"
-
-    # Close plot
-    plt.close()
-
-    return img_finder
-
-
-import multiprocessing
-def fetch_skyview_with_timeout(position, coordinates, survey, radius, timeout=120):
-    ctx = multiprocessing.get_context("spawn")  # More robust than "fork" on some platforms
-    queue = ctx.Queue()
-    proc = ctx.Process(target=fetch_image_worker,
-                       args=(queue, position, coordinates, survey, radius))
-    proc.start()
-    proc.join(timeout)
-
-    if proc.is_alive():
-        print("Timeout reached. Terminating hung fetch.")
-        proc.terminate()
-        proc.join()
-        return None
-
-    result = queue.get()
-    if isinstance(result, Exception):
-        print(f"SkyView raised an error: {result}")
-        return None
-
-    return result
-
-def fetch_image_worker(queue, position, coordinates, survey, radius):
-    try:
-        hdu = SkyView.get_images(position=position,
-                                 coordinates=coordinates,
-                                 survey=survey,
-                                 radius=radius)[0][0]
-        queue.put(hdu)  # Send result back
-    except Exception as e:
-        queue.put(e)
-'''

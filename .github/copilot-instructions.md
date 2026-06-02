@@ -223,3 +223,49 @@ Always run dependency install before test/run commands in a fresh environment.
 2. Read `poi_broker/__init__.py` and `poi_broker/models.py` first when analyzing feature additions.
 3. **Feature Addition Workflow:** When adding a new entity, build sequentially: Create the SQLAlchemy model -> Implement the Service layer -> Add the API Blueprint Route -> Write the `pytest` integration test.
 4. If a task requirements boundary is ambiguous, explicitly ask the user if a new Blueprint is required or how authentication decorators should be structured.
+
+- Do not assume missing information. 
+- Think Before Coding
+  - Before implementing changes:
+    - State assumptions explicitly.
+    - If requirements are ambiguous, ask clarifying questions.
+    - If multiple interpretations exist, present options instead of choosing silently.
+    - Prefer simpler approaches and explicitly suggest them.
+    - If something is unclear or conflicting, stop and ask.
+  - Never invent requirements or hidden features.
+- Simplicity First
+  - Write the minimum code necessary to solve the requested problem.
+    - Do not add features that were not requested.
+    - Avoid abstractions for single-use logic.
+    - Do not introduce configurability or extensibility unless asked.
+    - Avoid speculative error handling.
+    - Prefer readable, straightforward solutions over clever ones.
+  - Ask internally: "Would a senior engineer consider this over-engineered?" If yes, simplify.
+- Surgical Changes
+  - Modify only what is required for the task.
+  - When editing existing code:
+    - Do not refactor unrelated code.
+    - Do not reformat files unnecessarily.
+    - Match the existing coding style.
+    - Do not rename symbols without necessity.
+    - Mention unrelated problems instead of fixing them.
+  - Cleanup policy:
+    - Remove unused imports or variables introduced by YOUR change.
+    - Do not remove pre-existing dead code unless explicitly requested.
+  - Every changed line must directly relate to the user's request.
+- Goal-Driven Execution
+  - Convert requests into verifiable outcomes. 
+    - Examples: 
+    - "Fix the bug" → create or identify reproduction → implement fix → verify.
+    - "Add validation" → define invalid cases → ensure handling works.
+    - "Refactor" → confirm behavior unchanged before and after.
+  - For multi-step work, create a brief plan. E.g. 
+    - `1. Step → verification`
+    - `2. Step → verification`
+    - `3. Step → verification`
+  - Prefer measurable success criteria over vague goals.
+- General Principles
+  - Prefer correctness over speed.
+  - Prefer clarity over cleverness.
+  - Prefer small safe changes over large rewrites.
+  - Ask before guessing.

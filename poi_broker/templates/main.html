@@ -395,9 +395,20 @@
                             <div class="form-group">
                                 <label for="obs_dropdown">Observatory:</label>
                                 <select class="form-control" id="obs_dropdown">
-                                  {% for obs in observatories %}
-                                  <option>{{ obs }}</option>
-                                  {% endfor %}                                    
+                                  {% if custom_observatory_options %}
+                                  <optgroup label="My Observatories">
+                                    {% for obs in custom_observatory_options %}
+                                    <option value="{{ obs.value }}" {% if selected_observatory_value == obs.value %}selected{% endif %}>{{ obs.label }}</option>
+                                    {% endfor %}
+                                  </optgroup>
+                                  {% endif %}
+                                  {% if builtin_observatory_options %}
+                                  <optgroup label="Built-in Observatories">
+                                    {% for obs in builtin_observatory_options %}
+                                    <option value="{{ obs.value }}" {% if selected_observatory_value == obs.value %}selected{% endif %}>{{ obs.label }}</option>
+                                    {% endfor %}
+                                  </optgroup>
+                                  {% endif %}
                                 </select>
                             </div>
                         </div>
@@ -446,15 +457,6 @@
               </div>
           </div>
 
-          <!-- Global loading spinner for the entire modal -->
-          <div id="loading-spinner" class="d-none">
-            <div class="spinner-overlay">
-              <div class="spinner-border text-primary" role="status">
-                <span class="sr-only">Loading...</span>
-              </div>
-              <div class="spinner-text mt-2">Loading...</div>
-            </div>
-          </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
@@ -464,6 +466,7 @@
 </div>
 
 {% include 'main_ui_js.html' %}
+<script type="text/javascript" src="/static/js/loading_spinner.js"></script>
 <script>
   function showAuthRequiredToast() {
     const toastId = 'auth-required-toast';
@@ -895,7 +898,7 @@
     }
     activeFeatureplotXhr = null;
     cleanupAladin();
-    hideLoadingSpinner();
+    loadingSpinnerController.hide();
     currentModalContext = null;
     modalTabsLoaded = {
       overview: false,
@@ -1134,17 +1137,19 @@
 
   $("#objectIdModal").on("hidden.bs.modal", function () {
     modalSessionId += 1;
+    const sessionAtClose = modalSessionId;
     abortModalRequests();
     resetModalContent();
 
     // allow synchronous cleanup to finish, then perform a page-global wipe
     setTimeout(function () {
+      if (modalSessionId !== sessionAtClose) return;
       try { globalWipe(); } catch (e) { console.warn('globalWipe failed', e); }
     }, 250);
   });
 
   function query_locusplot(locus_id, sessionId) {
-    showLoadingSpinner(1000); // Show after 1 second for lightcurve loading
+    loadingSpinnerController.show(1000); // Show after 1 second for lightcurve loading
     let lightcurve_data_url = '/query_lightcurve_data?locusId=' + locus_id;
     return $.ajax({
           url: lightcurve_data_url,
@@ -1179,10 +1184,10 @@
           console.error('Error inserting Bokeh components into #locus-plot:', err);
           document.getElementById('locus-plot').innerHTML = data;
         }
-        hideLoadingSpinner();
+        loadingSpinnerController.hide();
     }).fail(function() {
         if (!isModalSessionActive(sessionId)) return;
-        hideLoadingSpinner();
+        loadingSpinnerController.hide();
         $("#locus-plot").html('<div class="alert alert-danger">Error loading lightcurve data.</div>');
     });
   }
@@ -1228,7 +1233,7 @@
       activeFeatureplotXhr.abort();
     }
     activeFeatureplotXhr = null;
-    showLoadingSpinner(1000); // Show after 1 second for feature plot loading
+    loadingSpinnerController.show(1000); // Show after 1 second for feature plot loading
 
     let featureplot_data_url = '/query_featureplot_data?locusId=' + locus_id + '&features=' + selected_features;
     activeFeatureplotXhr = trackModalRequest($.ajax({
@@ -1261,10 +1266,10 @@
           console.error('Error inserting Bokeh components into #feature-plot:', err);
           document.getElementById('feature-plot').innerHTML = data;
         }
-        hideLoadingSpinner();
+        loadingSpinnerController.hide();
     }).fail(function(_, statusText) {
         if (!isModalSessionActive(sessionId) || statusText === 'abort') return;
-        hideLoadingSpinner();
+        loadingSpinnerController.hide();
         $("#feature-plot").html('<div class="alert alert-danger">Error loading feature plot data.</div>');
     }));
     return activeFeatureplotXhr;
@@ -1286,9 +1291,16 @@
     console.log(ztfObjectId);
     //clear output first
     $("#observing_output").html('');
-    showLoadingSpinner(1500); // Show after 1.5 seconds for observing tool
+    loadingSpinnerController.show(1500); // Show after 1.5 seconds for observing tool
 
-    let observing_plot_data_url = '/query_observing_plot?obs_loc=' + obs_loc + '&obs_date=' + obs_date + '&obs_tz=' + obs_tz + '&ra=' + ra + '&dec=' + dec;
+    const queryParams = new URLSearchParams({
+      obs_loc: obs_loc,
+      obs_date: obs_date,
+      obs_tz: obs_tz,
+      ra: ra,
+      dec: dec
+    });
+    let observing_plot_data_url = '/query_observing_plot?' + queryParams.toString();
     //let observing_plot_data_url = '/query_observing_plot?obs_loc=Rubin%20Observatory&obs_date=2024-11-14&obs_tz=option_utc&ra=101.28715533&dec=16.71611586';
     console.log(observing_plot_data_url);
     return trackModalRequest($.ajax({
@@ -1303,75 +1315,38 @@
         // script.innerHTML = data.substring(scriptPosition, data.length-10);
         // document.body.appendChild(script);
         $("#observing_output").html(data);
-        hideLoadingSpinner(); // Hide spinner when done
+        loadingSpinnerController.hide(); // Hide spinner when done
     }).fail(function(_, statusText) {
         if (!isModalSessionActive(sessionId) || statusText === 'abort') return;
-        hideLoadingSpinner(); // Hide spinner on error too
+        loadingSpinnerController.hide(); // Hide spinner on error too
         $("#observing_output").html('<div class="alert alert-danger">Error loading observing data. Please try again.</div>');
     }));
   }
 
-  // Global spinner state variables
-  let spinnerTimeout;
-  let spinnerVisible = false;
-  let spinnerSafetyTimeout;
-
-  function showLoadingSpinner(delay = 1500) {
-    if (spinnerVisible) return; // Already showing
-    
-    // Clear any existing timeouts
-    if (spinnerTimeout) {
-      clearTimeout(spinnerTimeout);
-    }
-    if (spinnerSafetyTimeout) {
-      clearTimeout(spinnerSafetyTimeout);
-    }
-    
-    // Show spinner after delay
-    spinnerTimeout = setTimeout(() => {
-      document.getElementById('loading-spinner').classList.remove('d-none');
-      spinnerVisible = true;
-      
-      // Set safety timeout to hide after 30 seconds
-      spinnerSafetyTimeout = setTimeout(() => {
-        hideLoadingSpinner();
-      }, 30000);
-    }, delay);
-  }
-
-  function hideLoadingSpinner() {
-    // Clear all timeouts
-    if (spinnerTimeout) {
-      clearTimeout(spinnerTimeout);
-      spinnerTimeout = null;
-    }
-    if (spinnerSafetyTimeout) {
-      clearTimeout(spinnerSafetyTimeout);
-      spinnerSafetyTimeout = null;
-    }
-    
-    // Hide spinner if it's visible
-    if (spinnerVisible) {
-      document.getElementById('loading-spinner').classList.add('d-none');
-      spinnerVisible = false;
-    }
-  }
+  // Keep a local adapter so existing call sites stay unchanged.
+  const loadingSpinnerController = window.createLoadingSpinnerController({
+    spinnerElementId: 'loading-spinner',
+    spinnerContainerSelector: '#objectIdModal .modal-body',
+    hiddenClass: 'd-none',
+    defaultDelayMs: 1500,
+    safetyTimeoutMs: 30000
+  });
 
   // Intercept form submission for filtering
   document.getElementById('filter_form').addEventListener('submit', function(e) {
-    showLoadingSpinner(1000); // Show after 1 second for filtering
+    loadingSpinnerController.show(1000); // Show after 1 second for filtering
   });
 
   // Intercept pagination link clicks
   document.querySelectorAll('a[href*="page="]').forEach(link => {
     link.addEventListener('click', function(e) {
-      showLoadingSpinner(1000); // Show after 1 second for pagination
+      loadingSpinnerController.show(1000); // Show after 1 second for pagination
     });
   });
 
   // Hide spinner on page load (for filtering/pagination)
   document.addEventListener('DOMContentLoaded', function() {
-    hideLoadingSpinner();
+    loadingSpinnerController.hide();
   });
 
   function query_classification(alertId, sessionId) {
