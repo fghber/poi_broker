@@ -128,6 +128,9 @@ def run(url="http://127.0.0.1:5000", iterations=50, headless=True, wait_timeout=
                 # Not fatal; collect what we have
                 pass
 
+            # Wait for the 250ms globalWipe timeout in the client to fire before sampling
+            time.sleep(0.35)
+
             post = page.evaluate("() => (window.Bokeh ? Object.keys(Bokeh.index||{}).length : 0)")
             stats = page.evaluate("() => (window._bokehTeardownStats || []).slice(-1)[0] || null")
             results.append({ 

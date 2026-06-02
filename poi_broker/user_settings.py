@@ -5,7 +5,7 @@ import logging
 from sqlalchemy.exc import IntegrityError
 from . import db
 from .constants.features import FEATURE_COLUMNS, default_feature_plot_columns
-from .models import UserSettings
+from .models import UserSettings, UserObservatory
 
 logger = logging.getLogger(__name__)
 user_settings_bp = Blueprint('user_settings', __name__)
@@ -27,8 +27,32 @@ def _normalize_feature_columns(columns):
     return normalized if normalized else default_feature_plot_columns()
 
 
+def _load_user_settings(user_id):
+    return UserSettings.query.filter_by(user_id=user_id).first()
+
+
+def _normalize_last_selected_observatory(raw):
+    if not isinstance(raw, dict):
+        return None
+
+    source = raw.get('source')
+    if source == 'builtin':
+        name = raw.get('name')
+        if isinstance(name, str) and name.strip():
+            return {'source': 'builtin', 'name': name.strip()}
+        return None
+
+    if source == 'custom':
+        observatory_id = raw.get('id')
+        if isinstance(observatory_id, int):
+            return {'source': 'custom', 'id': observatory_id}
+        return None
+
+    return None
+
+
 def get_saved_feature_plot_columns(user_id):
-    settings = UserSettings.query.filter_by(user_id=user_id).first()
+    settings = _load_user_settings(user_id)
     if not settings or not settings.default_feature_plot_columns:
         return default_feature_plot_columns()
 
@@ -39,14 +63,62 @@ def get_saved_feature_plot_columns(user_id):
 
     return _normalize_feature_columns(columns)
 
+
+def get_saved_last_selected_observatory(user_id):
+    settings = _load_user_settings(user_id)
+    if not settings or not settings.last_selected_observatory_json:
+        return None
+
+    try:
+        payload = json.loads(settings.last_selected_observatory_json)
+    except (TypeError, ValueError):
+        return None
+
+    return _normalize_last_selected_observatory(payload)
+
+
+def save_last_selected_observatory(user_id, observatory_payload):
+    """Persist the last selected observatory to the current DB session.
+
+    This helper mutates `db.session` by creating or updating the user's
+    `UserSettings` row, but it does not commit the transaction.
+    Callers are responsible for committing or rolling back the session.
+    """
+    normalized = _normalize_last_selected_observatory(observatory_payload)
+    settings = _load_user_settings(user_id)
+    if settings is None:
+        settings = UserSettings(user_id=user_id)
+
+    settings.last_selected_observatory_json = (
+        json.dumps(normalized, sort_keys=True, separators=(',', ':')) if normalized else None
+    )
+    db.session.add(settings)
+
+
+def _serialize_user_observatory(row):
+    return {
+        'id': row.id,
+        'name': row.name,
+        'latitude': row.latitude,
+        'longitude': row.longitude,
+        'timezone_name': row.timezone_name,
+    }
+
 @user_settings_bp.route('/settings', methods=['GET'])
 @login_required
 def settings():
     selected_features = get_saved_feature_plot_columns(current_user.id)
+    observatories = (
+        UserObservatory.query.filter_by(user_id=current_user.id)
+        .order_by(UserObservatory.name.asc())
+        .all()
+    )
     return render_template(
         'user_settings.html',
         selected_features=selected_features,
         available_features=list(FEATURE_COLUMNS.keys()),
+        custom_observatories=[_serialize_user_observatory(row) for row in observatories],
+        max_observatory_name_len=UserObservatory.MAX_NAME_LENGTH,
     )
 
 @user_settings_bp.route('/settings', methods=['POST'])

@@ -23,6 +23,7 @@ def test_settings_page_loads(auth_client):
     assert b'Feature Plot Defaults' in r.data
     assert b'default_feature_plot_columns' in r.data
     assert b'csrf_token' in r.data
+    assert b"document.querySelector('input[name=\"csrf_token\"]')?.value" in r.data
 
 
 def test_save_and_apply_default_feature_columns(auth_client):

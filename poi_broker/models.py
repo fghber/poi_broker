@@ -427,6 +427,26 @@ class FilterBookmark(db.Model):
 
     def __repr__(self):
         return f"<FilterBookmark {self.name!r}>"
+
+
+class UserObservatory(db.Model):
+    __bind_key__ = 'users'
+    __tablename__ = 'user_observatory'
+
+    MAX_NAME_LENGTH = 100
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True)
+    name = db.Column(db.String(MAX_NAME_LENGTH, collation='NOCASE'), nullable=False)
+    latitude = db.Column(db.Float, nullable=False)
+    longitude = db.Column(db.Float, nullable=False)
+    timezone_name = db.Column(db.String(64), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (db.UniqueConstraint('user_id', 'name', name='uix_user_observatory_user_name'),)
+
+    def __repr__(self):
+        return f"<UserObservatory {self.name!r}>"
     
 
 class UserSettings(db.Model):
@@ -436,6 +456,7 @@ class UserSettings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True)
     default_feature_plot_columns = db.Column(db.Text, nullable=True)
+    last_selected_observatory_json = db.Column(db.Text, nullable=True)
 
     __table_args__ = (db.UniqueConstraint('user_id', name='uix_user_settings_user_id'),)
 

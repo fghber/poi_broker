@@ -5,6 +5,7 @@ from .filter_bookmarks import filter_bookmarks_bp
 from .visual_query import visual_query_bp
 from .lightcurve import lightcurve_bp
 from .features import features_bp
+from .user_observatories import user_observatories_bp
 
 __all__ = [
     'favorites_bp',
@@ -12,4 +13,5 @@ __all__ = [
     'visual_query_bp',
     'lightcurve_bp',
     'features_bp',
+    'user_observatories_bp',
 ]
