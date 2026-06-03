@@ -36,11 +36,64 @@ def _get_builtin_observatory_options() -> list[dict[str, str]]:
     return [{'value': f'builtin:{name}', 'label': name} for name in builtin_names]
 
 
-def _build_observatory_context():
+def _resolve_selected_observatory(
+    selected_meta: dict | None,
+    builtin_values: set[str],
+    custom_values: set[str]
+) -> str | None:
+    """Validate and resolve a saved observatory selection using O(1) lookup.
+    
+    Args:
+        selected_meta: Dict from get_saved_last_selected_observatory() with 'source' key
+                       ('builtin' or 'custom') and selection identifier (name or id).
+        builtin_values: Set of valid builtin option values for efficient lookup.
+        custom_values: Set of valid custom option values for efficient lookup.
+    
+    Returns:
+        Valid option value (e.g., 'builtin:Palomar', 'custom:42') or None if selection
+        is invalid, deleted, or doesn't match saved metadata.
+    """
+    if not isinstance(selected_meta, dict):
+        return None
+    
+    source = selected_meta.get('source')
+    
+    if source == 'custom':
+        selected_id = selected_meta.get('id')
+        if isinstance(selected_id, int):
+            candidate = f'custom:{selected_id}'
+            if candidate in custom_values:
+                return candidate
+    elif source == 'builtin':
+        selected_name = selected_meta.get('name')
+        if isinstance(selected_name, str):
+            candidate = f'builtin:{selected_name}'
+            if candidate in builtin_values:
+                return candidate
+    
+    return None
+
+
+def _build_observatory_context() -> dict[str, list | str | None]:
+    """Build observatory context for the main page.
+    
+    Constructs builtin and custom observatory options, restores the user's last
+    selected observatory (if authenticated), and provides a fallback to the first
+    available option if the saved selection is invalid or deleted.
+    
+    Returns:
+        dict with keys:
+            - 'builtin_options': list[dict] of {'value', 'label'} for astropy sites
+            - 'custom_options': list[dict] of {'value', 'label'} for user observatories
+                                (empty if not authenticated)
+            - 'selected_value': str (e.g., 'builtin:Palomar') or None if no options available
+    """
     builtin_options = _get_builtin_observatory_options()
+    builtin_values = {opt['value'] for opt in builtin_options}
 
     custom_options = []
-    selected_meta = None
+    custom_values = set()
+    
     if current_user.is_authenticated:
         custom_rows = (
             UserObservatory.query.filter_by(user_id=current_user.id)
@@ -48,24 +101,16 @@ def _build_observatory_context():
             .all()
         )
         custom_options = [{'value': f'custom:{row.id}', 'label': row.name} for row in custom_rows]
-        selected_meta = get_saved_last_selected_observatory(current_user.id)
+        custom_values = {opt['value'] for opt in custom_options}
 
-    selected_value = None
-    if isinstance(selected_meta, dict):
-        source = selected_meta.get('source')
-        if source == 'custom':
-            selected_id = selected_meta.get('id')
-            if isinstance(selected_id, int):
-                candidate = f'custom:{selected_id}'
-                if any(option['value'] == candidate for option in custom_options):
-                    selected_value = candidate
-        elif source == 'builtin':
-            selected_name = selected_meta.get('name')
-            if isinstance(selected_name, str):
-                candidate = f'builtin:{selected_name}'
-                if any(option['value'] == candidate for option in builtin_options):
-                    selected_value = candidate
+    # Attempt to restore saved selection; gracefully falls back if invalid/deleted
+    selected_value = _resolve_selected_observatory(
+        get_saved_last_selected_observatory(current_user.id) if current_user.is_authenticated else None,
+        builtin_values,
+        custom_values
+    )
 
+    # Fallback to first available option if no valid saved selection
     if selected_value is None:
         if builtin_options:
             selected_value = builtin_options[0]['value']

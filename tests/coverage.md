@@ -3,7 +3,7 @@
 |Name                                       | Stmts  | Miss |Cover|
 |-------------------------------------------|--------|------|-----|
 |poi_broker\__init__.py                     |   89   |   6  |  93%|
-|poi_broker\app.py                          |  257   | 141  |  45%|
+|poi_broker\app.py                          |  261   | 123  |  53%|
 |poi_broker\auth.py                         |  277   | 135  |  51%|
 |poi_broker\classification.py               |   55   |   1  |  98%|
 |poi_broker\constants\__init__.py           |    0   |   0  | 100%|
@@ -25,6 +25,6 @@
 |poi_broker\services\plotting_service.py    |   58   |   2  |  97%|
 |poi_broker\services\query_service.py       |   27   |   3  |  89%|
 |poi_broker\settings.py                     |   50   |   7  |  86%|
-|poi_broker\user_settings.py                |   98   |  18  |  82%|
+|poi_broker\user_settings.py                |   98   |  17  |  83%|
 |-------------------------------------------|--------|------|-----|
-|TOTAL                                      | 2338   | 538  |  77%|
+|TOTAL                                      | 2342   | 519  |  78%|
