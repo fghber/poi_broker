@@ -6,6 +6,7 @@ from .visual_query import visual_query_bp
 from .lightcurve import lightcurve_bp
 from .features import features_bp
 from .user_observatories import user_observatories_bp
+from .export import export_bp
 
 __all__ = [
     'favorites_bp',
@@ -14,4 +15,5 @@ __all__ = [
     'lightcurve_bp',
     'features_bp',
     'user_observatories_bp',
+    'export_bp',
 ]

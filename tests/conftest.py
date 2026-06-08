@@ -17,6 +17,8 @@ def app(tmp_path, monkeypatch):
     monkeypatch.setenv("FLASK_DEBUG", "0")
     monkeypatch.setenv("ALERTS_DB_PATH", str(alerts_db))
     monkeypatch.setenv("USERS_DB_PATH", str(users_db))
+    monkeypatch.setenv("HUEY_BACKEND", "memory")
+    monkeypatch.setenv("HUEY_IMMEDIATE", "true")
 
     from poi_broker import create_app, db
 

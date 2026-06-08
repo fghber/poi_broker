@@ -14,6 +14,7 @@ from sqlalchemy import event
 from flask_sqlalchemy import SQLAlchemy
 from astropy.time import Time
 from .settings import build_app_config
+from .extensions import huey
 
 # Initialize SQLAlchemy instance (outside create_app for import access)
 db = SQLAlchemy()
@@ -30,6 +31,35 @@ def _configure_sqlite_pragmas(dbapi_conn, connection_record):
     cursor.execute("PRAGMA mmap_size = 268435456")  # 256MB in bytes https://sqlite.org/mmap.html
     cursor.execute("PRAGMA temp_store = MEMORY")    # Temporary tables in RAM
     cursor.close()
+
+
+def init_huey(app):
+    """
+    Initialize Huey task queue configuration for the app.
+    
+    The actual Huey backend is configured via environment variables:
+    - HUEY_BACKEND: 'memory' (default) or 'sqlite' for production
+    - HUEY_SQLITE_PATH: Path to huey.db (defaults to instance/huey.db)
+    - HUEY_IMMEDIATE: 'true' (default) or 'false' to run tasks async
+    
+    For production with background worker:
+        1. Set HUEY_BACKEND=sqlite
+        2. Run the Huey consumer: huey_consumer poi_broker.extensions.huey
+    """
+    from .extensions import huey
+    from pathlib import Path
+    
+    # Ensure instance path exists (used for SQLite backend)
+    Path(app.instance_path).mkdir(parents=True, exist_ok=True)
+    
+    # Log the active backend
+    backend_name = 'SQLite' if hasattr(huey, 'filename') else 'Memory'
+    if hasattr(huey, 'immediate'):
+        immediate_str = ' (immediate/synchronous)' if huey.immediate else ' (async, requires worker)'
+    else:
+        immediate_str = ' (queue-based)'
+    
+    app.logger.info(f'Huey task queue initialized with {backend_name} backend{immediate_str}')
 
 def create_app():
     app = Flask(__name__)
@@ -59,6 +89,9 @@ def create_app():
     app.config.update(config)
     app.logger.info('Configured alerts database at %s', db_path)
     app.logger.info('Configured users database at %s', login_db_path)
+
+    # Initialize Huey task queue
+    init_huey(app)
 
     if app.debug is True:
         app.jinja_env.auto_reload = True

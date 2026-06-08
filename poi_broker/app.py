@@ -14,7 +14,7 @@ import json
 from .helpers import extract_numbers, extract_dates, extract_float_filter, extract_mjd_filter, safe_serialize, result_to_dict, object_as_dict
 from . import db, limiter
 from .models import Ztf, Crossmatches, User, Favorite, FavoriteGroup, Watchlist, Classification, UserObservatory
-from .routes import favorites_bp, filter_bookmarks_bp, visual_query_bp, lightcurve_bp, features_bp, user_observatories_bp
+from .routes import favorites_bp, filter_bookmarks_bp, visual_query_bp, lightcurve_bp, features_bp, user_observatories_bp, export_bp
 from .constants.features import FEATURE_COLUMNS, default_feature_plot_columns
 from .user_settings import user_settings_bp, get_saved_feature_plot_columns, get_saved_last_selected_observatory, UserSettings  # noqa: F401 - imported to register model
 from importlib.metadata import version
@@ -442,3 +442,4 @@ def register_blueprints(app):
     app.register_blueprint(features_bp)
     app.register_blueprint(user_observatories_bp)
     app.register_blueprint(user_settings_bp)
+    app.register_blueprint(export_bp)

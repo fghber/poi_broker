@@ -3,6 +3,7 @@ from flask_login import UserMixin, current_user
 from functools import wraps
 from flask import flash, redirect, url_for
 from datetime import datetime, timezone
+import uuid
 
 
 class Ztf(db.Model):
@@ -462,3 +463,31 @@ class UserSettings(db.Model):
 
     def __repr__(self):
         return f"<UserSettings user_id={self.user_id}>"
+
+
+class ExportTask(db.Model):
+    """
+    Tracks data export tasks for users.
+    
+    Attributes:
+        id: UUID primary key for the task
+        user_id: Foreign key to User
+        status: Task status (PENDING, RUNNING, SUCCESS, FAILED)
+        created_at: Timestamp when task was created
+        updated_at: Timestamp when task was last updated
+        file_path: Path to exported CSV file (set when SUCCESS)
+        error_message: Error message if task failed
+    """
+    __bind_key__ = 'users'
+    __tablename__ = 'export_task'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True)
+    status = db.Column(db.String(20), nullable=False, default='PENDING', index=True)  # PENDING, RUNNING, SUCCESS, FAILED
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    file_path = db.Column(db.String(512), nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+
+    def __repr__(self):
+        return f"<ExportTask {self.id} user_id={self.user_id} status={self.status}>"
