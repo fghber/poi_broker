@@ -193,8 +193,11 @@ def start():
 
     if request.args.get('prob_class'):
         prob_class_value = request.args.get('prob_class', '').strip()
-        if prob_class_value:
+        valid_prob_classes = ['cvnova', 'e', 'lpv', 'puls', 'periodic_other', 'quas', 'sn', 'yso']
+        if prob_class_value and prob_class_value in valid_prob_classes:
             query = query.filter(Classification.prob_class == prob_class_value)
+        elif prob_class_value and prob_class_value.strip():  # Warn if non-empty but not in valid options
+            filter_warning_message += f'Classification filter cannot be applied - Enter a valid classification label, e.g. "sn". Valid options are: {", ".join(valid_prob_classes)}.'
 
     #Sort order by date (still sorts by mjd column)
     if request.args.get('sort__date'):
@@ -274,7 +277,7 @@ def start():
         has_next=paginator.has_next,
         last_page=paginator.pages,
         # ? TODO Pagination query-string re.sub may leave a trailing & in edge cases. TEST
-        query_string=re.sub('[&?]?page=\\d+|&$', '', request.query_string.decode('ascii')), # ? b'' binary string 
+        query_string=re.sub('[&?]?page=\\d+|&$', '', request.query_string.decode('utf-8')), # ? b'' binary string 
         filter_warning = filter_warning_message,
         custom_observatory_options=observatory_context['custom_options'],
         builtin_observatory_options=observatory_context['builtin_options'],
