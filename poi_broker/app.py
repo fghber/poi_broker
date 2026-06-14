@@ -164,8 +164,7 @@ def start():
     #if request.args.get('filter'):
         #query = query.filter(Ztf.filter == int(request.args.get('filter'))) # 1:g, 2:r, 3:i
     if request.args.get('ant_passband'):
-        ant_passband = request.args.get('ant_passband')
-        query = query.filter(Ztf.ant_passband == ant_passband) # g, R, i
+        query = query.filter(Ztf.ant_passband == request.args.get('ant_passband')) # g, R, i
 
     if request.args.get('locus_id'):
         query = query.filter(Ztf.locus_id == request.args.get('locus_id'))
@@ -178,11 +177,13 @@ def start():
             filter_warning_message += 'Ra filter cannot be applied - Enter a valid number, e.g., "118.61421", or range, e.g., "80 90".'
 
     if request.args.get('locus_dec'):
-        dec_input = extract_numbers(request.args.get('locus_dec'))
+        """Handle locus_dec input with flexible formats and provide user-friendly warnings for invalid input."""
+        locus_dec_value = request.args.get('locus_dec', '').strip()
+        dec_input = extract_numbers(request.args.get('locus_dec'), (-90.0, 90.0))
         if dec_input != None:
             query = extract_float_filter(dec_input, Ztf.locus_dec, query, decimals=5)
-        else:
-            filter_warning_message += 'Dec filter cannot be applied - Enter a valid number, e.g., "-20.02131", or range, e.g., "18.8 19.4".'
+        elif locus_dec_value and locus_dec_value.strip():  # Warn if non-empty but not in valid options
+            filter_warning_message += 'Dec filter cannot be applied - Enter a valid number within the range -90° to +90°, e.g., "-20.12345", or range, e.g., "14.5 29".'
 
     if request.args.get('magpsf'):
         magpsf_input = extract_numbers(request.args.get('magpsf'))

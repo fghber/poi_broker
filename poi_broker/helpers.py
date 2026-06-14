@@ -19,16 +19,29 @@ def result_to_dict(query_results):
 
 
 # Helper for filtering
-def extract_numbers(text):
+def extract_numbers(text, allowed_range: tuple[float, float] | None = None) -> list[str] | None:
+    #fail if text contains an illigal character (anything other than digits, decimal point, plus, minus, space, > or <) 
+    if not re.match(r"^[><\d. +-]+$", text):
+        return None
+    
     #number with optional decimal point
-    regex = r"[<>]?[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))"
+    values = []
+    regex = r"[<>]?[-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))"
     matches = re.findall(regex, text)
     if len(matches) < 1:
         return None
     elif len(matches) == 1:
-        return [matches[0]] # >/< Are preserved and will be handled in the filter extraction functions
+        values = [matches[0]] # >/< Are preserved and will be handled in the filter extraction functions
     else:
-        return list(map(lambda m: m.replace('>', '').replace('<', ''), matches[0:2])) # >/< are removed since order is determined by natural sorting of the (two) values only
+        values = list(map(lambda m: m.replace('>', '').replace('<', ''), matches[0:2])) # >/< are removed since order is determined by natural sorting of the (two) values only
+    if allowed_range is not None:
+        try:
+            float_values = [float(v.replace('>', '').replace('<', '')) for v in values]
+            if any(v < allowed_range[0] or v > allowed_range[1] for v in float_values):
+                return None
+        except ValueError:
+            return None
+    return values
 
 def extract_dates(text) -> list[str]:
     #date in yyyymmdd format, with optional > or < for filtering
