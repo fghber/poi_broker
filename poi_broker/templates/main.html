@@ -881,11 +881,11 @@
     $('#crossmatches_footer_output').html('');
     $('#observing_output').html('');
     $('#classification_output').html('');
-    $('#locus-id-label').html('Locus ID:&nbsp; ');
-    $('#locus-ra-label').html('Locus RA:&nbsp; ');
-    $('#locus-dec-label').html('Locus Dec: ');
-    $('#obs_ra').html('');
-    $('#obs_dec').html('');
+    $('#locus-id-label').text('Locus ID: ');
+    $('#locus-ra-label').text('Locus RA: ');
+    $('#locus-dec-label').text('Locus Dec: ');
+    $('#obs_ra').text('');
+    $('#obs_dec').text('');
     $('#thumbnail-1').attr('src', '');
     $('#thumbnail-2').attr('src', '');
     $('#thumbnail-3').attr('src', '');
@@ -983,7 +983,12 @@
       if (!modalTabsLoaded.crossmatches) {
         modalTabsLoaded.crossmatches = true;
         trackModalRequest(query_crossmatches_table(ctx.locus_id, sid));
-        query_crossmatches_footer(ctx.locus_id, ctx.ztf_object_id, ctx.locus_ra, ctx.locus_dec);
+        renderCrossmatchesFooter('#crossmatches_footer_output', {
+          locus_id: ctx.locus_id,
+          ztf_object_id: ctx.ztf_object_id,
+          locus_ra: ctx.locus_ra,
+          locus_dec: ctx.locus_dec
+        });
       }
       return;
     }
@@ -1035,12 +1040,12 @@
       }
     };
     // $(e.currentTarget).find('#object-id-label').html(objectId);
-    $('body').find('#objectIdModalLabel').html(ztf_object_id); // modal title {# ! TODO: de-mess! #}
-    $('#locus-id-label').html('Locus ID: '+ locus_id);
-    $('#locus-ra-label').html('Locus RA: '+ locus_ra);
-    $('#locus-dec-label').html('Locus Dec: '+ locus_dec);
-    $('#obs_ra').html(locus_ra);
-    $('#obs_dec').html(locus_dec);
+    $('body').find('#objectIdModalLabel').text(ztf_object_id); // modal title {# ! TODO: de-mess! #}
+    $('#locus-id-label').text('Locus ID: '+ locus_id);
+    $('#locus-ra-label').text('Locus RA: '+ locus_ra);
+    $('#locus-dec-label').text('Locus Dec: '+ locus_dec);
+    $('#obs_ra').text(locus_ra);
+    $('#obs_dec').text(locus_dec);
     //$('body').find('span[name="date-label"]').html("Date: " + date); //{# ! TODO: de-mess! #}
     // Thumbnails: defer setting img src until Thumbnails tab is shown
     $('#thumbnail-1').attr('src', '');
@@ -1382,6 +1387,19 @@
         }
     });
   }
+  // Render a Bootstrap alert into a container using textContent (XSS-safe).
+  function renderAlert(targetSelector, kind, message) {
+    const target = document.querySelector(targetSelector);
+    if (!target) {
+      return;
+    }
+    target.textContent = '';
+    const alert = document.createElement('div');
+    alert.className = `alert alert-${kind}`;
+    alert.textContent = message;
+    target.appendChild(alert);
+  }
+
   function query_crossmatches_table(locusId, sessionId) {
     // Validate input
     if (!locusId) {
@@ -1405,32 +1423,15 @@
           }
         } catch (err) {
           console.error('Error processing crossmatches response:', err);
-          $('#crossmatches_table_output').html(`<div class="alert alert-danger">Error processing crossmatches data! ${err}</div>`);
+          renderAlert('#crossmatches_table_output', 'danger', `Error processing crossmatches data! ${err}`);
         }
       },
       error: function(xhr, status, error) {
         if (!isModalSessionActive(sessionId) || status === 'abort') return;
         console.error('Crossmatches query failed:', status, error);
-        $('#crossmatches_table_output').html(
-          `<div class="alert alert-danger">Failed to load crossmatches data for LocusID ${locusId}! ${error}: ${xhr.responseText}</div>`
-        );
+        renderAlert('#crossmatches_table_output', 'danger', `Failed to load crossmatches data for LocusID ${locusId}! ${error}: ${xhr.responseText}`);
       }
     });
-  }
-
-  function query_crossmatches_footer(locus_id, ztf_object_id, locus_ra, locus_dec) {
-    var footer = `<p>This object can also be found in:</p>
-                  Alert brokers:
-                  <ul><li>ALeRCE <a href="https://alerce.online/object/${ztf_object_id}" target="_blank">https://alerce.online/object/${ztf_object_id}</a></li>
-                  <li>ANTARES <a href="https://antares.noirlab.edu/loci/${locus_id}" target="_blank">https://antares.noirlab.edu/loci/${locus_id}</a></li></ul>
-                  External Services:
-                  <ul><li><a href="https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query?objstr=${locus_ra}${locus_dec > 0 ? '+' : ''}${locus_dec}+&catalog=ztf_objects_dr5&mission=irsa&radius=1" target="_blank">IPAC</a></li>
-                  <li><a href="http://simbad.u-strasbg.fr/simbad/sim-coo?Coord=${locus_ra}%2C${locus_dec}&CooFrame=FK5&CooEpoch=2000&CooEqui=2000&CooDefinedFrames=none&Radius=2&Radius.unit=arcsec&submit=submit+query&CoordList=" target="_blank">SIMBAD</a></li>
-                  <li><a href="https://ztf.snad.space/search/${locus_ra}%20${locus_dec}/1" target="_blank">SNAD</a></li>
-                  <li><a href="https://www.wis-tns.org/search?&ra=${locus_ra}&decl=${locus_dec}&radius=1&coords_unit=arcsec" target="_blank">TNS</a></li>
-                  <li><a href="https://vizier.cds.unistra.fr/viz-bin/VizieR-4?-ref=VIZ600f5483a73e&-to=-4c%3DGo%21b&-from=-1&-this=-4c%3DGo%21&%2F%2Fc=${locus_ra}${locus_dec > 0 ? '+' : ''}${locus_dec}-out.max=50&%2F%2FCDSportal=http%3A%2F%2Fcdsportal.u-strasbg.fr%2FStoreVizierData.html&-out.form=HTML+Table&-out.add=_r&-out.add=_RAJ%2C_DEJ&%2F%2Foutaddvalue=default&-sort=_r&-order=I&-oc.form=sexa&-nav=key%3Ac%3D184.4669870191518+30.116833377497727%26pos%3A184.4669870191518+30.116833377497727%28+++2+arcsec+J2000%29%26HTTPPRM%3A&-c=184.4669870191518+30.116833377497727&-c.eq=J2000&-c.r=++2&-c.u=arcsec&-c.geom=r&-source=&-meta.ucd=2&-meta=1&-meta.foot=1&-usenav=1&-bmark=GET" target="_blank">VizieR</a></li></ul>
-                  `;
-    $('body').find('#crossmatches_footer_output').html(footer);
   }
 
   const templateHtmlById = {
@@ -1589,6 +1590,59 @@
     });
 
     target.appendChild(tableFragment);
+  }
+
+  function renderCrossmatchesFooter(targetSelector, values) {
+    const target = document.querySelector(targetSelector);
+    if (!target) {
+      return;
+    }
+
+    const ra = String(values?.locus_ra ?? '');
+    const dec = String(values?.locus_dec ?? '');
+    const sign = Number(values?.locus_dec) > 0 ? '+' : '';
+    const coord = `${ra}${sign}${dec}`;
+
+    const fragment = document.createDocumentFragment();
+
+    const intro = document.createElement('p');
+    intro.textContent = 'This object can also be found in:';
+    fragment.appendChild(intro);
+
+    appendLinkList(fragment, 'Alert brokers:', [
+      { label: 'ALeRCE', href: `https://alerce.online/object/${encodeURIComponent(String(values?.ztf_object_id ?? ''))}` },
+      { label: 'ANTARES', href: `https://antares.noirlab.edu/loci/${encodeURIComponent(String(values?.locus_id ?? ''))}` }
+    ]);
+
+    appendLinkList(fragment, 'External Services:', [
+      { label: 'IPAC', href: `https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query?objstr=${encodeURIComponent(coord)}&catalog=ztf_objects_dr5&mission=irsa&radius=1` },
+      { label: 'SIMBAD', href: `http://simbad.u-strasbg.fr/simbad/sim-coo?Coord=${encodeURIComponent(`${ra},${dec}`)}&CooFrame=FK5&CooEpoch=2000&CooEqui=2000&CooDefinedFrames=none&Radius=2&Radius.unit=arcsec&submit=submit+query&CoordList=` },
+      { label: 'SNAD', href: `https://ztf.snad.space/search/${encodeURIComponent(`${ra} ${dec}`)}/1` },
+      { label: 'TNS', href: `https://www.wis-tns.org/search?&ra=${encodeURIComponent(ra)}&decl=${encodeURIComponent(dec)}&radius=1&coords_unit=arcsec` },
+      { label: 'VizieR', href: `https://vizier.cds.unistra.fr/viz-bin/VizieR-4?-ref=VIZ600f5483a73e&-to=-4c%3DGo%21b&-from=-1&-this=-4c%3DGo%21&%2F%2Fc=${encodeURIComponent(coord)}-out.max=50&%2F%2FCDSportal=http%3A%2F%2Fcdsportal.u-strasbg.fr%2FStoreVizierData.html&-out.form=HTML+Table&-out.add=_r&-out.add=_RAJ%2C_DEJ&%2F%2Foutaddvalue=default&-sort=_r&-order=I&-oc.form=sexa&-nav=key%3Ac%3D184.4669870191518+30.116833377497727%26pos%3A184.4669870191518+30.116833377497727%28+++2+arcsec+J2000%29%26HTTPPRM%3A&-c=184.4669870191518+30.116833377497727&-c.eq=J2000&-c.r=++2&-c.u=arcsec&-c.geom=r&-source=&-meta.ucd=2&-meta.foot=1&-usenav=1&-bmark=GET` }
+    ]);
+
+    target.textContent = '';
+    target.appendChild(fragment);
+  }
+
+  function appendLinkList(fragment, labelText, items) {
+    const label = document.createElement('div');
+    label.textContent = labelText;
+    fragment.appendChild(label);
+
+    const list = document.createElement('ul');
+    items.forEach(({ label: linkLabel, href }) => {
+      const item = document.createElement('li');
+      const link = document.createElement('a');
+      link.href = href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = linkLabel;
+      item.appendChild(link);
+      list.appendChild(item);
+    });
+    fragment.appendChild(list);
   }
 </script>
 
