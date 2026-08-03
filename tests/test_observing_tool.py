@@ -1,4 +1,5 @@
 import logging
+import pytest
 from astropy import units as u
 from astropy.coordinates import EarthLocation
 
@@ -49,6 +50,7 @@ def test_query_observing_plot_returns_400_for_unknown_observatory(client, monkey
     assert 'Unknown observatory location' in response.get_data(as_text=True)
 
 
+@pytest.mark.slow
 def test_query_observing_plot_generates_image_and_moon_panel(client, monkeypatch):
     import poi_broker.observing_tool as observing_tool
 
@@ -77,6 +79,7 @@ def test_query_observing_plot_generates_image_and_moon_panel(client, monkeypatch
     assert '<div class="col-md-5">' in text
 
 
+@pytest.mark.slow
 def test_query_observing_plot_custom_observatory_recovers_invalid_timezone(auth_client, app, monkeypatch):
     from poi_broker import db
     from poi_broker.models import User, UserObservatory
@@ -115,6 +118,7 @@ def test_query_observing_plot_custom_observatory_recovers_invalid_timezone(auth_
     assert '<img src="data:image/png;base64,' in text
 
 
+@pytest.mark.slow
 def test_query_observing_plot_builtin_valid_iana_resolution_failure_logs_diagnostics(client, monkeypatch, caplog):
     import poi_broker.observing_tool as observing_tool
 

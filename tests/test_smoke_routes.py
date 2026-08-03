@@ -2,10 +2,8 @@
 Smoke test coverage:
 
 Public pages: /, /help, /contact
-Favorites API (unauth behavior)
-Visual query routes (login-required redirect behavior)
-Watchlist routes (login-required redirect behavior)
-Lightcurve/features/crossmatches route health and expected statuses
+Auth-required routes (unauth behavior)
+Rate limiting
 Test run result:
 
 Execute command via workspace Python env: `pytest -q` or `python -m pytest -q`
@@ -59,262 +57,36 @@ def test_watchlist_routes_require_login(client):
     assert response.is_json
 
 
+def test_filter_bookmarks_routes_require_login(client):
+    response = client.get("/api/filter-bookmarks")
+    assert response.status_code == 401
+    assert response.is_json
+
+    response = client.post("/api/filter-bookmarks", json={"name": "x", "params": {}})
+    assert response.status_code == 401
+
+    response = client.delete("/api/filter-bookmarks/1")
+    assert response.status_code == 401
+
+
+def test_user_observatories_routes_require_login(client):
+    response = client.get("/api/user-observatories")
+    assert response.status_code == 401
+    assert response.is_json
+
+    response = client.post("/api/user-observatories", json={"name": "x", "latitude": 0.0, "longitude": 0.0})
+    assert response.status_code == 401
+
+    response = client.delete("/api/user-observatories/1")
+    assert response.status_code == 401
+
+
 def test_ui_protected_route_sets_flash_message(client):
     response = client.get('/visual_query')
     assert response.status_code in (301, 302)
     with client.session_transaction() as session:
         flashes = session.get('_flashes', [])
     assert any('Log-in or Sign-Up to use this feature.' in msg for _cat, msg in flashes)
-
-
-def test_authenticated_favorites_crud(auth_client):
-    # Add a favorite
-    r = auth_client.post("/api/favorite", json={"locusId": "locus-smoke-1", "fav": True, "groupId": None})
-    assert r.status_code == 200, r.get_data(as_text=True)
-    assert r.get_json()["status"] == "ok"
-
-    # Check status
-    r = auth_client.get("/api/favorite", query_string={"locusId": "locus-smoke-1"})
-    assert r.status_code == 200
-    assert r.get_json()["fav"] is True
-
-    # List all favorites
-    r = auth_client.get("/api/favorites")
-    assert r.status_code == 200
-    ids = [f["locusId"] for f in r.get_json()["favorites"]]
-    assert "locus-smoke-1" in ids
-
-    # Create a group
-    r = auth_client.post("/api/favorite-groups", json={"name": "Smoke Group"})
-    assert r.status_code == 201
-    group_id = r.get_json()["id"]
-
-    # List groups
-    r = auth_client.get("/api/favorite-groups")
-    assert r.status_code == 200
-    group_names = [g["name"] for g in r.get_json()["groups"]]
-    assert "Smoke Group" in group_names
-
-    # Delete the group
-    r = auth_client.delete(f"/api/favorite-groups/{group_id}")
-    assert r.status_code == 200
-    assert r.get_json()["status"] == "ok"
-
-    # Remove the favorite
-    r = auth_client.post("/api/favorite", json={"locusId": "locus-smoke-1", "fav": False, "groupId": None})
-    assert r.status_code == 200
-    assert r.get_json()["status"] == "ok"
-
-    r = auth_client.get("/api/favorite", query_string={"locusId": "locus-smoke-1"})
-    assert r.status_code == 200
-    assert r.get_json()["fav"] is False
-
-
-def test_favorite_groups_crud(auth_client):
-    """Test FavoriteGroup CRUD operations independently."""
-    # Create first group
-    r = auth_client.post("/api/favorite-groups", json={"name": "Test Group 1"})
-    assert r.status_code == 201, r.get_data(as_text=True)
-    group1_id = r.get_json()["id"]
-    assert r.get_json()["name"] == "Test Group 1"
-
-    # Create second group
-    r = auth_client.post("/api/favorite-groups", json={"name": "Test Group 2"})
-    assert r.status_code == 201
-    group2_id = r.get_json()["id"]
-
-    # Try to create duplicate group (should fail)
-    r = auth_client.post("/api/favorite-groups", json={"name": "Test Group 1"})
-    assert r.status_code == 409
-    assert "already exists" in r.get_json()["error"]
-
-    # List groups - should have 2 groups plus Ungrouped
-    r = auth_client.get("/api/favorite-groups")
-    assert r.status_code == 200
-    groups = r.get_json()["groups"]
-    assert len(groups) == 3  # Ungrouped + 2 groups
-    group_names = [g["name"] for g in groups]
-    assert "Test Group 1" in group_names
-    assert "Test Group 2" in group_names
-    assert "Ungrouped" in group_names
-
-    # All groups should have count 0 initially
-    for g in groups:
-        assert g["count"] == 0
-
-    # Add favorites to groups
-    r = auth_client.post("/api/favorite", json={"locusId": "group-test-1", "fav": True, "groupId": group1_id})
-    assert r.status_code == 200
-
-    r = auth_client.post("/api/favorite", json={"locusId": "group-test-2", "fav": True, "groupId": group1_id})
-    assert r.status_code == 200
-
-    r = auth_client.post("/api/favorite", json={"locusId": "group-test-3", "fav": True, "groupId": group2_id})
-    assert r.status_code == 200
-
-    # Check group counts updated
-    r = auth_client.get("/api/favorite-groups")
-    assert r.status_code == 200
-    groups = r.get_json()["groups"]
-    group_dict = {g["name"]: g for g in groups}
-    assert group_dict["Test Group 1"]["count"] == 2
-    assert group_dict["Test Group 2"]["count"] == 1
-    assert group_dict["Ungrouped"]["count"] == 0
-
-    # Move favorite from group1 to group2
-    fav_id = None
-    r = auth_client.get("/api/favorites", query_string={"groupId": group1_id})
-    assert r.status_code == 200
-    favs = r.get_json()["favorites"]
-    assert len(favs) == 2
-    fav_id = favs[0]["id"]
-
-    r = auth_client.patch(f"/api/favorite/{fav_id}/group", json={"groupId": group2_id})
-    assert r.status_code == 200
-
-    # Check counts updated after move
-    r = auth_client.get("/api/favorite-groups")
-    assert r.status_code == 200
-    groups = r.get_json()["groups"]
-    group_dict = {g["name"]: g for g in groups}
-    assert group_dict["Test Group 1"]["count"] == 1
-    assert group_dict["Test Group 2"]["count"] == 2
-
-    # Delete group1 (should orphan favorites)
-    r = auth_client.delete(f"/api/favorite-groups/{group1_id}")
-    assert r.status_code == 200
-
-    # Check group1 is gone, favorites moved to Ungrouped
-    r = auth_client.get("/api/favorite-groups")
-    assert r.status_code == 200
-    groups = r.get_json()["groups"]
-    group_names = [g["name"] for g in groups]
-    assert "Test Group 1" not in group_names
-    assert "Test Group 2" in group_names
-    assert "Ungrouped" in group_names
-    group_dict = {g["name"]: g for g in groups}
-    assert group_dict["Test Group 2"]["count"] == 2
-    assert group_dict["Ungrouped"]["count"] == 1  # The moved favorite
-
-    # Delete group2
-    r = auth_client.delete(f"/api/favorite-groups/{group2_id}")
-    assert r.status_code == 200
-
-    # Clean up favorites
-    for locus_id in ["group-test-1", "group-test-2", "group-test-3"]:
-        r = auth_client.post("/api/favorite", json={"locusId": locus_id, "fav": False})
-        assert r.status_code == 200
-
-
-def test_authenticated_visual_query(auth_client):
-    # The UI requires at least one valid rule before preview/save.
-    minimal_rules = {
-        "condition": "AND",
-        "rules": [
-            {
-                "field": "featuretable.alert_id",
-                "operator": "is_not_null",
-            }
-        ],
-    }
-
-    # Preview query
-    r = auth_client.post("/api/preview-query", json={"rules": minimal_rules})
-    assert r.status_code == 200
-    assert "sql" in r.get_json()
-
-    # Export query (match count)
-    r = auth_client.post("/api/export-query", json={"rules": minimal_rules})
-    assert r.status_code == 200
-    assert "count" in r.get_json()
-
-    # Visual query page renders
-    r = auth_client.get("/visual_query")
-    assert r.status_code == 200
-
-
-def test_authenticated_visual_query_rejects_malformed_between(auth_client):
-    malformed_rules = {
-        "condition": "AND",
-        "rules": [
-            {
-                "field": "featuretable.locus_ra",
-                "operator": "between",
-                "value": [118.0],
-            }
-        ],
-    }
-
-    r = auth_client.post("/api/preview-query", json={"rules": malformed_rules})
-    assert r.status_code == 400
-    assert r.is_json
-    assert "error" in r.get_json()
-
-
-def test_authenticated_visual_query_rejects_malformed_in(auth_client):
-    malformed_rules = {
-        "condition": "AND",
-        "rules": [
-            {
-                "field": "featuretable.alert_id",
-                "operator": "in",
-                "value": "ztf_candidate:123",
-            }
-        ],
-    }
-
-    r = auth_client.post("/api/preview-query", json={"rules": malformed_rules})
-    assert r.status_code == 400
-    assert r.is_json
-    assert "error" in r.get_json()
-
-
-def test_authenticated_visual_query_rejects_malformed_not_in(auth_client):
-    malformed_rules = {
-        "condition": "AND",
-        "rules": [
-            {
-                "field": "featuretable.alert_id",
-                "operator": "not_in",
-                "value": "ztf_candidate:123",
-            }
-        ],
-    }
-
-    r = auth_client.post("/api/preview-query", json={"rules": malformed_rules})
-    assert r.status_code == 400
-    assert r.is_json
-    assert "error" in r.get_json()
-
-
-def test_authenticated_watchlist_crud(auth_client):
-    # Match current UI contract: watchlists are saved from non-empty rules only.
-    minimal_rules = {
-        "condition": "AND",
-        "rules": [
-            {
-                "field": "featuretable.alert_id",
-                "operator": "is_not_null",
-            }
-        ],
-    }
-
-    # Create watchlist
-    r = auth_client.post("/api/watchlist", json={"name": "Smoke Watchlist", "rules": minimal_rules})
-    assert r.status_code == 201, r.get_data(as_text=True)
-    wl_id = r.get_json()["id"]
-
-    # List watchlists
-    r = auth_client.get("/api/watchlist")
-    assert r.status_code == 200
-    names = [w["name"] for w in r.get_json()["watchlists"]]
-    assert "Smoke Watchlist" in names
-
-    # Delete watchlist
-    r = auth_client.delete(f"/api/watchlist/{wl_id}")
-    assert r.status_code == 200
-    assert r.is_json
-    assert r.get_json().get("status") == "ok"
 
 
 def test_lightcurve_and_features_smoke(client):

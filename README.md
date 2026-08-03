@@ -79,11 +79,14 @@ Also, inspect the browser developer console (F12) to see if there are any errors
 
 ### Testing, Debugging and Profiling
 
-So far, basic `pytest` smoke test for the main route and some unit tests exist. Run all tests before commiting changes.
+Tests have become fairly comprehensive across various modules. Always run all tests before committing changes.
 
+Run `pytest` (Fast parallel execution recommended for development)
 ```
-(poi_brokerenv) λ pytest -q
+python -m pytest -n auto -q --tb=no
 ```
+
+For more detailed testing and coverage requirements, please see `/tests/coverage.md`. Every module should aim for at least 50%-75% code coverage, with a total project goal of 75%+ coverage.
 
 It is highly recommended to debug the app in a capable IDE like VS Code to leverage built-in debugging capabilities.
 

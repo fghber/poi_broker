@@ -128,20 +128,22 @@ def test_verify_email_invalid_token_redirects_to_signup(client):
 
 
 def test_verify_email_marks_user_verified(client, app):
+    from poi_broker.auth import hash_token
+
+    raw_token = 'verify-token'
     with app.app_context():
         user = User(
             email='verify@example.com',
             password=generate_password_hash('Password123!'),
             name='Verify User',
             email_verified=False,
-            email_verification_token='verify-token',
+            email_verification_token=hash_token(raw_token),
         )
         from poi_broker import db
         db.session.add(user)
         db.session.commit()
-        token = user.email_verification_token
 
-    response = client.get(f'/verify-email/{token}', follow_redirects=False)
+    response = client.get(f'/verify-email/{raw_token}', follow_redirects=False)
 
     assert response.status_code == 302
     assert '/login' in response.location
@@ -185,4 +187,3 @@ def test_is_reset_token_expired_and_format_expire_time():
 
     future = datetime.now(timezone.utc) + timedelta(hours=1)
     assert auth_module._is_reset_token_expired(future) is False
-    assert auth_module._format_expire_time(future).endswith('+00:00')

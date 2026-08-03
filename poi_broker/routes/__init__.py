@@ -13,5 +13,5 @@ __all__ = [
     'visual_query_bp',
     'lightcurve_bp',
     'features_bp',
-    'user_observatories_bp',
+    'user_observatories_bp'
 ]

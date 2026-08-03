@@ -30,6 +30,7 @@ def test_create_user_observatory_validation_errors(auth_client, payload, expecte
     assert expected_message in payload.get('error', '')
 
 
+@pytest.mark.slow
 def test_create_user_observatory_duplicate_returns_already_exists(auth_client):
     observatory = {
         'name': 'Duplicate Observatory',
@@ -94,6 +95,7 @@ def test_anonymous_api_access_is_rejected(client):
     assert anonymous_delete.get_json().get('error') == 'authentication required'
 
 
+@pytest.mark.slow
 def test_delete_selected_observatory_triggers_fallback(monkeypatch, auth_client, app):
     monkeypatch.setattr(
         'poi_broker.routes.user_observatories.EarthLocation.get_site_names',

@@ -335,3 +335,131 @@ def test_favorites_group_operations(auth_client):
     assert r.status_code == 200
     r = auth_client.delete(f"/api/favorite-groups/{group_b_id}")
     assert r.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Exception-path coverage for favorites_service.py
+# ---------------------------------------------------------------------------
+# These tests exercise the `except` branches in the service layer by forcing
+# the underlying DB session operations to raise, ensuring the service rolls
+# back and returns a user-friendly error instead of leaking a 500.
+
+import pytest
+from sqlalchemy.exc import IntegrityError
+
+
+def _make_group(app, auth_client, name="Err Group"):
+    """Create a favorite group via the API and return its id."""
+    r = auth_client.post("/api/favorite-groups", json={"name": name})
+    assert r.status_code == 201
+    return r.get_json()["id"]
+
+
+def test_toggle_favorite_integrity_error(app, auth_client, monkeypatch):
+    """IntegrityError during toggle_favorite (e.g. concurrent duplicate insert)."""
+    monkeypatch.setattr(
+        "poi_broker.services.favorites_service.db.session.commit",
+        lambda: (_ for _ in ()).throw(IntegrityError("dup", None, None)),
+    )
+    r = auth_client.post("/api/favorite", json={"locusId": "locus-x", "fav": True})
+    assert r.status_code == 409
+    assert "cannot be toggled" in r.get_json()["error"]
+
+
+def test_toggle_favorite_generic_exception(app, auth_client, monkeypatch):
+    """Generic exception during toggle_favorite rolls back and returns 500."""
+    monkeypatch.setattr(
+        "poi_broker.services.favorites_service.db.session.commit",
+        lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    r = auth_client.post("/api/favorite", json={"locusId": "locus-x", "fav": True})
+    assert r.status_code == 500
+    assert "error occurred" in r.get_json()["error"]
+
+
+def test_update_favorite_group_integrity_error(app, auth_client, monkeypatch):
+    """IntegrityError during update_favorite_group returns 409."""
+    group_id = _make_group(app, auth_client)
+    r = auth_client.post("/api/favorite", json={"locusId": "move-err", "fav": True})
+    assert r.status_code == 200
+    fav_id = auth_client.get("/api/favorites").get_json()["favorites"][0]["id"]
+
+    monkeypatch.setattr(
+        "poi_broker.services.favorites_service.db.session.commit",
+        lambda: (_ for _ in ()).throw(IntegrityError("fk", None, None)),
+    )
+    r = auth_client.patch(f"/api/favorite/{fav_id}/group", json={"groupId": group_id})
+    assert r.status_code == 409
+    assert "Unable to update favorite group" in r.get_json()["error"]
+
+
+def test_update_favorite_group_generic_exception(app, auth_client, monkeypatch):
+    """Generic exception during update_favorite_group returns 500."""
+    r = auth_client.post("/api/favorite", json={"locusId": "move-err2", "fav": True})
+    assert r.status_code == 200
+    fav_id = auth_client.get("/api/favorites").get_json()["favorites"][0]["id"]
+
+    monkeypatch.setattr(
+        "poi_broker.services.favorites_service.db.session.commit",
+        lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    r = auth_client.patch(f"/api/favorite/{fav_id}/group", json={"groupId": None})
+    assert r.status_code == 500
+    assert "error occurred" in r.get_json()["error"]
+
+
+def test_get_favorite_groups_generic_exception(app, auth_client, monkeypatch):
+    """Generic exception during get_favorite_groups returns empty list."""
+    monkeypatch.setattr(
+        "poi_broker.services.favorites_service.db.session.query",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    r = auth_client.get("/api/favorite-groups")
+    assert r.status_code == 200
+    assert r.get_json()["groups"] == []
+
+
+def test_create_favorite_group_integrity_error(app, auth_client, monkeypatch):
+    """IntegrityError during create_favorite_group (race on unique name) returns 409."""
+    monkeypatch.setattr(
+        "poi_broker.services.favorites_service.db.session.commit",
+        lambda: (_ for _ in ()).throw(IntegrityError("dup name", None, None)),
+    )
+    r = auth_client.post("/api/favorite-groups", json={"name": "Race Group"})
+    assert r.status_code == 409
+    assert "already exists" in r.get_json()["error"]
+
+
+def test_create_favorite_group_generic_exception(app, auth_client, monkeypatch):
+    """Generic exception during create_favorite_group returns 500."""
+    monkeypatch.setattr(
+        "poi_broker.services.favorites_service.db.session.commit",
+        lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    r = auth_client.post("/api/favorite-groups", json={"name": "Boom Group"})
+    assert r.status_code == 500
+    assert "error occurred" in r.get_json()["error"]
+
+
+def test_delete_favorite_group_integrity_error(app, auth_client, monkeypatch):
+    """IntegrityError during delete_favorite_group returns 409."""
+    group_id = _make_group(app, auth_client)
+    monkeypatch.setattr(
+        "poi_broker.services.favorites_service.db.session.commit",
+        lambda: (_ for _ in ()).throw(IntegrityError("fk", None, None)),
+    )
+    r = auth_client.delete(f"/api/favorite-groups/{group_id}")
+    assert r.status_code == 409
+    assert "Unable to delete favorite group" in r.get_json()["error"]
+
+
+def test_delete_favorite_group_generic_exception(app, auth_client, monkeypatch):
+    """Generic exception during delete_favorite_group returns 500."""
+    group_id = _make_group(app, auth_client)
+    monkeypatch.setattr(
+        "poi_broker.services.favorites_service.db.session.commit",
+        lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    r = auth_client.delete(f"/api/favorite-groups/{group_id}")
+    assert r.status_code == 500
+    assert "Error deleting favorite group" in r.get_json()["error"]

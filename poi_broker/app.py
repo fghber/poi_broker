@@ -11,7 +11,12 @@ from astropy.coordinates import EarthLocation
 import re
 import json
 
-from .helpers import extract_numbers, extract_dates, extract_float_filter, extract_mjd_filter, safe_serialize, result_to_dict, object_as_dict
+from .helpers import safe_serialize, result_to_dict, object_as_dict
+
+from .services.input_parser import ParseResult
+from .services.filter_service import FilterService
+from .services.search_service import SearchService
+
 from . import db, limiter
 from .models import Ztf, Crossmatches, User, Favorite, FavoriteGroup, Watchlist, Classification, UserObservatory
 from .routes import favorites_bp, filter_bookmarks_bp, visual_query_bp, lightcurve_bp, features_bp, user_observatories_bp
@@ -22,6 +27,8 @@ bokeh_version = version("bokeh")
 
 logger = logging.getLogger(__name__)
 main_blueprint = Blueprint('main', __name__)
+
+search_service = SearchService()
 
 @lru_cache(maxsize=8192)
 def _format_mjd_cached(mjd_value: float) -> str:
@@ -134,17 +141,17 @@ def start():
 
     query = db.session.query(Ztf).outerjoin(Classification, Ztf.alert_id == Classification.alert_id)
 
-    if request.args.get('date'):
-        date_input = extract_dates(request.args.get('date'))
-        if date_input:
-            query = extract_mjd_filter(date_input, Ztf.date_alert_mjd, query)
+    if date_text := request.args.get('date'):
+        parsed_date = search_service.parse_mjd_input(date_text)
+        if parsed_date.values:
+            query = search_service.apply_mjd_filter(query, Ztf.date_alert_mjd, parsed_date)
         else:
             filter_warning_message += 'Date filter cannot be applied - Enter a valid ISO-date or 8-digit integer date of the form yyyymmdd, e.g. "20201207", or a range, e.g., "20201207 20201209".'
-    
-    if request.args.get('date_alert_mjd'):
-        date_input = extract_numbers(request.args.get('date_alert_mjd'))
-        if date_input != None:
-            query = extract_float_filter(date_input, Ztf.date_alert_mjd, query)
+        
+    if mjd_text := request.args.get('date_alert_mjd'):
+        parsed = search_service.parse_float_input(mjd_text)
+        if parsed and parsed.values: 
+            query = search_service.apply_float_filter(query, Ztf.date_alert_mjd, parsed)
         else:
             filter_warning_message += 'MJD filter cannot be applied - Enter a valid Modified Julian Date as a number, e.g. "59190.12", a range, e.g. "59190 59191", or a bound with > or <, e.g. ">59190".'
 
@@ -158,40 +165,47 @@ def start():
         elif alertId != '':
             filter_warning_message += 'Alert ID cannot be filter by partial IDs - Enter a full alert ID, e.g. "ztf_candidate:335155568501", or "lsst:170094456539709554", or just the catalog prefix, e.g. "ztf" or "lsst".'
 
-    if request.args.get('ztf_object_id'):
-        query = query.filter(Ztf.ztf_object_id == request.args.get('ztf_object_id'))
+    if objectId_text := request.args.get('ztf_object_id'):
+        query = query.filter(Ztf.ztf_object_id == objectId_text.strip())        
 
-    #if request.args.get('filter'):
-        #query = query.filter(Ztf.filter == int(request.args.get('filter'))) # 1:g, 2:r, 3:i
-    if request.args.get('ant_passband'):
-        query = query.filter(Ztf.ant_passband == request.args.get('ant_passband')) # g, R, i
-
-    if request.args.get('locus_id'):
-        query = query.filter(Ztf.locus_id == request.args.get('locus_id'))
-
-    if request.args.get('locus_ra'):
-        ra_input = extract_numbers(request.args.get('locus_ra'))
-        if ra_input != None:
-            query = extract_float_filter(ra_input, Ztf.locus_ra, query, decimals=5)
+    if passband_text := request.args.get('ant_passband'):
+        if passband_text in ['g', 'R', 'i']: # g, R, i (v0: 1:g, 2:r, 3:i)
+            query = query.filter(Ztf.ant_passband == passband_text)
         else:
-            filter_warning_message += 'Ra filter cannot be applied - Enter a valid number, e.g., "118.61421", or range, e.g., "80 90".'
+            filter_warning_message += 'Passband filter cannot be applied - Enter a valid passband, e.g., "g", "R", or "i".'
 
-    if request.args.get('locus_dec'):
-        """Handle locus_dec input with flexible formats and provide user-friendly warnings for invalid input."""
-        locus_dec_value = request.args.get('locus_dec', '').strip()
-        dec_input = extract_numbers(request.args.get('locus_dec'), (-90.0, 90.0))
-        if dec_input != None:
-            query = extract_float_filter(dec_input, Ztf.locus_dec, query, decimals=5)
-        elif locus_dec_value and locus_dec_value.strip():  # Warn if non-empty but not in valid options
+    if locusId_text := request.args.get('locus_id'):
+        query = query.filter(Ztf.locus_id == locusId_text.strip())
+
+    if ra_text := request.args.get('locus_ra'):
+        parsed = search_service.parse_float_input(ra_text, allowed_range=(0.0, 360.0))
+        if parsed and parsed.values:
+            query = search_service.apply_float_filter(query, Ztf.locus_ra, parsed, decimals=5)
+        else:
+            filter_warning_message += 'Ra filter cannot be applied - Enter a valid number within the range 0° to 360°, e.g., "118.61421", or range, e.g., "80 90".'
+
+    if dec_text := request.args.get('locus_dec'):
+        parsed = search_service.parse_float_input(dec_text, allowed_range=(-90.0, 90.0))
+        if parsed and parsed.values:
+            query = search_service.apply_float_filter(query, Ztf.locus_dec, parsed, decimals=5)
+        else:
             filter_warning_message += 'Dec filter cannot be applied - Enter a valid number within the range -90° to +90°, e.g., "-20.12345", or range, e.g., "14.5 29".'
 
-    if request.args.get('magpsf'):
-        magpsf_input = extract_numbers(request.args.get('magpsf'))
-        if magpsf_input != None:
-            query = extract_float_filter(magpsf_input, Ztf.ant_mag_corrected, query, decimals=3)
+    # if request.args.get('locus_dec'):
+    #     locus_dec_value = request.args.get('locus_dec', '').strip()
+    #     dec_input = extract_numbers(request.args.get('locus_dec'), (-90.0, 90.0))
+    #     if dec_input != None:
+    #         query = extract_float_filter(dec_input, Ztf.locus_dec, query, decimals=5)
+    #     elif locus_dec_value and locus_dec_value.strip():  # Warn if non-empty but not in valid options
+    #         filter_warning_message += 'Dec filter cannot be applied - Enter a valid number within the range -90° to +90°, e.g., "-20.12345", or range, e.g., "14.5 29".'
+
+    if mag_text := request.args.get('magpsf'):
+        parsed = search_service.parse_float_input(mag_text)
+        if parsed and parsed.values:
+            query = search_service.apply_float_filter(query, Ztf.ant_mag_corrected, parsed, decimals=3)
         else:
             filter_warning_message += 'ant_mag_corrected filter cannot be applied - Enter a valid number, e.g., "18.84", or range, e.g., "18.8 19.4".'
-
+    
     if request.args.get('prob_class'):
         prob_class_value = request.args.get('prob_class', '').strip()
         valid_prob_classes = ['cvnova', 'e', 'lpv', 'puls', 'periodic_other', 'quas', 'sn', 'yso']

@@ -1,3 +1,4 @@
+import pytest
 from types import SimpleNamespace
 
 from poi_broker.services.plotting_service import (
@@ -6,6 +7,7 @@ from poi_broker.services.plotting_service import (
 )
 
 
+@pytest.mark.slow
 def test_create_bokeh_lightcurve_figure_returns_warning_for_empty_data():
     div, script = create_bokeh_lightcurve_figure([])
 
@@ -13,6 +15,7 @@ def test_create_bokeh_lightcurve_figure_returns_warning_for_empty_data():
     assert script == ""
 
 
+@pytest.mark.slow
 def test_create_bokeh_lightcurve_figure_skips_invalid_rows_and_returns_components():
     rows = [
         SimpleNamespace(date_alert_mjd=None, ant_mag_corrected=None, ant_passband='g'),
@@ -29,6 +32,7 @@ def test_create_bokeh_lightcurve_figure_skips_invalid_rows_and_returns_component
     assert "Bokeh" in script
 
 
+@pytest.mark.slow
 def test_create_bokeh_feature_plot_returns_warning_when_no_feature_list_is_provided():
     rows = [SimpleNamespace(date_alert_mjd=59000.1, ant_mag_corrected=19.2, feature_a=1.2)]
 
@@ -38,6 +42,7 @@ def test_create_bokeh_feature_plot_returns_warning_when_no_feature_list_is_provi
     assert script == ""
 
 
+@pytest.mark.slow
 def test_create_bokeh_feature_plot_returns_warning_when_all_rows_invalid():
     rows = [SimpleNamespace(date_alert_mjd=None, ant_mag_corrected=None, feature_a=1.2)]
 
@@ -47,6 +52,7 @@ def test_create_bokeh_feature_plot_returns_warning_when_all_rows_invalid():
     assert script == ""
 
 
+@pytest.mark.slow
 def test_create_bokeh_feature_plot_returns_components_for_valid_features():
     rows = [
         SimpleNamespace(date_alert_mjd=59000.1, ant_mag_corrected=19.2, feature_x=1.1, feature_y=2.1),
@@ -61,6 +67,7 @@ def test_create_bokeh_feature_plot_returns_components_for_valid_features():
     assert "feature_y" in script
 
 
+@pytest.mark.slow
 def test_create_bokeh_feature_plot_limits_feature_list_to_ten_entries():
     rows = [
         SimpleNamespace(

@@ -1,5 +1,6 @@
 import os
 import pytest
+from poi_broker.models import Ztf, Classification
 
 """
 Set isolated temp SQLite paths for both alerts and users DBs via env vars
@@ -136,3 +137,23 @@ def secure_app(tmp_path, monkeypatch):
 @pytest.fixture()
 def secure_client(secure_app):
     return secure_app.test_client()
+
+
+
+@pytest.fixture
+def mock_my_model():
+    my_model = Ztf(
+        alert_id="Test POI",
+        date_alert_mjd=60255.1143980999,
+        locus_id = 'Ztf-2025-0001'
+    )
+    return my_model
+
+@pytest.fixture
+def mock_get_sqlalchemy(mocker, app):
+    # Mock the query property at the model level
+    mock_query = mocker.Mock()
+    # Use app context to properly mock the query property
+    with app.app_context():
+        mocker.patch.object(Ztf, 'query', mock_query)
+    return mock_query

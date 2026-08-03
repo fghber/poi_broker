@@ -5,7 +5,7 @@ from unittest.mock import patch
 from poi_broker.app import _format_mjd_cached
 
 
-class TestFormatMJD:
+class TestFormatMjdCached:
     """Test cases for _format_mjd_cached function."""
 
     def test_basic_mjd_conversion(self):
