@@ -76,7 +76,7 @@ if dotenv_path.exists():
 if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
-from poi_broker.auth import send_email  # noqa: E402
+from poi_broker.services.email_service import send_email  # noqa: E402
 
 
 logger = logging.getLogger("watchlist_digest")

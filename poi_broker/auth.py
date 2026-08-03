@@ -7,12 +7,16 @@ from . import db
 import secrets
 from datetime import datetime, timedelta, timezone
 import os
-import smtplib
 import logging
-from email.message import EmailMessage
 from email_validator import validate_email, EmailNotValidError
-import ssl
 from . import limiter
+from .services.email_service import send_email, _format_expire_time
+import hashlib
+
+
+def hash_token(token: str) -> str:
+    """Return a SHA-256 hex digest of a token for safe at-rest storage."""
+    return hashlib.sha256(token.encode('utf-8')).hexdigest()
 
 
 def _utc_now_epoch() -> int:
@@ -29,20 +33,6 @@ def _is_reset_token_expired(expires_at) -> bool:
         except (TypeError, ValueError):
             return True
     return expires_epoch < _utc_now_epoch()
-
-def _format_expire_time(expire_time) -> str | None:
-    if expire_time is None:
-        return None
-    if isinstance(expire_time, datetime):
-        if expire_time.tzinfo is None:
-            expire_time = expire_time.replace(tzinfo=timezone.utc)
-        else:
-            expire_time = expire_time.astimezone(timezone.utc)
-        return expire_time.isoformat()
-    try:
-        return datetime.fromtimestamp(int(expire_time), tz=timezone.utc).isoformat()
-    except (TypeError, ValueError, OSError, OverflowError):
-        return None
 
 logger = logging.getLogger(__name__)
 auth_blueprint = Blueprint('auth', __name__)
@@ -137,16 +127,17 @@ def signup_post():
         return redirect(url_for('auth.signup'))
 
     # Create user but mark as unverified
+    raw_verification_token = secrets.token_urlsafe(32)
     new_user = User(
         email=email,
         name=name,
         password=generate_password_hash(password),
         email_verified=False,
-        email_verification_token=secrets.token_urlsafe(32)
+        email_verification_token=hash_token(raw_verification_token)
     )
 
     # Send verification email
-    verification_link = url_for('auth.verify_email', token=new_user.email_verification_token, _external=True)
+    verification_link = url_for('auth.verify_email', token=raw_verification_token, _external=True)
     result = send_email(
         message=f'Please verify your email by clicking here: {verification_link}',
         to_email=email,
@@ -185,7 +176,7 @@ def signup_post():
 @auth_blueprint.route('/verify-email/<token>')
 def verify_email(token):
     """Verify user email via token link."""
-    user = User.query.filter_by(email_verification_token=token).first()
+    user = User.query.filter_by(email_verification_token=hash_token(token)).first()
     
     if not user:
         flash('Invalid or expired verification link.')
@@ -242,7 +233,8 @@ def forgot_password_post():
     
     if user:
         # Generate reset token
-        user.reset_token = secrets.token_urlsafe(32)
+        raw_reset_token = secrets.token_urlsafe(32)
+        user.reset_token = hash_token(raw_reset_token)
         user.reset_token_expires = _utc_now_epoch() + int(timedelta(hours=1).total_seconds())
         try:
             db.session.commit()
@@ -254,7 +246,7 @@ def forgot_password_post():
         
         # Send email with reset link and expiration time
         result = send_email(
-            f"Reset your password using the following link: {url_for('auth.reset_password', token=user.reset_token, _external=True)}", 
+            f"Reset your password using the following link: {url_for('auth.reset_password', token=raw_reset_token, _external=True)}", 
             email,
             expire_time=user.reset_token_expires
         )
@@ -267,7 +259,7 @@ def forgot_password_post():
 
 @auth_blueprint.route('/reset-password/<token>')
 def reset_password(token):
-    user = User.query.filter_by(reset_token=token).first()
+    user = User.query.filter_by(reset_token=hash_token(token)).first()
     
     if not user or _is_reset_token_expired(user.reset_token_expires):
         flash('Invalid or expired reset token')
@@ -293,7 +285,7 @@ def reset_password_post(token):
         flash('Password must be at least 8 characters')
         return redirect(url_for('auth.reset_password', token=token))
 
-    user = User.query.filter_by(reset_token=token).first()
+    user = User.query.filter_by(reset_token=hash_token(token)).first()
     if not user or _is_reset_token_expired(user.reset_token_expires):
         flash('Invalid or expired reset token')
         return redirect(url_for('auth.login'))
@@ -370,67 +362,3 @@ def change_password():
 
     flash('Password changed successfully.')
     return redirect(url_for('auth.security'))
-
-
-def send_email(message, to_email, subject=None, html_text=None, from_email=None, expire_time=None):
-    """
-    Send a multipart email (plain text + optional HTML).
-    Backwards-compatible: legacy calls use send_email(message, email).
-    Prefer setting SMTP env vars: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM.
-    
-    Args:
-        expire_time: Optional datetime when the link/token expires. If provided, displays 
-                     expiration time in the email body.
-    """
-    # Backwards compatibility: if called as send_email(message, email)
-    if to_email is None:
-        raise ValueError("Recipient email address required as second argument.")
-
-    plain_text = str(message)
-    if subject is None:
-        subject = os.environ.get("SMTP_SUBJECT", "Notification from POI Broker")
-
-    # If no explicit HTML provided, create a simple HTML version
-    if html_text is None:
-        expire_section = ""
-        expire_display = _format_expire_time(expire_time)
-        if expire_display:
-            expire_section = f"<p><strong>Expires:</strong> {expire_display} UTC</p>"
-        
-        html_text = (
-            "<html><body>"
-            f"<h3>{subject}</h3>"
-            f"{expire_section}"
-            f"<hr><pre style='white-space:pre-wrap'>{plain_text}</pre>"
-            "</body></html>"
-        )
-
-    SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-    SMTP_PORT = int(os.environ.get("SMTP_PORT", 465))
-    SMTP_USER = os.environ.get("SMTP_USER")  # required for authenticated SMTP
-    SMTP_PASS = os.environ.get("SMTP_APP_PASSWORD")
-    FROM = from_email or os.environ.get("SMTP_FROM") or SMTP_USER
-    LOCAL_HOST = os.environ.get("LOCAL_HOST", "localhost")
-    #logger.info("%s %s %s %s %s %s", SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS[0:1] + "***" + SMTP_PASS[-2:-1] if SMTP_PASS else "None", FROM, LOCAL_HOST)
-
-    if not FROM:
-        raise RuntimeError("No sender address configured (SMTP_FROM or SMTP_USER)")
-
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = FROM
-    msg["To"] = to_email
-    msg.set_content(plain_text)
-    msg.add_alternative(html_text, subtype="html")
-    #logging.info("Email sent:\n%s", msg.as_string())
-
-    try:
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, local_hostname=LOCAL_HOST, context=ssl.create_default_context()) as server:
-            if SMTP_USER and SMTP_PASS:
-                server.login(SMTP_USER, SMTP_PASS)
-            server.send_message(msg)
-        logger.info("Sent email to %s (subject=%s)", to_email, subject)
-        return True
-    except Exception as exc:
-        logger.exception("Failed to send email to %s: %s", to_email, exc)
-        return False
