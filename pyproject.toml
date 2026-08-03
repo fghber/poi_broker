@@ -1,0 +1,43 @@
+[project]
+name = "poi_broker-frontend"
+version = "3.1.0"
+description = "A web application for the POI Broker."
+readme = "README.md"
+dependencies = [
+    "Flask==3.*",
+    "flask-login==0.6.*",
+    "Flask-WTF==1.*",
+    "Flask-SQLAlchemy==3.*",
+    "Flask-Limiter==3.*",
+    "python-dotenv",
+    "numpy==2.2.*",
+    "astropy==6.*",
+    "bokeh==3.*",
+    "matplotlib==3.*",
+    "timezonefinder[numba]",
+    "tzdata",
+    "email-validator",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pytest-mock",
+    "pytest-xdist",
+]
+
+[tool.coverage.run]
+source = ["poi_broker"]
+context = "test"
+
+[tool.coverage.html]
+show_contexts = true
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+filterwarnings = [
+    "ignore::erfa.core.ErfaWarning",
+]
