@@ -21,7 +21,7 @@ from . import db, limiter
 from .models import Ztf, Crossmatches, User, Favorite, FavoriteGroup, Watchlist, Classification, UserObservatory
 from .routes import favorites_bp, filter_bookmarks_bp, visual_query_bp, lightcurve_bp, features_bp, user_observatories_bp
 from .constants.features import FEATURE_COLUMNS, default_feature_plot_columns
-from .user_settings import user_settings_bp, get_saved_feature_plot_columns, get_saved_last_selected_observatory, UserSettings  # noqa: F401 - imported to register model
+from .user_settings import user_settings_bp, get_user_settings, get_saved_feature_plot_columns, get_saved_last_selected_observatory, UserSettings
 from importlib.metadata import version
 bokeh_version = version("bokeh")
 
@@ -81,12 +81,16 @@ def _resolve_selected_observatory(
     return None
 
 
-def _build_observatory_context() -> dict[str, list | str | None]:
+def _build_observatory_context(settings_row: UserSettings | None = None) -> dict[str, list | str | None]:
     """Build observatory context for the main page.
     
     Constructs builtin and custom observatory options, restores the user's last
     selected observatory (if authenticated), and provides a fallback to the first
     available option if the saved selection is invalid or deleted.
+    
+    Args:
+        settings_row: Optional pre-loaded UserSettings row to avoid a redundant
+                      DB query when the caller already has it (e.g. start()).
     
     Returns:
         dict with keys:
@@ -112,7 +116,7 @@ def _build_observatory_context() -> dict[str, list | str | None]:
 
     # Attempt to restore saved selection; gracefully falls back if invalid/deleted
     selected_value = _resolve_selected_observatory(
-        get_saved_last_selected_observatory(current_user.id) if current_user.is_authenticated else None,
+        get_saved_last_selected_observatory(current_user.id, settings_row) if current_user.is_authenticated else None,
         builtin_values,
         custom_values
     )
@@ -190,14 +194,6 @@ def start():
             query = search_service.apply_float_filter(query, Ztf.locus_dec, parsed, decimals=5)
         else:
             filter_warning_message += 'Dec filter cannot be applied - Enter a valid number within the range -90° to +90°, e.g., "-20.12345", or range, e.g., "14.5 29".'
-
-    # if request.args.get('locus_dec'):
-    #     locus_dec_value = request.args.get('locus_dec', '').strip()
-    #     dec_input = extract_numbers(request.args.get('locus_dec'), (-90.0, 90.0))
-    #     if dec_input != None:
-    #         query = extract_float_filter(dec_input, Ztf.locus_dec, query, decimals=5)
-    #     elif locus_dec_value and locus_dec_value.strip():  # Warn if non-empty but not in valid options
-    #         filter_warning_message += 'Dec filter cannot be applied - Enter a valid number within the range -90° to +90°, e.g., "-20.12345", or range, e.g., "14.5 29".'
 
     if mag_text := request.args.get('magpsf'):
         parsed = search_service.parse_float_input(mag_text)
@@ -282,7 +278,10 @@ def start():
     #print(query.statement.compile(compile_kwargs={"literal_binds": True})) #DEBUG: print the resulting SQL query
     paginator = query.paginate(page=page, per_page=100, error_out=True)
 
-    observatory_context = _build_observatory_context()
+    # Load the user's settings row once and reuse it across lookups to avoid
+    # redundant DB queries on every authenticated main-page request.
+    settings_row = get_user_settings(current_user.id) if current_user.is_authenticated else None
+    observatory_context = _build_observatory_context(settings_row)
 
     return render_template(
         "main.html",
@@ -300,7 +299,7 @@ def start():
         today_utc = datetime.now(timezone.utc).date(),
         bokeh_version = bokeh_version,
         available_feature_columns = FEATURE_COLUMNS,
-        default_feature_plot_columns=(get_saved_feature_plot_columns(current_user.id)
+        default_feature_plot_columns=(get_saved_feature_plot_columns(current_user.id, settings_row)
                                       if current_user.is_authenticated
                                       else default_feature_plot_columns()),
     )
