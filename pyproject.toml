@@ -17,6 +17,7 @@ dependencies = [
     "timezonefinder[numba]",
     "tzdata",
     "email-validator",
+    "huey==3.*"
 ]
 
 [project.optional-dependencies]

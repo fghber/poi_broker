@@ -1,14 +1,14 @@
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jQuery-QueryBuilder/dist/css/query-builder.default.min.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/query-builder.default.min.css') }}" onerror="this.href='https://cdn.jsdelivr.net/npm/jQuery-QueryBuilder/dist/css/query-builder.default.min.css'">
 <style>
-    .watchlist-query-builder [data-role="builder"] {
+    .query-builder-widget [data-role="builder"] {
         margin-bottom: 20px;
     }
 
-    .watchlist-query-builder [data-role="results"] {
+    .query-builder-widget [data-role="results"] {
         margin-top: 20px;
     }
 
-    .watchlist-query-builder pre {
+    .query-builder-widget pre {
         min-height: 48px;
         max-height: 220px;
         overflow: auto;
@@ -16,7 +16,7 @@
         word-break: break-word;
     }
 
-    .watchlist-query-builder.modal-layout pre {
+    .query-builder-widget.modal-layout pre {
         max-height: 160px;
     }
 
@@ -41,9 +41,9 @@
     }
 
     /* QueryBuilder may emit BS3/BS4/BS5-style float utility classes */
-    .watchlist-query-builder .query-builder .pull-right,
-    .watchlist-query-builder .query-builder .float-right,
-    .watchlist-query-builder .query-builder .float-end {
+    .query-builder-widget .query-builder .pull-right,
+    .query-builder-widget .query-builder .float-right,
+    .query-builder-widget .query-builder .float-end {
         float: right !important;
     }
 </style>

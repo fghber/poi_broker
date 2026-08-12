@@ -1,8 +1,10 @@
-from . import db
-from flask_login import UserMixin, current_user
-from functools import wraps
-from flask import flash, redirect, url_for
 from datetime import datetime, timezone
+from functools import wraps
+
+from flask import flash, redirect, url_for
+from flask_login import UserMixin, current_user
+
+from . import db
 
 
 class Ztf(db.Model):
@@ -462,3 +464,40 @@ class UserSettings(db.Model):
 
     def __repr__(self):
         return f"<UserSettings user_id={self.user_id}>"
+
+
+class ExportTask(db.Model):
+    """
+    Tracks data export tasks for users.
+    
+    Attributes:
+        id: Integer primary key for the task
+        user_id: Foreign key to User
+        status: Task status (PENDING, RUNNING, SUCCESS, FAILED)
+        created_at: Timestamp when task was created
+        updated_at: Timestamp when task was last updated
+        file_path: Path to exported CSV file (set when SUCCESS)
+        error_message: Error message if task failed
+    """
+    __bind_key__ = 'users'
+    __tablename__ = 'export_task'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True)
+    status = db.Column(db.String(20), nullable=False, default='PENDING', index=True)  # PENDING, RUNNING, SUCCESS, FAILED
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    file_path = db.Column(db.String(512), nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+
+    __table_args__ = (
+        db.Index(
+            'uix_export_task_one_active_per_user',
+            'user_id',
+            unique=True,
+            sqlite_where=db.text("status IN ('PENDING', 'RUNNING')"),
+        ),
+    )
+
+    def __repr__(self):
+        return f"<ExportTask {self.id} user_id={self.user_id} status={self.status}>"

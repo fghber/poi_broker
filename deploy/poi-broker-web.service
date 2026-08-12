@@ -1,0 +1,43 @@
+# systemd service unit for the POI Broker web app (Gunicorn).
+#
+# Install:
+#   1. Place this file at /etc/systemd/system/poi-broker-web.service
+#   2. Create an EnvironmentFile (see /etc/poi-broker/web.env) with the app's
+#      environment variables, e.g.:
+#          SECRET_KEY=...
+#          ALERTS_DB_PATH=/var/lib/poi_broker/ztf_alerts_stream.db
+#          USERS_DB_PATH=/var/lib/poi_broker/users.db
+#          HUEY_BACKEND=sqlite
+#          HUEY_SQLITE_PATH=/var/lib/poi_broker/huey.db
+#          FLASK_DEBUG=False
+#          FLASK_TESTING=False
+#          # SMTP_* vars if email flows are used
+#   3. sudo systemctl daemon-reload
+#   4. sudo systemctl enable --now poi-broker-web
+#
+# Gunicorn runs 4 worker processes. Each worker imports the same
+# poi_broker.extensions.huey instance, which resolves to the shared SQLite queue
+# (HUEY_SQLITE_PATH), so all workers coordinate on one task queue.
+
+[Unit]
+Description=POI Broker web app (Gunicorn)
+After=network.target
+
+[Service]
+Type=simple
+User=poi-broker
+Group=poi-broker
+WorkingDirectory=/opt/poi_broker
+EnvironmentFile=/etc/poi-broker/web.env
+ExecStart=/opt/poi_broker/.venv/bin/gunicorn --workers 4 --bind 127.0.0.1:8000 --access-logfile /var/log/poi_broker/gunicorn.access.log --error-logfile /var/log/poi_broker/gunicorn.error.log wsgi:app
+Restart=always
+RestartSec=5
+
+# Harden
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/poi_broker /var/log/poi_broker /opt/poi_broker
+
+[Install]
+WantedBy=multi-user.target

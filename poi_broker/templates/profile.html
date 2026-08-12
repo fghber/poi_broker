@@ -2,7 +2,7 @@
 
 {% block extra_head %}
 {{ super() }}
-{% include '_watchlist_query_builder_assets.html' %}
+{% include '_query_builder_assets.html' %}
 {% endblock %}
 
 {% block content %}
@@ -140,13 +140,13 @@
             </div>
             <div class="modal-body">
                 {% set builder_variant = 'modal' %}
-                {% include '_watchlist_query_builder.html' %}
+                {% include '_query_builder.html' %}
             </div>
         </div>
     </div>
 </div>
 
-{% include '_watchlist_query_builder_js.html' %}
+{% include '_query_builder_js.html' %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     let allGroups = [];
@@ -163,7 +163,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const filterBookmarkPanels = document.getElementById('filterBookmarkPanels');
     const watchlistPanels = document.getElementById('watchlistPanels');
     const watchlistQueryModal = document.getElementById('watchlistQueryModal');
-    const watchlistQueryRoot = watchlistQueryModal.querySelector('[data-watchlist-query-builder]');
+    const watchlistQueryRoot = watchlistQueryModal.querySelector('[data-query-builder]');
 
     function setSummaryValue(element, value) {
         if (element) {
@@ -684,7 +684,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     $('#watchlistQueryModal').on('shown.bs.modal', function () {
-        watchlistBuilderApi = window.PoiWatchlistQueryBuilder.init(watchlistQueryRoot, {
+        watchlistBuilderApi = window.PoiQueryBuilder.init(watchlistQueryRoot, {
             onSave: function (_response, api) {
                 loadWatchlists();
                 api.reset();

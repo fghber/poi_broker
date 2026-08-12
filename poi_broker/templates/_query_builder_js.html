@@ -1,11 +1,11 @@
-<script src="https://cdn.jsdelivr.net/npm/jQuery-QueryBuilder/dist/js/query-builder.standalone.min.js"></script>
+<script src="{{ url_for('static', filename='js/query-builder.standalone.min.js') }}" onerror="this.src='https://cdn.jsdelivr.net/npm/jQuery-QueryBuilder/dist/js/query-builder.standalone.min.js'"></script>
 <script>
 (function (window, document, $) {
   if (!$) {
     return;
   }
 
-  if (window.PoiWatchlistQueryBuilder) {
+  if (window.PoiQueryBuilder) {
     return;
   }
 
@@ -327,7 +327,12 @@
   function createApi(root, options) {
     const settings = Object.assign({
       onSave: null,
-      onPreview: null
+      onPreview: null,
+      saveLabel: 'Save Query',
+      saveTitle: 'Save this query as a watchlist',
+      noNameMessage: 'Please enter a name before saving.',
+      countUrl: null,          // optional endpoint returning { count }
+      previewUrl: '/api/preview-query'
     }, options || {});
 
     const $root = $(root);
@@ -389,7 +394,7 @@
         }
 
         $.ajax({
-          url: '/api/preview-query',
+          url: settings.previewUrl,
           type: 'POST',
           data: JSON.stringify({ rules: rules }),
           headers: {
@@ -402,9 +407,31 @@
             if (response.sql) {
               $results.text('Query is valid. Filter: ' + response.sql);
               previewSuccess = true;
-              $saveButton.prop('disabled', false).attr('title', 'Save this query as a watchlist');
+              $saveButton.prop('disabled', false).attr('title', settings.saveTitle);
               if (typeof settings.onPreview === 'function') {
                 settings.onPreview(response, rules);
+              }
+              // Optionally fetch the expected row count.
+              if (settings.countUrl) {
+                $.ajax({
+                  url: settings.countUrl,
+                  type: 'POST',
+                  data: JSON.stringify({ rules: rules }),
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                  },
+                  contentType: 'application/json; charset=utf-8',
+                  dataType: 'json',
+                  success: function (countResp) {
+                    if (typeof countResp.count === 'number') {
+                      $results.text('Query matches ' + countResp.count.toLocaleString() + ' row(s). Filter: ' + response.sql);
+                      if (typeof settings.onCount === 'function') {
+                        settings.onCount(countResp.count);
+                      }
+                    }
+                  }
+                });
               }
               return;
             }
@@ -428,7 +455,7 @@
 
       const name = ($nameInput.val() || '').trim();
       if (!name) {
-        $results.text('Please enter a watchlist name before saving.');
+        $results.text(settings.noNameMessage);
         $nameInput.trigger('focus');
         return;
       }
@@ -453,7 +480,7 @@
           dataType: 'json',
           success: function (response) {
             $results.text('Watchlist "' + response.name + '" saved (id=' + response.id + ').');
-            $saveButton.prop('disabled', false).attr('title', 'Save this query as a watchlist');
+            $saveButton.prop('disabled', false).attr('title', settings.saveTitle);
             if (typeof settings.onSave === 'function') {
               settings.onSave(response, { reset: resetState, root: root });
               return;
@@ -463,12 +490,12 @@
           error: function (xhr, status, error) {
             const resp = xhr.responseJSON;
             $results.text('Save error: ' + ((resp && resp.error) || error));
-            $saveButton.prop('disabled', false).attr('title', 'Save this query as a watchlist');
+            $saveButton.prop('disabled', false).attr('title', settings.saveTitle);
           }
         });
       } catch (error) {
         $results.text('Error: ' + error.message);
-        $saveButton.prop('disabled', false).attr('title', 'Save this query as a watchlist');
+        $saveButton.prop('disabled', false).attr('title', settings.saveTitle);
       }
     });
 
@@ -484,7 +511,7 @@
         } catch (error) {
         }
         $builder.empty();
-        root.__watchlistQueryBuilder = null;
+        root.__queryBuilder = null;
       },
       getRules: getRules,
       setMessage: function (message) {
@@ -493,16 +520,16 @@
     };
   }
 
-  window.PoiWatchlistQueryBuilder = {
+  window.PoiQueryBuilder = {
     init: function (root, options) {
       if (!root) {
         return null;
       }
-      if (root.__watchlistQueryBuilder) {
-        return root.__watchlistQueryBuilder;
+      if (root.__queryBuilder) {
+        return root.__queryBuilder;
       }
       const api = createApi(root, options);
-      root.__watchlistQueryBuilder = api;
+      root.__queryBuilder = api;
       return api;
     }
   };

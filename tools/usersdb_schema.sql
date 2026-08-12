@@ -90,3 +90,20 @@ CREATE TABLE
         UNIQUE (user_id, name)
     );
 CREATE INDEX ix_user_observatory_user_id ON user_observatory (user_id);
+
+CREATE TABLE
+    export_task (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        file_path VARCHAR(512),
+        error_message TEXT,
+        FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+    );
+CREATE INDEX ix_export_task_user_id ON export_task (user_id);
+CREATE INDEX ix_export_task_status ON export_task (status);
+CREATE UNIQUE INDEX IF NOT EXISTS uix_export_task_one_active_per_user
+    ON export_task (user_id)
+    WHERE status IN ('PENDING', 'RUNNING');

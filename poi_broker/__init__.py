@@ -1,19 +1,20 @@
-from pathlib import Path
-from datetime import datetime, timezone
 import logging
-from flask import (Flask, app, render_template, abort, jsonify, request, Response,
-                   redirect, url_for, make_response, Blueprint, flash)
-from flask_login import LoginManager, login_required, current_user
-from flask_wtf.csrf import CSRFProtect, CSRFError
+from datetime import datetime, timezone
+from pathlib import Path
+
+from flask import Flask, flash, jsonify, redirect, request, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_login import LoginManager
+from flask_sqlalchemy import SQLAlchemy
+from flask_wtf.csrf import CSRFError, CSRFProtect
 from sqlalchemy import event
+
+from .extensions import huey
+from .settings import build_app_config
 
 #from werkzeug.middleware.profiler import ProfilerMiddleware
 #import jinja2
-from flask_sqlalchemy import SQLAlchemy
-from astropy.time import Time
-from .settings import build_app_config
 
 # Initialize SQLAlchemy instance (outside create_app for import access)
 db = SQLAlchemy()
@@ -30,6 +31,44 @@ def _configure_sqlite_pragmas(dbapi_conn, connection_record):
     cursor.execute("PRAGMA mmap_size = 268435456")  # 256MB in bytes https://sqlite.org/mmap.html
     cursor.execute("PRAGMA temp_store = MEMORY")    # Temporary tables in RAM
     cursor.close()
+
+
+def init_huey(app):
+    """
+    Initialize Huey task queue configuration for the app.
+    
+    The actual Huey backend is configured via environment variables:
+    - HUEY_BACKEND: 'memory' (default) or 'sqlite' for production
+    - HUEY_SQLITE_PATH: Path to huey.db (defaults to instance/huey.db)
+    - HUEY_IMMEDIATE: 'true' (default) or 'false' to run tasks async
+    
+    For production with background worker:
+        1. Set HUEY_BACKEND=sqlite
+        2. Run the Huey consumer: python -m huey.bin.huey_consumer poi_broker.worker.huey
+    """
+    from pathlib import Path
+    
+    # Ensure instance path exists (used for SQLite backend)
+    Path(app.instance_path).mkdir(parents=True, exist_ok=True)
+    
+    # Log the active backend
+    backend_name = 'SQLite' if hasattr(huey, 'filename') else 'Memory'
+    if hasattr(huey, 'immediate'):
+        immediate_str = ' (immediate/synchronous)' if huey.immediate else ' (async, requires worker)'
+    else:
+        immediate_str = ' (queue-based)'
+    
+    app.logger.info(f'Huey task queue initialized with {backend_name} backend{immediate_str}')
+
+    # Reset exports stuck in PENDING/RUNNING from a previous crash/restart so
+    # users are not permanently blocked by the active-task guard. Safe to run at
+    # startup in both the web app and the worker; it only touches stale rows.
+    try:
+        from .tasks import reset_stale_export_tasks
+        with app.app_context():
+            reset_stale_export_tasks()
+    except Exception:
+        app.logger.exception('Failed to reset stale export tasks at startup')
 
 def create_app():
     app = Flask(__name__)
@@ -53,12 +92,19 @@ def create_app():
                     level=logging.INFO)
     # Reduce werkzeug noise
     logging.getLogger("werkzeug").setLevel(logging.ERROR)  # or logging.WARNING
+    # Silence Huey's verbose debug logs (scheduler, consumer, etc.)
+    logging.getLogger("huey").setLevel(logging.INFO)
+    logging.getLogger("huey.consumer").setLevel(logging.INFO)
+    logging.getLogger("huey.consumer.Scheduler").setLevel(logging.INFO)
 
     base_dir = Path(__file__).resolve().parent
     config, db_path, login_db_path = build_app_config(base_dir)
     app.config.update(config)
     app.logger.info('Configured alerts database at %s', db_path)
     app.logger.info('Configured users database at %s', login_db_path)
+
+    # Initialize Huey task queue
+    init_huey(app)
 
     if app.debug is True:
         app.jinja_env.auto_reload = True
@@ -95,9 +141,9 @@ def create_app():
 
     # import and register blueprints here to avoid circular imports
     from .app import register_blueprints
-    from .observing_tool import observing_tool_blueprint
-    from .classification import classification_blueprint
     from .auth import auth_blueprint
+    from .classification import classification_blueprint
+    from .observing_tool import observing_tool_blueprint
 
     register_blueprints(app)
     app.register_blueprint(auth_blueprint)

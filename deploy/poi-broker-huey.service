@@ -1,0 +1,42 @@
+# systemd service unit for the POI Broker Huey worker.
+#
+# Install:
+#   1. Place this file at /etc/systemd/system/poi-broker-huey.service
+#   2. Create an EnvironmentFile (see /etc/poi-broker/huey.env) with the app's
+#      environment variables, e.g.:
+#          SECRET_KEY=...
+#          ALERTS_DB_PATH=...
+#          USERS_DB_PATH=...
+#          HUEY_BACKEND=sqlite
+#          HUEY_SQLITE_PATH=/var/lib/poi_broker/huey.db
+#          HUEY_THREADS=2
+#          HUEY_LOGFILE=/var/log/poi_broker/huey.log
+#   3. sudo systemctl daemon-reload
+#   4. sudo systemctl enable --now poi-broker-huey
+#
+# NOTE: point the consumer at poi_broker.worker.huey (not
+# poi_broker.extensions.huey) so tasks are registered on the shared Huey instance.
+
+[Unit]
+Description=POI Broker Huey task consumer
+After=network.target
+Wants=poi-broker-web.service
+
+[Service]
+Type=simple
+User=poi-broker
+Group=poi-broker
+WorkingDirectory=/opt/poi_broker
+EnvironmentFile=/etc/poi-broker/huey.env
+ExecStart=/opt/poi_broker/.venv/bin/python -m huey.bin.huey_consumer poi_broker.worker.huey --workers=${HUEY_THREADS} --worker-type=thread --logfile=${HUEY_LOGFILE} --verbose
+Restart=always
+RestartSec=5
+
+# Harden
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/poi_broker /var/log/poi_broker /opt/poi_broker
+
+[Install]
+WantedBy=multi-user.target

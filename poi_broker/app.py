@@ -19,7 +19,7 @@ from .services.search_service import SearchService
 
 from . import db, limiter
 from .models import Ztf, Crossmatches, User, Favorite, FavoriteGroup, Watchlist, Classification, UserObservatory
-from .routes import favorites_bp, filter_bookmarks_bp, visual_query_bp, lightcurve_bp, features_bp, user_observatories_bp
+from .routes import favorites_bp, filter_bookmarks_bp, visual_query_bp, lightcurve_bp, features_bp, user_observatories_bp, export_bp
 from .constants.features import FEATURE_COLUMNS, default_feature_plot_columns
 from .user_settings import user_settings_bp, get_user_settings, get_saved_feature_plot_columns, get_saved_last_selected_observatory, UserSettings
 from importlib.metadata import version
@@ -291,7 +291,7 @@ def start():
         has_next=paginator.has_next,
         last_page=paginator.pages,
         # ? TODO Pagination query-string re.sub may leave a trailing & in edge cases. TEST
-        query_string=re.sub('[&?]?page=\\d+|&$', '', request.query_string.decode('utf-8')), # ? b'' binary string 
+        query_string=re.sub('[&?]?page=\\d+|&$', '', request.query_string.decode('utf-8')), # b'' binary string 
         filter_warning = filter_warning_message,
         custom_observatory_options=observatory_context['custom_options'],
         builtin_observatory_options=observatory_context['builtin_options'],
@@ -459,3 +459,4 @@ def register_blueprints(app):
     app.register_blueprint(features_bp)
     app.register_blueprint(user_observatories_bp)
     app.register_blueprint(user_settings_bp)
+    app.register_blueprint(export_bp)

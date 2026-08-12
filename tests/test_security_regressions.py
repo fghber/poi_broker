@@ -125,3 +125,51 @@ def test_login_post_rate_limited_after_retries(secure_client):
 
     assert statuses[:3] == [302, 302, 302]
     assert statuses[3] == 429
+
+
+def test_authenticated_watchlist_crud(secure_app, secure_client):
+    """Test authenticated watchlist CRUD operations with CSRF enabled."""
+    from poi_broker import db
+    from poi_broker.models import User
+
+    with secure_app.app_context():
+        user_id = _create_verified_user(db, User, "watchlist@example.com", "Password123!", "Watchlist User")
+
+    _force_login(secure_client, user_id)
+    html = secure_client.get("/").get_data(as_text=True)
+    csrf_token = _extract_meta_csrf_token(html)
+
+    # Match current UI contract: watchlists are saved from non-empty rules only.
+    minimal_rules = {
+        "condition": "AND",
+        "rules": [
+            {
+                "field": "featuretable.alert_id",
+                "operator": "is_not_null",
+            }
+        ],
+    }
+
+    # Create watchlist
+    r = secure_client.post(
+        "/api/watchlist",
+        json={"name": "Security Watchlist", "rules": minimal_rules},
+        headers={"X-CSRFToken": csrf_token},
+    )
+    assert r.status_code == 201, r.get_data(as_text=True)
+    wl_id = r.get_json()["id"]
+
+    # List watchlists
+    r = secure_client.get("/api/watchlist")
+    assert r.status_code == 200
+    names = [w["name"] for w in r.get_json()["watchlists"]]
+    assert "Security Watchlist" in names
+
+    # Delete watchlist
+    r = secure_client.delete(
+        f"/api/watchlist/{wl_id}",
+        headers={"X-CSRFToken": csrf_token},
+    )
+    assert r.status_code == 200
+    assert r.is_json
+    assert r.get_json().get("status") == "ok"

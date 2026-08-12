@@ -1,7 +1,7 @@
 {% extends 'site.html' %}
 {% block extra_head %}
     {{ super() }}
-    {% include '_watchlist_query_builder_assets.html' %}
+    {% include '_query_builder_assets.html' %}
 {% endblock %}
 
 {% block content %}
@@ -10,13 +10,13 @@
     <h1>Point of Interest Watchlist Query Builder</h1>
 </div>
 <br>
-{% include '_watchlist_query_builder.html' %}
+{% include '_query_builder.html' %}
 
-{% include '_watchlist_query_builder_js.html' %}
+{% include '_query_builder_js.html' %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  const root = document.querySelector('[data-watchlist-query-builder]');
-  window.PoiWatchlistQueryBuilder.init(root);
+  const root = document.querySelector('[data-query-builder]');
+  window.PoiQueryBuilder.init(root);
 });
 </script>
 

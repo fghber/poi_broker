@@ -1,6 +1,6 @@
-import os
 import pytest
-from poi_broker.models import Ztf, Classification
+
+from poi_broker.models import Ztf
 
 """
 Set isolated temp SQLite paths for both alerts and users DBs via env vars
@@ -18,6 +18,8 @@ def app(tmp_path, monkeypatch):
     monkeypatch.setenv("FLASK_DEBUG", "0")
     monkeypatch.setenv("ALERTS_DB_PATH", str(alerts_db))
     monkeypatch.setenv("USERS_DB_PATH", str(users_db))
+    monkeypatch.setenv("HUEY_BACKEND", "memory")
+    monkeypatch.setenv("HUEY_IMMEDIATE", "true")
 
     from poi_broker import create_app, db
 
@@ -46,6 +48,7 @@ def client(app):
 def auth_client(app):
     """Test client pre-logged-in as a verified user."""
     from werkzeug.security import generate_password_hash
+
     from poi_broker import db
     from poi_broker.models import User
 
@@ -74,6 +77,7 @@ def auth_client(app):
 @pytest.fixture()
 def user_factory(app):
     from werkzeug.security import generate_password_hash
+
     from poi_broker import db
     from poi_broker.models import User
 
@@ -137,7 +141,6 @@ def secure_app(tmp_path, monkeypatch):
 @pytest.fixture()
 def secure_client(secure_app):
     return secure_app.test_client()
-
 
 
 @pytest.fixture
