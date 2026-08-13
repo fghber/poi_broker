@@ -8,7 +8,7 @@ from flask_login import login_required, current_user
 from sqlalchemy.exc import IntegrityError
 from .. import db
 from ..models import Watchlist
-from ..services.query_service import get_preview_sql, get_query_match_count, build_query_from_rules
+from ..services.query_service import get_preview_sql, get_query_match_count
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +92,9 @@ def save_watchlist():
         else:
             return jsonify({'error': 'Invalid querybuilder rules payload'}), 400
 
-        # Build query and get SQL
-        _, sql_where = build_query_from_rules(rules_payload)
+        # Persist rules_json as the executable source of truth. sql_where is
+        # a display preview only and must never be concatenated into SQL.
+        sql_where = get_preview_sql(rules_payload)
 
         now_epoch = int(time.time())
 

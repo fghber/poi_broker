@@ -72,8 +72,8 @@ def create_export_file(query_params: dict, user_id: int, task_id: int):
             logger.info(f'ExportTask {task_id} set to RUNNING')
             
             # Build and execute query (Core columns, not ORM entities).
-            export_query, where_clause = build_export_query_from_rules(query_params)
-            logger.info(f'ExportTask {task_id} query: {where_clause}')
+            export_query, rules_payload = build_export_query_from_rules(query_params)
+            logger.info(f'ExportTask {task_id} query rules: {rules_payload}')
             
             # Create exports directory in instance path
             exports_dir = Path(app.instance_path) / 'exports'

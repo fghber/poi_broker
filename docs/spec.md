@@ -123,7 +123,7 @@ Two SQLite databases via SQLAlchemy binds: **alerts** (default bind) and **users
 | `User` | `user` | `id` PK, `email` unique, `password` (hashed), `name`, `role` (default `'user'`), `email_verified`, `email_verification_token`, `reset_token`, `reset_token_expires` | Methods `has_role`, `is_admin`; decorator `role_required(role)` |
 | `FavoriteGroup` | `favorite_group` | `id`, `user_id` FK→user CASCADE, `name`, `created_at`; unique `(user_id, name)` | |
 | `Favorite` | `favorite` | `id`, `user_id` FK CASCADE, `locus_id`, `group_id` FK→favorite_group SET NULL, `created_at`; unique `(user_id, locus_id)` | |
-| `Watchlist` | `watchlist` | `id`, `user_id` FK CASCADE, `name`, `rules_json` (Text), `sql_where` (Text), `created_at` (epoch); unique `(user_id, name)` | |
+| `Watchlist` | `watchlist` | `id`, `user_id` FK CASCADE, `name`, `rules_json` (Text), `sql_where` (Text), `created_at` (epoch); unique `(user_id, name)` | `rules_json` is the executable source of truth. `sql_where` is a display preview only — never concatenate or execute it. |
 | `FilterBookmark` | `filter_bookmark` | `id`, `user_id` FK CASCADE, `name`, `query_json` (Text), `created_at` | |
 | `UserObservatory` | `user_observatory` | `id`, `user_id` FK CASCADE, `name` (max 100, NOCASE), `latitude`, `longitude`, `timezone_name`, `created_at`; unique `(user_id, name)` | |
 | `UserSettings` | `user_settings` | `id`, `user_id` FK CASCADE, `default_feature_plot_columns` (JSON Text), `last_selected_observatory_json` (JSON Text); unique `user_id` | |
@@ -235,7 +235,9 @@ Signup → email verification (SHA-256 token) → login (Flask-Login) → authen
 `GET /` builds a `Ztf` query with optional filters (date/MJD, alert_id prefix/full, object_id, passband, locus_id, RA/Dec ranges, magnitude, prob_class) and multiple sort keys. Uses `catalog_query` + `SearchService` + `FilterService`. Hybrid pagination 100/page (keyset for date-only sort; OFFSET+1 otherwise). Exact row counts when cheap; otherwise `GET /api/catalog-count` on demand.
 
 ### 6.3 Visual Query → Watchlist
-`GET /visual_query` → QueryBuilder UI → `POST /api/preview-query` (SQL preview) → `POST /api/export-query` (match count) → `POST /api/watchlist` (save rules + generated SQL). Uses `QueryService` + `querybuilder_translator.py`.
+`GET /visual_query` → QueryBuilder UI → `POST /api/preview-query` (SQL preview) → `POST /api/export-query` (match count) → `POST /api/watchlist` (persist `rules_json`; store compiled SQL in `sql_where` as a display preview only). Uses `query_service` + `querybuilder_translator.py`.
+
+Daily digest: `tools/watchlist_digest.py` re-runs `rules_json` through the ORM via `create_app()`. It never executes `sql_where`. **Gotcha:** the digest reads `tools/.env`, which is separate from the web app `.env`. `create_app()` requires `SECRET_KEY`; if that file omits it, older deploys crashed before any watchlist ran. The script now falls back to a CLI placeholder and logs a warning. Prefer the same `SECRET_KEY` as the web app (see `tools/.env.example`).
 
 ### 6.4 Lightcurve / Features / Classification
 - Lightcurve: `GET /query_lightcurve_data` (Bokeh) + `/locus_plot_csv`.

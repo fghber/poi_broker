@@ -2,15 +2,15 @@
 """Send daily watchlist digests to users.
 
 This script is intended for cron usage. It reads all watchlists from users.db,
-executes each stored SQL WHERE clause against featuretable, and emails the top N
-matching alert IDs created yesterday (UTC midnight-to-midnight) to each watchlist
-owner.
+rebuilds each filter from stored rules_json (never executes sql_where), and
+emails the top N matching alert IDs created yesterday (UTC midnight-to-midnight)
+to each watchlist owner.
 
 What it does:
 
 - Reads all configured watchlists from users.db.
 - Resolves the UTC window for yesterday as midnight-to-midnight.
-- Executes each watchlist SQL filter against featuretable with:
+- Re-runs each watchlist's querybuilder rules against featuretable with:
 date_alert_mjd >= yesterday_utc_midnight_mjd
 date_alert_mjd < today_utc_midnight_mjd
 LIMIT 1000 (configurable via --limit)
@@ -34,7 +34,20 @@ Operational options included:
 --skip-empty to skip sending emails when a user has zero matches
 ```
 
+Gotcha — SECRET_KEY and tools/.env:
+
+The digest rebuilds filters through create_app() so it can run ORM queries
+from rules_json (sql_where is display-only and must never be executed).
+create_app() requires SECRET_KEY. tools/.env is a separate file from the
+web app .env; copying only the digest template used to omit SECRET_KEY and
+the cron job then crashed before any watchlist ran.
+
+If SECRET_KEY is unset, this script sets a local CLI placeholder and logs a
+warning. That is enough because the digest is not an HTTP server. Prefer
+copying the web app SECRET_KEY into tools/.env so the warning stays off.
+
 Expected environment variables:
+- SECRET_KEY: optional; reuse the web app value. Placeholder used if unset.
 - ALERTS_DB_PATH: absolute/relative path to ztf_alerts_stream.db (optional)
 - USERS_DB_PATH: absolute/relative path to users.db (optional)
 - POI_BROKER_BASE_URL: app base URL for alert link generation (default: http://localhost:5000)
@@ -51,6 +64,7 @@ Example cron line (adjust paths):
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sqlite3
@@ -76,10 +90,26 @@ if dotenv_path.exists():
 if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
+from poi_broker import create_app, db  # noqa: E402
 from poi_broker.services.email_service import send_email  # noqa: E402
+from poi_broker.services.query_service import execute_watchlist  # noqa: E402
 
 
 logger = logging.getLogger("watchlist_digest")
+
+# create_app() requires SECRET_KEY for Flask session config. The digest never
+# serves HTTP, so a local placeholder is enough when tools/.env has none.
+_DIGEST_SECRET_KEY_FALLBACK = "watchlist-digest-cli"
+
+
+def _ensure_digest_secret_key() -> None:
+    if os.environ.get("SECRET_KEY"):
+        return
+    os.environ["SECRET_KEY"] = _DIGEST_SECRET_KEY_FALLBACK
+    logger.warning(
+        "SECRET_KEY is unset; using a digest-only placeholder so create_app() "
+        "can rebuild ORM filters. Set SECRET_KEY in tools/.env to silence this."
+    )
 
 
 @dataclass
@@ -121,7 +151,8 @@ def load_watchlists(users_db: Path, only_email: str | None = None) -> list[sqlit
     conn.row_factory = sqlite3.Row
     try:
         sql = (
-            "SELECT w.id AS watchlist_id, w.user_id, w.name AS watchlist_name, w.sql_where, "
+            "SELECT w.id AS watchlist_id, w.user_id, w.name AS watchlist_name, "
+            "w.rules_json, w.sql_where, "
             "u.email AS user_email, u.name AS user_name "
             "FROM watchlist w "
             "JOIN user u ON u.id = w.user_id "
@@ -138,19 +169,15 @@ def load_watchlists(users_db: Path, only_email: str | None = None) -> list[sqlit
         conn.close()
 
 
-def execute_watchlist(alerts_conn: sqlite3.Connection, sql_where: str, start_mjd: float, end_mjd: float, limit: int) -> list[str]:
-    sql = (
-        "SELECT featuretable.alert_id "
-        "FROM featuretable "
-        "LEFT OUTER JOIN classification ON featuretable.alert_id = classification.alert_id "
-        "WHERE (" + sql_where + ") "
-        "AND date_alert_mjd >= ? "
-        "AND date_alert_mjd < ? "
-        "ORDER BY date_alert_mjd DESC "
-        "LIMIT ?"
-    )
-    rows = alerts_conn.execute(sql, (start_mjd, end_mjd, limit)).fetchall()
-    return [str(r[0]) for r in rows if r[0] is not None]
+def parse_watchlist_rules(rules_json: str) -> dict:
+    """Deserialize persisted rules_json. Raises ValueError if it is not a rules dict."""
+    try:
+        payload = json.loads(rules_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f'Invalid watchlist rules_json: {exc}') from exc
+    if not isinstance(payload, dict) or 'rules' not in payload:
+        raise ValueError('Invalid watchlist rules_json: expected a querybuilder rules object')
+    return payload
 
 
 def build_alert_link(base_url: str, alert_id: str) -> str:
@@ -298,14 +325,15 @@ def run(limit: int, dry_run: bool, only_email: str | None, skip_empty: bool) -> 
 
     per_user: dict[tuple[int, str, str | None], list[WatchlistResult]] = defaultdict(list)
 
-    alerts_conn = sqlite3.connect(alerts_db)
-    try:
+    _ensure_digest_secret_key()
+    app = create_app()
+    with app.app_context():
         for row in watchlist_rows:
             user_key = (int(row["user_id"]), str(row["user_email"]), row["user_name"])
             try:
+                rules_payload = parse_watchlist_rules(str(row["rules_json"]))
                 alert_ids = execute_watchlist(
-                    alerts_conn=alerts_conn,
-                    sql_where=str(row["sql_where"]),
+                    rules_payload,
                     start_mjd=start_mjd,
                     end_mjd=end_mjd,
                     limit=limit,
@@ -320,6 +348,7 @@ def run(limit: int, dry_run: bool, only_email: str | None, skip_empty: bool) -> 
                 )
             except Exception as exc:
                 logger.exception("Failed watchlist id=%s", row["watchlist_id"])
+                db.session.rollback()
                 send_admin_error_notification(
                     admin_email=admin_email,
                     user_email=str(row["user_email"]),
@@ -337,8 +366,6 @@ def run(limit: int, dry_run: bool, only_email: str | None, skip_empty: bool) -> 
                         error="An internal error occurred while processing this watchlist; the administrator has been notified.",
                     )
                 )
-    finally:
-        alerts_conn.close()
 
     sent_count = 0
     failed_count = 0

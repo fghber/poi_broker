@@ -68,6 +68,12 @@ or
 
 In the web browser, enter `http://127.0.0.1:5000/` to view the front-ent.
 
+### Watchlist digest (cron)
+
+Daily watchlist emails are sent by `tools/watchlist_digest.py`, which uses its own `tools/.env` (see `tools/.env.example`). That file is **not** the web app `.env`.
+
+The digest rebuilds each watchlist from stored `rules_json` through `create_app()`. It does **not** execute `sql_where` (that column is a display preview only). `create_app()` requires `SECRET_KEY`. If `tools/.env` omits it, the cron job used to crash before processing any watchlists. The script now sets a local CLI placeholder and logs a warning. Prefer copying the web app `SECRET_KEY` into `tools/.env`.
+
 In case the website isn't displayed: do a
 
 `cat app.log`
