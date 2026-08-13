@@ -45,6 +45,11 @@ You are an expert in Python, Flask, and SqlAlchemy development.
   - App and worker must share the same absolute HUEY_SQLITE_PATH. Default HUEY_BACKEND is memory (in-process); production is sqlite.
   - Do not add Redis, Celery, supervisord, or extra consumer processes for this feature.
 
+  Catalog list (GET /)
+  - Do not use Flask-SQLAlchemy paginate() on the catalog; it runs a joined COUNT(*) on every request.
+  - Use poi_broker.services.catalog_list (keyset for date-only sort, OFFSET+1 otherwise) and catalog_query for shared filters.
+  - Exact Rows only when cheap or via GET /api/catalog-count; do not COUNT unselective filters on the list request.
+
   Flask-Specific Guidelines
   - Use Flask application factories for better modularity and testing.
   - Organize routes using Flask Blueprints for better code organization.
