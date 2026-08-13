@@ -313,8 +313,15 @@ class Ztf(db.Model):
     # def dec(self):
     #     return shape.to_shape(self.location).y
 
-    # Relationship to Classification table
-    classification = db.relationship("Classification", foreign_keys="[Classification.alert_id]", primaryjoin="Ztf.alert_id==Classification.alert_id", uselist=False, viewonly=True)
+    # Relationship to Classification table. lazy="raise" fails fast instead of N+1.
+    classification = db.relationship(
+        "Classification",
+        foreign_keys="[Classification.alert_id]",
+        primaryjoin="Ztf.alert_id==Classification.alert_id",
+        uselist=False,
+        viewonly=True,
+        lazy="raise",
+    )
 
     def __str__(self):
         return self.ztf_object_id
