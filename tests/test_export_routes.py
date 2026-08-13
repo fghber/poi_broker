@@ -125,6 +125,32 @@ def test_export_submit_duplicate_active_task(auth_client, app, mock_export_task)
     assert "active export task" in response.get_json()["error"]
 
 
+def test_export_submit_enqueue_failure_marks_task_failed(auth_client, app, monkeypatch):
+    """Regression (#4): enqueue errors must fail the row, not leave it PENDING."""
+    import poi_broker.routes.export as export_routes
+
+    def _boom(**_kw):
+        raise RuntimeError("queue full")
+
+    monkeypatch.setattr(export_routes, "create_export_file", _boom)
+
+    response = auth_client.post("/export", json={"rules": VALID_RULES})
+    assert response.status_code == 500
+    assert response.get_json()["error"] == "Failed to start export task"
+
+    with app.app_context():
+        from poi_broker.models import ExportTask, User
+        user = User.query.filter_by(email="smoketest@example.com").first()
+        task = (
+            ExportTask.query.filter_by(user_id=user.id)
+            .order_by(ExportTask.id.desc())
+            .first()
+        )
+        assert task is not None
+        assert task.status == "FAILED"
+        assert task.error_message == "Failed to enqueue export task"
+
+
 def test_export_submit_race_insert_returns_409(auth_client, app):
     """Concurrent check-then-insert: the DB partial unique index wins, 409.
 

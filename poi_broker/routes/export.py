@@ -124,28 +124,21 @@ def export_submit():
     logger.info(f'Created ExportTask {export_task.id} for user {current_user.id}')
     
     # Enqueue the background task. If enqueueing raises after the row is
-    # committed, marking the task FAILED (rather than leaving it PENDING)
-    # frees the user's active-task slot immediately; the 5-minute stale reset
-    # only fixes it after EXPORT_STALE_MAX_AGE_SECONDS. We catch Exception and
-    # fail the task on the same session that created it.
+    # committed, mark the task FAILED so the user's active-task slot is freed
+    # immediately (the stale-task guard only fails PENDING rows after
+    # EXPORT_STALE_MAX_AGE_SECONDS). IntegrityError for a concurrent insert is
+    # already handled on the commit above.
     try:
         create_export_file(
             query_params=query_params,
             user_id=current_user.id,
             task_id=export_task.id
         )
-    except IntegrityError:
-        # Concurrent duplicate active-task insert: the DB index won on commit.
-        db.session.rollback()
-        return jsonify({
-            'error': 'You already have an active export task. Please wait for it to complete or download the file.'
-        }), 409
     except Exception:
         logger.exception(f'Failed to enqueue background task for ExportTask {export_task.id}')
-        if export_task.id is not None:
-            export_task.status = 'FAILED'
-            export_task.error_message = 'Failed to enqueue export task'
-            db.session.commit()
+        export_task.status = 'FAILED'
+        export_task.error_message = 'Failed to enqueue export task'
+        db.session.commit()
         return jsonify({'error': 'Failed to start export task'}), 500
     logger.info(f'Enqueued background task for ExportTask {export_task.id}')
     

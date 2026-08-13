@@ -107,7 +107,7 @@ def create_export_file(query_params: dict, user_id: int, task_id: int):
             db.session.commit()
             logger.info(f'ExportTask {task_id} completed successfully')
             
-        except Exception as e:
+        except Exception:
             logger.exception(f'ExportTask {task_id} failed with an error.')
             # Remove any partially-written CSV so failed exports don't leave
             # orphan files behind (cleanup_expired_exports only cleans SUCCESS).
@@ -117,7 +117,8 @@ def create_export_file(query_params: dict, user_id: int, task_id: int):
                 except OSError:
                     logger.warning(f'Could not remove partial export file {file_path}')
             export_task.status = 'FAILED'
-            export_task.error_message = str(e)
+            # Generic user-facing text: the real exception is already logged.
+            export_task.error_message = 'Export failed. Please try again.'
             export_task.updated_at = datetime.now(timezone.utc)
             try:
                 db.session.commit()
@@ -217,6 +218,9 @@ def prune_huey_results() -> int:
     Huey stores task results in the ``taskresult`` table and never prunes them
     by default, so ``huey.db`` grows over time. This flushes stored results
     (and any stale schedule entries) to bound the queue database size.
+
+    Safe because export status lives in ``ExportTask``, not Huey results.
+    Do not add tasks that call ``Result.get()`` without changing this prune.
 
     Returns:
         int: number of result rows flushed.
