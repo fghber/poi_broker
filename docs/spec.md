@@ -43,6 +43,7 @@ The **Point of Interest (POI) Community Broker** is a transient alert software (
 | Coverage policy | `tests/coverage.md` | Coverage targets | 50–75%/module, 75%+ total |
 | Repo map | `Repomap.md` | Module/route overview | |
 | README | `README.md` | Install/usage/ops guidance | Operational, not behavioral spec |
+| Huey ADR | `docs/async_export/adr_huey_sqlite.md` | Why Huey + SQLite for async export | Not Celery/Redis |
 
 > **Note:** No formal external spec document exists. All requirements below are **inferred from code** unless a test explicitly enforces them (marked accordingly).
 
@@ -79,13 +80,13 @@ The **Point of Interest (POI) Community Broker** is a transient alert software (
 | ID | Requirement | Value / Source |
 |---|---|---|
 | NFR-001 | Auth rate limiting | login 10/min, signup 5/hr, forgot-pw 5/hr, reset-pw 10/hr, change-pw 10/hr (`AUTH_RATE_LIMIT_*`) |
-| NFR-002 | Read rate limiting | `/`, `/query_crossmatches`, `/query_features` 30/min (LAX); `/download_alerts_csv` 15/min (MEDIUM) |
+| NFR-002 | Read rate limiting | `/`, `/api/catalog-count`, `/query_crossmatches`, `/query_features` 30/min (LAX); `/download_alerts_csv` 15/min (MEDIUM) |
 | NFR-003 | CSRF protection | Flask-WTF `CSRFProtect` on all POST forms; JSON 400 for `/api/*` |
 | NFR-004 | Security headers | HSTS (HTTPS), `nosniff`, `X-Frame-Options: DENY`, Referrer-Policy, Permissions-Policy, strict CSP |
 | NFR-005 | Cookie security | HttpOnly, Secure (prod), SameSite=Lax; remember cookie 14 days |
 | NFR-006 | Password hashing | Werkzeug `generate_password_hash`/`check_password_hash` |
 | NFR-007 | SQLite performance | WAL, `synchronous=NORMAL`, 64MB cache, 256MB mmap, `temp_store=MEMORY` |
-| NFR-008 | Caching | `lru_cache` on MJD formatting (8192) and builtin observatories (1); per-request `UserSettings` reuse |
+| NFR-008 | Caching | `lru_cache` on MJD formatting (8192) and builtin observatories (1); per-request `UserSettings` reuse; 5-min in-process cache for unfiltered catalog `COUNT(*)` |
 | NFR-009 | Coverage targets | 50–75% per module, 75%+ total (`tests/coverage.md`) |
 | NFR-010 | Proxy support | `ProxyFix` enabled in production (trust `X-Forwarded-*`) |
 
@@ -96,6 +97,12 @@ The main page (`start()`) loads an authenticated user's `UserSettings` row **onc
 - `poi_broker/user_settings.py` exposes `get_user_settings(user_id)` to load the row once.
 - `get_saved_feature_plot_columns()` and `get_saved_last_selected_observatory()` accept an optional pre-loaded `settings` row; when omitted they fall back to loading it themselves (backward compatible).
 - This is a **per-request** optimization only — there is no cross-request cache, so no invalidation is needed when a user updates their settings in the profile UI. Each request reads the current row from the database.
+
+Catalog listing (`GET /`) does **not** run Flask-SQLAlchemy `paginate()` / a joined `COUNT(*)` on every request:
+
+- Date-only sort uses keyset pagination (`before_*` / `after_*` / `last=1`); extra `sort__*` keys or a bare `?page=N` jump use `LIMIT+1` + `OFFSET`.
+- Exact **Rows** on the list request when the result is short, the catalog is unfiltered (cached `COUNT(*)` on `featuretable` only), or a high-cardinality equality filter is applied (`alert_id` full id, `locus_id`, `ztf_object_id`).
+- Unselective filters show **Rows: 100+** and a Count control that calls `GET /api/catalog-count` with the same filters.
 
 ---
 
@@ -128,12 +135,13 @@ Two SQLite databases via SQLAlchemy binds: **alerts** (default bind) and **users
 ### 5.1 Main Blueprint (`poi_broker/app.py`)
 | Method | Path | Auth | Request | Response | Errors |
 |---|---|---|---|---|---|
-| GET | `/` | Public | Query: `page`, `date`, `date_alert_mjd`, `alert_id`, `ztf_object_id`, `ant_passband`, `locus_id`, `locus_ra`, `locus_dec`, `magpsf`, `prob_class`, `sort__*` | HTML `main.html` (100 rows/page) | — |
+| GET | `/` | Public | Query: `page`, `last`, `before_*`/`after_*` cursors, `date`, `date_alert_mjd`, `alert_id`, `ztf_object_id`, `ant_passband`, `locus_id`, `locus_ra`, `locus_dec`, `magpsf`, `prob_class`, `sort__*` | HTML `main.html` (100 rows/page; hybrid keyset/OFFSET) | 404 empty OFFSET page |
 | GET | `/help` | Public | — | HTML `help.html` | — |
 | GET | `/contact` | Public | — | HTML `contact.html` | — |
 | GET | `/profile` | Login | — | HTML `profile.html` | — |
 | GET | `/download_alerts_csv` | Public | Query: `alert_id` (repeatable) | CSV | 400 missing, 404 no records, 500 error |
 | GET | `/query_crossmatches` | Public | Query: `locusId` | JSON array | 400 missing, 500 error |
+| GET | `/api/catalog-count` | Public | Same filter query params as `/` (sort/page ignored) | JSON `{count}` | — |
 
 ### 5.2 Auth Blueprint (`poi_broker/auth.py`)
 | Method | Path | Auth | Request | Response | Errors |
@@ -224,7 +232,7 @@ Two SQLite databases via SQLAlchemy binds: **alerts** (default bind) and **users
 Signup → email verification (SHA-256 token) → login (Flask-Login) → authenticated browsing. Password reset via emailed token (1h expiry). Change password requires current password. Role-based access via `role_required`.
 
 ### 6.2 Browse & Filter Alerts
-`GET /` builds a `Ztf` query with optional filters (date/MJD, alert_id prefix/full, object_id, passband, locus_id, RA/Dec ranges, magnitude, prob_class) and multiple sort keys. Uses `SearchService` + `FilterService`. Paginated 100/page.
+`GET /` builds a `Ztf` query with optional filters (date/MJD, alert_id prefix/full, object_id, passband, locus_id, RA/Dec ranges, magnitude, prob_class) and multiple sort keys. Uses `catalog_query` + `SearchService` + `FilterService`. Hybrid pagination 100/page (keyset for date-only sort; OFFSET+1 otherwise). Exact row counts when cheap; otherwise `GET /api/catalog-count` on demand.
 
 ### 6.3 Visual Query → Watchlist
 `GET /visual_query` → QueryBuilder UI → `POST /api/preview-query` (SQL preview) → `POST /api/export-query` (match count) → `POST /api/watchlist` (save rules + generated SQL). Uses `QueryService` + `querybuilder_translator.py`.
@@ -256,7 +264,7 @@ CRUD custom observatories (auto timezone via `TimezoneFinder`); last selection p
 | Feature | Spec Requirement(s) | Primary Module(s) |
 |---|---|---|
 | Auth/account | REQ-001..006 | `poi_broker/auth.py` |
-| Alert browsing/filtering | REQ-007 | `poi_broker/app.py`, `services/search_service.py`, `services/filter_service.py` |
+| Alert browsing/filtering | REQ-007 | `poi_broker/app.py`, `services/catalog_query.py`, `services/catalog_list.py`, `services/search_service.py`, `services/filter_service.py` |
 | CSV download | REQ-008 | `poi_broker/app.py` |
 | Crossmatch query | REQ-009 | `poi_broker/app.py` |
 | Visual query / watchlists | REQ-010, REQ-011 | `routes/visual_query.py`, `services/query_service.py`, `querybuilder_translator.py` |
@@ -276,7 +284,7 @@ CRUD custom observatories (auto timezone via `TimezoneFinder`); last selection p
 | Spec Requirement | Code (route/function) | Test |
 |---|---|---|
 | REQ-001..006 | `auth.py` (login/signup/verify/logout/forgot/reset/change) | `tests/test_auth.py` |
-| REQ-007 | `app.py` `start()` + `SearchService`/`FilterService` | `tests/test_app.py`, `test_alert_id_filter.py`, `test_dec_filter.py`, `test_ant_passband_filter.py` |
+| REQ-007 | `app.py` `start()` + `catalog_query`/`catalog_list` + `SearchService`/`FilterService` | `tests/test_catalog_list.py`, `tests/test_app.py`, `test_alert_id_filter.py`, `test_dec_filter.py`, `test_ant_passband_filter.py` |
 | REQ-008 | `app.py` `/download_alerts_csv` | `tests/test_app.py` |
 | REQ-009 | `app.py` `/query_crossmatches` | `tests/test_app.py` |
 | REQ-010, 011 | `routes/visual_query.py` + `QueryService` | `tests/test_visual_query*.py` |

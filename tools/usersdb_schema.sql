@@ -74,8 +74,6 @@ CREATE TABLE
         UNIQUE (user_id)
 	);
 
----
---ALTER TABLE user_settings ADD COLUMN last_selected_observatory_json TEXT;
 
 CREATE TABLE
     user_observatory (

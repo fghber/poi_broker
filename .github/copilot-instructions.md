@@ -13,8 +13,9 @@ When proposing changes, refer to this structure:
 - `poi_broker/__init__.py`: App factory, extension init, SQLite pragmas, blueprint registration. Read this first for app context.
 - `poi_broker/settings.py`: Environment loading and DB binds.
 - `poi_broker/models.py`: SQLAlchemy ORM. (Alerts: `Ztf`, `Crossmatches`, `Classification`. Users: `User`, `Favorite`, `Watchlist`, etc.).
-- `poi_broker/routes/`: API blueprints (`favorites.py`, `visual_query.py`, `lightcurve.py`, etc.).
+- `poi_broker/routes/`: API blueprints (`favorites.py`, `visual_query.py`, `lightcurve.py`, `export.py`, etc.).
 - `poi_broker/services/`: Business logic (`querybuilder_translator.py`, feature fetching, plotting).
+- **Async CSV export:** Huey + SQLite, not Celery/Redis. ADR: `docs/async_export/adr_huey_sqlite.md`. Consumer must target `poi_broker.worker.huey` (not `extensions.huey`). Config: `huey_config.py`, tasks: `tasks.py`.
 - `poi_broker/templates/`: Jinja2 templates.
 - `tests/`: Pytest suite (use `conftest.py` for fixtures).
 

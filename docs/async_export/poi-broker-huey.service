@@ -1,18 +1,17 @@
 # systemd service unit for the POI Broker Huey worker.
 #
-# Install:
-#   1. Place this file at /etc/systemd/system/poi-broker-huey.service
-#   2. Create an EnvironmentFile (see /etc/poi-broker/huey.env) with the app's
-#      environment variables, e.g.:
-#          SECRET_KEY=...
-#          ALERTS_DB_PATH=...
-#          USERS_DB_PATH=...
-#          HUEY_BACKEND=sqlite
-#          HUEY_SQLITE_PATH=/var/lib/poi_broker/huey.db
-#          HUEY_THREADS=2
-#          HUEY_LOGFILE=/var/log/poi_broker/huey.log
+# This is the only new process for the async export feature. Edit User,
+# Group, WorkingDirectory, EnvironmentFile, ExecStart, and ReadWritePaths
+# to match the existing web app (same user, same venv, same data dirs).
+#
+# Install: see docs/async_export/ubuntu_add_worker.md
+#   1. Copy to /etc/systemd/system/poi-broker-huey.service
+#   2. Create the EnvironmentFile
 #   3. sudo systemctl daemon-reload
 #   4. sudo systemctl enable --now poi-broker-huey
+#
+# Restart=always is the stall protection: if the consumer exits, systemd
+# starts it again.
 #
 # NOTE: point the consumer at poi_broker.worker.huey (not
 # poi_broker.extensions.huey) so tasks are registered on the shared Huey instance.
@@ -20,7 +19,6 @@
 [Unit]
 Description=POI Broker Huey task consumer
 After=network.target
-Wants=poi-broker-web.service
 
 [Service]
 Type=simple

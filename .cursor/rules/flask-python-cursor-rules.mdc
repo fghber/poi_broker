@@ -37,6 +37,13 @@ You are an expert in Python, Flask, and SqlAlchemy development.
   - Flask-Login (for user authentication)
   - Flask-WTF (for CSRF Form protection)
   - Flask-Limiter (for rate-limiting)
+  - Huey with SQLite backend (async CSV export; not Celery/Redis — see docs/async_export/adr_huey_sqlite.md)
+
+  Async export (Huey)
+  - Consumer entrypoint is poi_broker.worker.huey, never poi_broker.extensions.huey.
+  - Start the consumer with python -m huey.bin.huey_consumer (not the huey_consumer console script as an import).
+  - App and worker must share the same absolute HUEY_SQLITE_PATH. Default HUEY_BACKEND is memory (in-process); production is sqlite.
+  - Do not add Redis, Celery, supervisord, or extra consumer processes for this feature.
 
   Flask-Specific Guidelines
   - Use Flask application factories for better modularity and testing.
