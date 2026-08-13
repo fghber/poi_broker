@@ -9,6 +9,20 @@ from . import db
 
 class Ztf(db.Model):
     __tablename__ = 'featuretable'
+    # Composite PK leftmost prefix is date_alert_mjd; equality on alert_id /
+    # locus_id (and homepage filters/sorts) cannot use it. Names match
+    # tools/alertsdb_schema.sql so CREATE INDEX IF NOT EXISTS is a no-op on
+    # DBs that already have the out-of-band indexes from db_perf_check.py.
+    __table_args__ = (
+        db.Index('idx_featuretable_alert_id', 'alert_id'),
+        db.Index('idx_featuretable_locus_id', 'locus_id'),
+        db.Index('idx_featuretable_ztf_object_id', 'ztf_object_id'),
+        db.Index('idx_featuretable_ant_passband', 'ant_passband'),
+        db.Index('idx_featuretable_locus_ra', 'locus_ra'),
+        db.Index('idx_featuretable_locus_dec', 'locus_dec'),
+        db.Index('idx_featuretable_ant_mag_corrected', 'ant_mag_corrected'),
+        db.Index('idx_featuretable_date_alert_mjd', 'date_alert_mjd'),
+    )
     #id = db.Column(db.Integer, primary_key=True)
     date_log = db.Column(db.String)
     date_alert_mjd = db.Column(db.Float, primary_key=True)
@@ -307,6 +321,9 @@ class Ztf(db.Model):
 
 class Crossmatches(db.Model):
     __tablename__ = 'crossmatches'
+    __table_args__ = (
+        db.Index('idx_crossmatches_locus_id', 'locus_id'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     locus_id = db.Column(db.String)
     catalog = db.Column(db.String)
@@ -318,6 +335,9 @@ class Crossmatches(db.Model):
 
 class Classification(db.Model):
     __tablename__ = 'classification'
+    __table_args__ = (
+        db.Index('idx_classification_prob_class', 'prob_class'),
+    )
 
     alert_id = db.Column(db.String, primary_key=True)
     p_cvnova = db.Column(db.Float)

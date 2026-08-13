@@ -284,14 +284,14 @@ CREATE TABLE
         harmonics_chi_per_degree_i real,
         PRIMARY KEY (alert_id, locus_id, date_alert_mjd)
     );
-CREATE INDEX idx_featuretable_date_alert_mjd ON featuretable (date_alert_mjd);
-CREATE INDEX idx_featuretable_alert_id ON featuretable (alert_id);
-CREATE INDEX idx_featuretable_ztf_object_id ON featuretable (ztf_object_id);
-CREATE INDEX idx_featuretable_locus_id ON featuretable (locus_id);
-CREATE INDEX idx_featuretable_ant_passband ON featuretable (ant_passband);
-CREATE INDEX idx_featuretable_locus_ra ON featuretable (locus_ra);
-CREATE INDEX idx_featuretable_locus_dec ON featuretable (locus_dec);
-CREATE INDEX idx_featuretable_ant_mag_corrected ON featuretable (ant_mag_corrected);
+CREATE INDEX IF NOT EXISTS idx_featuretable_date_alert_mjd ON featuretable (date_alert_mjd);
+CREATE INDEX IF NOT EXISTS idx_featuretable_alert_id ON featuretable (alert_id);
+CREATE INDEX IF NOT EXISTS idx_featuretable_ztf_object_id ON featuretable (ztf_object_id);
+CREATE INDEX IF NOT EXISTS idx_featuretable_locus_id ON featuretable (locus_id);
+CREATE INDEX IF NOT EXISTS idx_featuretable_ant_passband ON featuretable (ant_passband);
+CREATE INDEX IF NOT EXISTS idx_featuretable_locus_ra ON featuretable (locus_ra);
+CREATE INDEX IF NOT EXISTS idx_featuretable_locus_dec ON featuretable (locus_dec);
+CREATE INDEX IF NOT EXISTS idx_featuretable_ant_mag_corrected ON featuretable (ant_mag_corrected);
 
 CREATE TABLE
     crossmatches (
@@ -303,6 +303,7 @@ CREATE TABLE
         dec_cat real,
         separation real
     );
+CREATE INDEX IF NOT EXISTS idx_crossmatches_locus_id ON crossmatches (locus_id);
 
 CREATE TABLE
     classification (
@@ -317,5 +318,5 @@ CREATE TABLE
         p_yso real,
         prob_class string
     );
-CREATE INDEX idx_classification_alert_id ON classification (alert_id);
-CREATE INDEX idx_classification_prob_class ON classification (prob_class);
+CREATE INDEX IF NOT EXISTS idx_classification_alert_id ON classification (alert_id);
+CREATE INDEX IF NOT EXISTS idx_classification_prob_class ON classification (prob_class);
