@@ -59,21 +59,25 @@
       <div class="responsive">
         <div class="row">
         <div class="col-md-4 mt-2">
-          <div class="justify-content-start">&nbsp;<b>Rows:</b> {{total_queries}}</div> 
+          <div class="justify-content-start" id="catalog-rows-label">&nbsp;<b>Rows:</b>
+            {% if total_queries is not none %}
+            <span id="catalog-rows-value">{{ total_queries }}</span>
+            {% else %}
+            <span id="catalog-rows-value">{{ page_size }}+</span>
+            <button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="btn-catalog-count"
+                    data-count-url="/api/catalog-count{% if filter_query_string %}?{{ filter_query_string }}{% endif %}"
+                    data-query-string="{{ query_string }}"
+                    data-page-size="{{ page_size }}">Count</button>
+            {% endif %}
+          </div>
         </div> 
         <div class="col-md-4">
         <div class="justify-content-center">
           <p>
-          <!-- ? TODO: Pagination: arg_str not implemented {{ arg_str }}& -->
-          <!-- e.g. ?sort_value=date_alert_mjd&sort_order=desc&ztf_object_id=&alert_id=&time__gt=2021-02-28&time__lt=&time__since=&jd__gt=&jd__lt=&filter=&cone=&objectcone=&objectidps=&ra__gt=&ra__lt=&dec__gt=&dec__lt=&l__gt=&l__lt=&b__gt=&b__lt=&magpsf__gte=&magpsf__lte=&sigmapsf__lte=&magap__gte=&magap__lte=&distnr__gte=&distnr__lte=&deltamaglatest__gte=&deltamaglatest__lte=&deltamagref__gte=&deltamagref__lte=&elong__lte=&nbad__lte=&rb__gte=&drb__gte=&classtar__gte=&classtar__lte=&fwhm__lte= -->
-          <!-- <div class="col"> -->
-          <!-- Buttons are disabled via CSS based on page no. and has_next -->
-          <a href="/?{{ query_string }}&page=1" class="btn btn-primary {% if page == 1 %}disabled{% endif %}"><i class="fa fa-step-backward" aria-hidden="true"></i> First</a>
-          <a href="/?{{ query_string }}&page={{ page - 1 }}" class="btn btn-primary {% if page == 1 %}disabled{% endif %}"><i class="fa fa-caret-left fa-lg" title="Filter" aria-label="Previous"></i> Prev</a>
-          <a href="/?{{ query_string }}&page={{ page + 1 }}" class="btn btn-primary {% if has_next == False %}disabled{% endif %}">Next <i class="fa fa-caret-right fa-lg" title="Next" aria-label="Next"></i></a>  
-          <a href="/?{{ query_string }}&page={{ last_page }}" class="btn btn-primary {% if has_next == False %}disabled{% endif %}">Last <i class="fa fa-step-forward" aria-hidden="true"></i></a>
-          <!-- </div>
-          <div class="col-md-4">&nbsp;xxxxxx</div> -->
+          <a href="{{ first_href }}" class="btn btn-primary {% if not has_prev %}disabled{% endif %}"><i class="fa fa-step-backward" aria-hidden="true"></i> First</a>
+          <a href="{{ prev_href or '#' }}" class="btn btn-primary {% if not has_prev %}disabled{% endif %}"><i class="fa fa-caret-left fa-lg" title="Previous" aria-label="Previous"></i> Prev</a>
+          <a href="{{ next_href or '#' }}" class="btn btn-primary {% if not has_next %}disabled{% endif %}">Next <i class="fa fa-caret-right fa-lg" title="Next" aria-label="Next"></i></a>
+          <a href="{{ last_href or '#' }}" id="catalog-last-btn" class="btn btn-primary {% if not has_next %}disabled{% endif %} {% if hide_last %}d-none{% endif %}">Last <i class="fa fa-step-forward" aria-hidden="true"></i></a>
           </p>
         </div>
         </div>
@@ -1661,13 +1665,15 @@
 
         if ('URLSearchParams' in window) {
             var searchParams = new URLSearchParams(window.location.search);
-            //first, clear all sort__ URL params
+            //first, clear all sort__ URL params and pagination cursors
+            var keysToDelete = [];
             searchParams.forEach(function(value, key) {
-              console.log(key, value);
-              if(key.startsWith("sort__")) {
-                searchParams.delete(key);
+              if (key.startsWith("sort__") || key === "page" || key === "last"
+                  || key.startsWith("before_") || key.startsWith("after_")) {
+                keysToDelete.push(key);
               }
             });
+            keysToDelete.forEach(function(key) { searchParams.delete(key); });
 
           if (desc || (!asc && !desc)) {
             $this.addClass('asc');
@@ -1682,6 +1688,46 @@
           }
         }
       });
+
+      var $countBtn = $('#btn-catalog-count');
+      if ($countBtn.length) {
+        $countBtn.on('click', function () {
+          var $btn = $(this);
+          if ($btn.prop('disabled')) {
+            return;
+          }
+          $btn.prop('disabled', true).text('Counting…');
+          fetch($btn.attr('data-count-url'), { credentials: 'same-origin' })
+            .then(function (response) {
+              if (!response.ok) {
+                throw new Error('count failed');
+              }
+              return response.json();
+            })
+            .then(function (data) {
+              var count = Number(data.count);
+              if (!Number.isFinite(count)) {
+                throw new Error('invalid count');
+              }
+              var valueEl = document.getElementById('catalog-rows-value');
+              if (valueEl) {
+                valueEl.textContent = String(count);
+              }
+              var lastBtn = document.getElementById('catalog-last-btn');
+              if (lastBtn && lastBtn.classList.contains('d-none')) {
+                var pageSize = Number($btn.attr('data-page-size')) || 100;
+                var lastPage = Math.max(1, Math.ceil(count / pageSize));
+                var queryString = $btn.attr('data-query-string') || '';
+                lastBtn.href = queryString ? ('/?' + queryString + '&page=' + lastPage) : ('/?page=' + lastPage);
+                lastBtn.classList.remove('d-none', 'disabled');
+              }
+              $btn.remove();
+            })
+            .catch(function () {
+              $btn.prop('disabled', false).text('Count');
+            });
+        });
+      }
 
       //adhere to sort order provided in URL params
       if ('URLSearchParams' in window) {

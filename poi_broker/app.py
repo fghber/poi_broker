@@ -8,14 +8,28 @@ import io
 from datetime import datetime, timezone
 from astropy.time import Time
 from astropy.coordinates import EarthLocation
-import re
 import json
 
 from .helpers import safe_serialize, result_to_dict, object_as_dict
 
-from .services.input_parser import ParseResult
-from .services.filter_service import FilterService
-from .services.search_service import SearchService
+from .services.catalog_query import (
+    build_catalog_query,
+    catalog_filter_query_string,
+    catalog_href,
+    catalog_query_string,
+    project_catalog_columns,
+)
+from .services.catalog_list import (
+    PAGE_SIZE,
+    count_matches,
+    cursor_from_row,
+    fetch_keyset,
+    fetch_page,
+    last_page_from_total,
+    parse_keyset_request,
+    resolve_catalog_total,
+    should_use_keyset,
+)
 
 from . import db, limiter
 from .models import Ztf, Crossmatches, User, Favorite, FavoriteGroup, Watchlist, Classification, UserObservatory
@@ -27,8 +41,6 @@ bokeh_version = version("bokeh")
 
 logger = logging.getLogger(__name__)
 main_blueprint = Blueprint('main', __name__)
-
-search_service = SearchService()
 
 @lru_cache(maxsize=8192)
 def _format_mjd_cached(mjd_value: float) -> str:
@@ -139,144 +151,54 @@ def _build_observatory_context(settings_row: UserSettings | None = None) -> dict
 @limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
 def start():
     logger.info('Request with request_args: %s', json.dumps(request.args))
-    
+
     page = request.args.get('page', 1, type=int)
-    filter_warning_message = ''
+    if page is None or page < 1:
+        abort(404)
 
-    query = db.session.query(Ztf).outerjoin(Classification, Ztf.alert_id == Classification.alert_id)
+    build = build_catalog_query(request.args)
+    list_query = project_catalog_columns(build.list_query)
+    use_keyset = should_use_keyset(build.is_date_only_sort, request.args)
+    keyset_direction = 'first'
 
-    if date_text := request.args.get('date'):
-        parsed_date = search_service.parse_mjd_input(date_text)
-        if parsed_date.values:
-            query = search_service.apply_mjd_filter(query, Ztf.date_alert_mjd, parsed_date)
-        else:
-            filter_warning_message += 'Date filter cannot be applied - Enter a valid ISO-date or 8-digit integer date of the form yyyymmdd, e.g. "20201207", or a range, e.g., "20201207 20201209".'
-        
-    if mjd_text := request.args.get('date_alert_mjd'):
-        parsed = search_service.parse_float_input(mjd_text)
-        if parsed and parsed.values: 
-            query = search_service.apply_float_filter(query, Ztf.date_alert_mjd, parsed)
-        else:
-            filter_warning_message += 'MJD filter cannot be applied - Enter a valid Modified Julian Date as a number, e.g. "59190.12", a range, e.g. "59190 59191", or a bound with > or <, e.g. ">59190".'
-
-    if request.args.get('alert_id'):
-        alertId = request.args.get('alert_id', '').strip()
-        if re.match(r'^(?:ztf_candidate|lsst):\d{18,}$', alertId): # if it contains 18+ digits, we got a complete alert_id and can query it directly.
-            query = query.filter(Ztf.alert_id == alertId)
-        elif re.match(r'^(?:ztf|lsst)\D*$', alertId): # otherwise, we allow for partial matching of alert_id to find alerts with a specific prefix, e.g. ztf / lsst
-            search = "{}%".format(alertId)
-            query = query.filter(Ztf.alert_id.like(search))
-        elif alertId != '':
-            filter_warning_message += 'Alert ID cannot be filter by partial IDs - Enter a full alert ID, e.g. "ztf_candidate:335155568501", or "lsst:170094456539709554", or just the catalog prefix, e.g. "ztf" or "lsst".'
-
-    if objectId_text := request.args.get('ztf_object_id'):
-        query = query.filter(Ztf.ztf_object_id == objectId_text.strip())        
-
-    if passband_text := request.args.get('ant_passband'):
-        if passband_text in ['g', 'R', 'i']: # g, R, i (v0: 1:g, 2:r, 3:i)
-            query = query.filter(Ztf.ant_passband == passband_text)
-        else:
-            filter_warning_message += 'Passband filter cannot be applied - Enter a valid passband, e.g., "g", "R", or "i".'
-
-    if locusId_text := request.args.get('locus_id'):
-        query = query.filter(Ztf.locus_id == locusId_text.strip())
-
-    if ra_text := request.args.get('locus_ra'):
-        parsed = search_service.parse_float_input(ra_text, allowed_range=(0.0, 360.0))
-        if parsed and parsed.values:
-            query = search_service.apply_float_filter(query, Ztf.locus_ra, parsed, decimals=5)
-        else:
-            filter_warning_message += 'Ra filter cannot be applied - Enter a valid number within the range 0° to 360°, e.g., "118.61421", or range, e.g., "80 90".'
-
-    if dec_text := request.args.get('locus_dec'):
-        parsed = search_service.parse_float_input(dec_text, allowed_range=(-90.0, 90.0))
-        if parsed and parsed.values:
-            query = search_service.apply_float_filter(query, Ztf.locus_dec, parsed, decimals=5)
-        else:
-            filter_warning_message += 'Dec filter cannot be applied - Enter a valid number within the range -90° to +90°, e.g., "-20.12345", or range, e.g., "14.5 29".'
-
-    if mag_text := request.args.get('magpsf'):
-        parsed = search_service.parse_float_input(mag_text)
-        if parsed and parsed.values:
-            query = search_service.apply_float_filter(query, Ztf.ant_mag_corrected, parsed, decimals=3)
-        else:
-            filter_warning_message += 'ant_mag_corrected filter cannot be applied - Enter a valid number, e.g., "18.84", or range, e.g., "18.8 19.4".'
-    
-    if request.args.get('prob_class'):
-        prob_class_value = request.args.get('prob_class', '').strip()
-        valid_prob_classes = ['cvnova', 'e', 'lpv', 'puls', 'periodic_other', 'quas', 'sn', 'yso']
-        if prob_class_value and prob_class_value in valid_prob_classes:
-            query = query.filter(Classification.prob_class == prob_class_value)
-        elif prob_class_value and prob_class_value.strip():  # Warn if non-empty but not in valid options
-            filter_warning_message += f'Classification filter cannot be applied - Enter a valid classification label, e.g. "sn". Valid options are: {", ".join(valid_prob_classes)}.'
-
-    #Sort order by date (still sorts by mjd column)
-    if request.args.get('sort__date'):
-        sort__date_order = request.args.get('sort__date')
-        if sort__date_order == 'desc':
-            query = query.order_by(Ztf.date_alert_mjd.desc())
-        if sort__date_order == 'asc':
-            query = query.order_by(Ztf.date_alert_mjd.asc())
+    if use_keyset:
+        keyset_direction, cursor = parse_keyset_request(request.args)
+        items, has_next, has_prev = fetch_keyset(
+            list_query,
+            cursor=cursor,
+            direction=keyset_direction,
+            sort_desc=build.date_sort_desc,
+            page_size=PAGE_SIZE,
+        )
     else:
-        query = query.order_by(Ztf.date_alert_mjd.desc()) #default sort order
+        items, has_next = fetch_page(list_query, page, page_size=PAGE_SIZE)
+        if page > 1 and not items:
+            abort(404)
+        has_prev = page > 1
 
-    # Sort order by alert_id
-    sort__alert_order = request.args.get('sort__alert_id')
-    if sort__alert_order:
-        if sort__alert_order == 'desc':
-            query = query.order_by(Ztf.alert_id.desc())
-        if sort__alert_order == 'asc':
-            query = query.order_by(Ztf.alert_id.asc())
-    
-    # Sort order by ztf_object_id
-    sort__object_order = request.args.get('sort__ztf_object_id')
-    if sort__object_order:
-        if sort__object_order == 'desc':
-            query = query.order_by(Ztf.ztf_object_id.desc())
-        if sort__object_order == 'asc':
-            query = query.order_by(Ztf.ztf_object_id.asc())
-
-    # Sort order by locus_ra
-    sort__ra_order = request.args.get('sort__locus_ra')
-    if sort__ra_order:
-        if sort__ra_order == 'desc':
-            query = query.order_by(Ztf.locus_ra.desc())
-        if sort__ra_order == 'asc':
-            query = query.order_by(Ztf.locus_ra.asc())
-
-    # Sort order by locus_dec
-    sort__dec_order = request.args.get('sort__locus_dec')
-    if sort__dec_order:
-        if sort__dec_order == 'desc':
-            query = query.order_by(Ztf.locus_dec.desc())
-        if sort__dec_order == 'asc':
-            query = query.order_by(Ztf.locus_dec.asc())
-
-    # Sort order by ant_mag_corrected
-    sort__mag_order = request.args.get('sort__ant_mag_corrected')
-    if sort__mag_order:
-        if sort__mag_order == 'desc':
-            query = query.order_by(Ztf.ant_mag_corrected.desc())
-        if sort__mag_order == 'asc':
-            query = query.order_by(Ztf.ant_mag_corrected.asc())
-
-    # Project the classification label directly to avoid per-row lazy loads.
-    query = query.with_entities(
-        Ztf.date_alert_mjd,
-        Ztf.alert_id,
-        Ztf.ztf_object_id,
-        Ztf.ant_passband,
-        Ztf.locus_id,
-        Ztf.locus_ra,
-        Ztf.locus_dec,
-        Ztf.ant_mag_corrected,
-        Classification.prob_class.label('prob_class'),
+    total_queries, count_deferred = resolve_catalog_total(
+        build,
+        items=items,
+        has_next=has_next,
+        page=page,
+        use_keyset=use_keyset,
+        keyset_direction=keyset_direction,
     )
+    last_page = last_page_from_total(total_queries) if total_queries is not None else None
 
-    #latest = db.session.query(Ztf).order_by(Ztf.date_alert_mjd.desc()).first() # ? IDEA: show latest update date
-    #print(f'Latest alert in DB has date_log={latest.date_log} (UTC {Time(latest.date_alert_mjd, format="mjd").iso})') #DEBUG: print latest alert date in MJD and UTC for debugging
-    #print(query.statement.compile(compile_kwargs={"literal_binds": True})) #DEBUG: print the resulting SQL query
-    paginator = query.paginate(page=page, per_page=100, error_out=True)
+    query_string = catalog_query_string(request.args)
+    filter_query_string = catalog_filter_query_string(request.args)
+    first_href = catalog_href(query_string)
+    if use_keyset:
+        prev_href = catalog_href(query_string, cursor_from_row(items[0]).as_after_params()) if items and has_prev else None
+        next_href = catalog_href(query_string, cursor_from_row(items[-1]).as_before_params()) if items and has_next else None
+        last_href = catalog_href(query_string, {'last': '1'}) if has_next else None
+    else:
+        prev_href = catalog_href(query_string, {'page': str(page - 1)}) if has_prev else None
+        next_href = catalog_href(query_string, {'page': str(page + 1)}) if has_next else None
+        last_href = catalog_href(query_string, {'page': str(last_page)}) if last_page and has_next else None
+
+    hide_last = bool(has_next and last_href is None)
 
     # Load the user's settings row once and reuse it across lookups to avoid
     # redundant DB queries on every authenticated main-page request.
@@ -285,24 +207,40 @@ def start():
 
     return render_template(
         "main.html",
-        total_queries=paginator.total,
-        table=paginator.items,
-        page=paginator.page,
-        has_next=paginator.has_next,
-        last_page=paginator.pages,
-        # ? TODO Pagination query-string re.sub may leave a trailing & in edge cases. TEST
-        query_string=re.sub('[&?]?page=\\d+|&$', '', request.query_string.decode('utf-8')), # b'' binary string 
-        filter_warning = filter_warning_message,
+        total_queries=total_queries,
+        count_deferred=count_deferred,
+        table=items,
+        page=page,
+        has_next=has_next,
+        has_prev=has_prev,
+        last_page=last_page,
+        query_string=query_string,
+        filter_query_string=filter_query_string,
+        first_href=first_href,
+        prev_href=prev_href,
+        next_href=next_href,
+        last_href=last_href,
+        hide_last=hide_last,
+        page_size=PAGE_SIZE,
+        filter_warning=build.filter_warning,
         custom_observatory_options=observatory_context['custom_options'],
         builtin_observatory_options=observatory_context['builtin_options'],
         selected_observatory_value=observatory_context['selected_value'],
-        today_utc = datetime.now(timezone.utc).date(),
-        bokeh_version = bokeh_version,
-        available_feature_columns = FEATURE_COLUMNS,
+        today_utc=datetime.now(timezone.utc).date(),
+        bokeh_version=bokeh_version,
+        available_feature_columns=FEATURE_COLUMNS,
         default_feature_plot_columns=(get_saved_feature_plot_columns(current_user.id, settings_row)
                                       if current_user.is_authenticated
                                       else default_feature_plot_columns()),
     )
+
+
+@main_blueprint.route('/api/catalog-count', methods=['GET'])
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
+def catalog_count():
+    """Exact match count for the current main-page filters (on demand)."""
+    build = build_catalog_query(request.args, include_sort=False)
+    return jsonify({'count': count_matches(build.count_query)})
 
 @main_blueprint.route('/help', methods=['GET'])
 def help():
