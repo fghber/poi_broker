@@ -189,7 +189,8 @@ def export_download(task_id: int):
         return send_file(
             export_task.file_path,
             as_attachment=True,
-            download_name=f'export_{task_id}.csv'
+            download_name=f'export_{task_id}.csv',
+            mimetype='text/csv',
         )
     except Exception as e:
         logger.exception(f'Failed to serve export file {export_task.file_path}: {e.__class__.__name__}')
