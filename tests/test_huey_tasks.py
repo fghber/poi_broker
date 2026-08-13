@@ -305,9 +305,9 @@ def test_create_export_file_cleans_partial_file_on_failure(app, monkeypatch):
     """Regression (#5): a mid-write failure removes the partial CSV file and
     marks the ExportTask FAILED instead of leaving an orphan file on disk.
 
-    We make build_query_from_rules succeed but the row iteration raise, so the
-    file has been opened (header written) before the exception — exactly the
-    "disk full / row serialization" scenario. The task's error handler must
+    We make build_export_query_from_rules succeed but the row iteration raise,
+    so the file has been opened (header written) before the exception — exactly
+    the "disk full / row serialization" scenario. The task's error handler must
     unlink the partial file.
     """
     from pathlib import Path
@@ -340,8 +340,8 @@ def test_create_export_file_cleans_partial_file_on_failure(app, monkeypatch):
 
     monkeypatch.setattr(tasks_mod.db, 'session', _StubSession())
 
-    # build_query_from_rules succeeds, but iterating the result raises inside
-    # the CSV-write loop (after the file is opened and the header written).
+    # build_export_query_from_rules succeeds, but iterating the result raises
+    # inside the CSV-write loop (after the file is opened and the header written).
     def _boom_iter():
         raise RuntimeError('simulated write failure')
         yield  # pragma: no cover -- makes this a generator so iteration raises
@@ -353,7 +353,7 @@ def test_create_export_file_cleans_partial_file_on_failure(app, monkeypatch):
     def _fake_build(*_a, **_kw):
         return _BoomQuery(), 'fake where'
 
-    monkeypatch.setattr(tasks_mod, 'build_query_from_rules', _fake_build)
+    monkeypatch.setattr(tasks_mod, 'build_export_query_from_rules', _fake_build)
     # The task builds its own app via create_app(); use the fixture app so the
     # patched session_factory applies inside the task's new app context.
     monkeypatch.setattr(tasks_mod, 'create_app', lambda: app)

@@ -14,8 +14,9 @@ from . import create_app, db
 from .extensions import huey
 from .models import ExportTask
 from .services.query_service import (
+    EXPORT_YIELD_PER,
+    build_export_query_from_rules,
     build_export_row,
-    build_query_from_rules,
     get_export_columns,
 )
 
@@ -70,8 +71,8 @@ def create_export_file(query_params: dict, user_id: int, task_id: int):
             db.session.commit()
             logger.info(f'ExportTask {task_id} set to RUNNING')
             
-            # Build and execute query
-            filtered_query, where_clause = build_query_from_rules(query_params)
+            # Build and execute query (Core columns, not ORM entities).
+            export_query, where_clause = build_export_query_from_rules(query_params)
             logger.info(f'ExportTask {task_id} query: {where_clause}')
             
             # Create exports directory in instance path
@@ -91,11 +92,12 @@ def create_export_file(query_params: dict, user_id: int, task_id: int):
                 writer = csv.DictWriter(csvfile, fieldnames=all_columns)
                 writer.writeheader()
 
-                # Stream in batches instead of .all(): keeps memory bounded for
-                # large exports (the Python sqlite3 driver still buffers the raw
-                # DBAPI rows, but ORM objects are created/de-allocated per batch).
-                for ztf_row, classification_row in filtered_query.yield_per(1000):
-                    writer.writerow(build_export_row(ztf_row, classification_row))
+                # Stream in batches instead of .all(): keeps ORM-less Row
+                # construction bounded. The Python sqlite3 driver still buffers
+                # the raw DBAPI result; yield_per does not make SQLite a true
+                # server-side cursor.
+                for row in export_query.yield_per(EXPORT_YIELD_PER):
+                    writer.writerow(build_export_row(row))
                     row_count += 1
             
             logger.info(f'CSV file created at {file_path} with {row_count} rows')

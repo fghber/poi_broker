@@ -1,7 +1,12 @@
 """Query building and execution service for visual query builder."""
+from __future__ import annotations
+
 import logging
+from typing import Any
 
 from sqlalchemy.dialects import sqlite as _sqlite_dialect
+from sqlalchemy.engine import Row
+from sqlalchemy.orm import Query
 
 from .. import db
 from ..models import Classification, Ztf
@@ -14,12 +19,22 @@ logger = logging.getLogger(__name__)
 # export, so it lives once here as the authoritative list.
 ZTF_COLUMNS = [col.name for col in Ztf.__table__.columns] # type: ignore
 
-# Classification columns surfaced in the bulk export. Data for these is pulled
-# off a joined Classification row (which the query returns as the second element).
+# Classification columns surfaced in the bulk export CSV header.
 CLASSIFICATION_COLUMNS = ['classification_alert_id', 'classification_prob_class']
 
+# Core column projection for bulk CSV export. Selecting columns (not entities)
+# skips ORM identity-map hydration. Classification is limited to the two CSV
+# fields instead of the full mapped table. Ztf still exports every mapped
+# column so the CSV schema is unchanged.
+EXPORT_SELECT_COLS = [getattr(Ztf, name) for name in ZTF_COLUMNS] + [
+    Classification.alert_id.label('classification_alert_id'),
+    Classification.prob_class.label('classification_prob_class'),
+]
 
-def get_export_columns():
+EXPORT_YIELD_PER = 1000
+
+
+def get_export_columns() -> list[str]:
     """
     Return the column names used when writing an export CSV row.
 
@@ -29,28 +44,18 @@ def get_export_columns():
     return ZTF_COLUMNS + CLASSIFICATION_COLUMNS
 
 
-def build_export_row(ztf_row, classification_row):
+def build_export_row(row: Row) -> dict[str, Any]:
     """
-    Build a single CSV row dict (field name -> value) for a bulk export.
-
-    The query built by build_query_from_rules selects (Ztf, Classification) via
-    an outer join, so each result is a tuple (ztf_row, classification_or_none).
+    Build a single CSV row dict from a Core column Row.
 
     Args:
-        ztf_row: A Ztf instance.
-        classification_row: A Classification instance or None.
+        row: A SQLAlchemy Row from :func:`build_export_query_from_rules`.
 
     Returns:
         dict[str, Any]: Field names from get_export_columns() to values.
     """
-    row_dict = {col: getattr(ztf_row, col) for col in ZTF_COLUMNS}
-    if classification_row:
-        row_dict['classification_alert_id'] = classification_row.alert_id
-        row_dict['classification_prob_class'] = classification_row.prob_class
-    else:
-        row_dict['classification_alert_id'] = None
-        row_dict['classification_prob_class'] = None
-    return row_dict
+    mapping = row._mapping
+    return {name: mapping[name] for name in get_export_columns()}
 
 
 def build_query_from_rules(rules_payload):
@@ -91,6 +96,30 @@ def build_query_from_rules(rules_payload):
     )
     
     return filtered_query, str(compiled)
+
+
+def build_export_query_from_rules(rules_payload: dict) -> tuple[Query, str]:
+    """
+    Build a column-only export query from querybuilder rules.
+
+    Same filters as :func:`build_query_from_rules`, but the SELECT list is Core
+    columns so iteration does not construct Ztf/Classification instances or
+    populate the identity map. ``yield_per`` batches row construction; the
+    sqlite3 driver still buffers DBAPI results, so this is not a true stream.
+
+    Args:
+        rules_payload: Dict with 'rules' key containing filter rules.
+
+    Returns:
+        tuple: (export_query, where_clause_str)
+    """
+    filtered_query, where_clause = build_query_from_rules(rules_payload)
+    export_query = (
+        filtered_query.enable_eagerloads(False)
+        .with_entities(*EXPORT_SELECT_COLS)
+        .execution_options(yield_per=EXPORT_YIELD_PER, stream_results=True)
+    )
+    return export_query, where_clause
 
 
 def get_preview_sql(rules_payload):
