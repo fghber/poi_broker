@@ -5,6 +5,7 @@ Background tasks for data export using Huey.
 import csv
 import logging
 import os
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -21,6 +22,22 @@ from .services.query_service import (
 )
 
 logger = logging.getLogger(__name__)
+
+# One Flask app per Huey consumer process. Avoid create_app() per task (new
+# engines + SQLite PRAGMA cache/mmap on every connect). Lazy so worker.py can
+# import tasks without SECRET_KEY / DB paths at module load.
+_worker_app = None
+_worker_app_lock = threading.Lock()
+
+
+def _get_worker_app():
+    """Return the process-wide Flask app for Huey task handlers."""
+    global _worker_app
+    if _worker_app is None:
+        with _worker_app_lock:
+            if _worker_app is None:
+                _worker_app = create_app()
+    return _worker_app
 
 
 def _env_int(name: str, default: int) -> int:
@@ -53,8 +70,8 @@ def create_export_file(query_params: dict, user_id: int, task_id: int):
         ExportTask status from PENDING to RUNNING then to SUCCESS/FAILED
         Sets file_path on SUCCESS or error_message on FAILED
     """
-    app = create_app()
-    
+    app = _get_worker_app()
+
     with app.app_context():
         export_task = db.session.get(ExportTask, task_id)
         if not export_task:
@@ -154,7 +171,12 @@ def reset_stale_export_tasks(max_age_seconds: int = STALE_TASK_MAX_AGE) -> int:
         )
         task.updated_at = datetime.now(timezone.utc)
     if stale:
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            logger.exception('Failed to commit stale export task resets')
+            return 0
         logger.info(f'Marked {len(stale)} stale export task(s) as FAILED')
     return len(stale)
 
@@ -190,7 +212,12 @@ def cleanup_expired_exports(max_age_days: int = EXPORT_RETENTION_DAYS) -> int:
         removed += 1
 
     if removed:
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            logger.exception('Failed to commit expired export cleanup')
+            return 0
         logger.info(f'Removed {removed} expired export(s) older than {max_age_days} day(s)')
     return removed
 
@@ -206,7 +233,7 @@ def cleanup_stale_export_tasks() -> int:
     periodic enabled; the startup reset in :func:`reset_stale_export_tasks`
     covers the app side.
     """
-    app = create_app()
+    app = _get_worker_app()
     with app.app_context():
         reset_stale_export_tasks()
         return cleanup_expired_exports()

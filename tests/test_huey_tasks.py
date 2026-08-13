@@ -121,6 +121,50 @@ def test_worker_entrypoint_registers_tasks():
     )
 
 
+def test_get_worker_app_is_process_singleton_under_concurrency(app, monkeypatch):
+    """L2: concurrent Huey threads must share one Flask app, not N create_app()s."""
+    import threading
+
+    import poi_broker.tasks as tasks_mod
+
+    create_calls = []
+    entered = threading.Event()
+    release = threading.Event()
+
+    def _slow_create_app():
+        create_calls.append(1)
+        entered.set()
+        assert release.wait(timeout=2), 'create_app was not released'
+        return app
+
+    monkeypatch.setattr(tasks_mod, 'create_app', _slow_create_app)
+
+    n_threads = 8
+    results: list = []
+    errors: list = []
+
+    def _worker():
+        try:
+            results.append(tasks_mod._get_worker_app())
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=_worker) for _ in range(n_threads)]
+    for thread in threads:
+        thread.start()
+
+    assert entered.wait(timeout=2), 'create_app was never entered'
+    release.set()
+    for thread in threads:
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+
+    assert errors == []
+    assert len(create_calls) == 1
+    assert len(results) == n_threads
+    assert all(got is app for got in results)
+
+
 def test_reset_stale_export_tasks(app):
     """Stale PENDING/RUNNING exports are reset to FAILED."""
     from datetime import timedelta
@@ -317,8 +361,8 @@ def test_create_export_file_cleans_partial_file_on_failure(app, monkeypatch):
 
     fake_task = ExportTask(user_id=1, status='RUNNING')
 
-    # The task opens its own app context (create_app -> app_context), which uses
-    # a fresh scoped Session keyed by app-context id; patching db.session.get
+    # The task opens its own app context (_get_worker_app -> app_context), which
+    # uses a fresh scoped Session keyed by app-context id; patching db.session.get
     # would not affect it. Replace db.session with a minimal stub for the
     # duration of this test: the task's get/commit/rollback hit the stub, and
     # monkeypatch restores the real session before fixture teardown.
@@ -354,9 +398,9 @@ def test_create_export_file_cleans_partial_file_on_failure(app, monkeypatch):
         return _BoomQuery(), 'fake where'
 
     monkeypatch.setattr(tasks_mod, 'build_export_query_from_rules', _fake_build)
-    # The task builds its own app via create_app(); use the fixture app so the
-    # patched session_factory applies inside the task's new app context.
-    monkeypatch.setattr(tasks_mod, 'create_app', lambda: app)
+    # The task uses the process-wide worker app; return the fixture app so the
+    # patched session applies inside the task's app context.
+    monkeypatch.setattr(tasks_mod, '_get_worker_app', lambda: app)
 
     # Snapshot the exports dir before the run. The fixture app's instance path
     # is the shared repo instance/ dir, which may already contain files from
@@ -365,9 +409,8 @@ def test_create_export_file_cleans_partial_file_on_failure(app, monkeypatch):
     exports_dir.mkdir(parents=True, exist_ok=True)
     before = {p.name for p in exports_dir.iterdir()}
 
-    # Run the task synchronously (immediate mode). The task calls create_app()
-    # which returns the fixture app; its init_huey -> reset_stale_export_tasks
-    # may fail harmlessly (already logged/ignored). We invoke the underlying
+    # Run the task synchronously (immediate mode). The task calls
+    # _get_worker_app() which returns the fixture app. We invoke the underlying
     # function directly (not the huey wrapper) so we don't depend on the
     # module's Huey backend mode: at collection time a previous test may have
     # left HUEY_BACKEND=sqlite, making the wrapper enqueue instead of execute.

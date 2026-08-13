@@ -125,7 +125,7 @@ def test_create_export_file_writes_projected_csv(app, monkeypatch):
         task_id = task.id
         user_id = user.id
 
-    monkeypatch.setattr(tasks_mod, 'create_app', lambda: app)
+    monkeypatch.setattr(tasks_mod, '_get_worker_app', lambda: app)
     tasks_mod.create_export_file.func(
         query_params=RULES,
         user_id=user_id,

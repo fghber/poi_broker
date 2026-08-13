@@ -65,6 +65,9 @@ web process.
 - **User-facing state** lives in `ExportTask` (`users.db`), not in Huey’s
   result table. A stale-task guard fails `PENDING`/`RUNNING` rows after 30
   minutes so a dead worker cannot block a user’s export slot forever.
+- **One Flask app per consumer process:** Huey handlers reuse a lazy
+  process-wide app (`_get_worker_app` in `tasks.py`) instead of calling
+  `create_app()` on every task.
 
 ## Invariants (for implementers and coding agents)
 

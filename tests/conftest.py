@@ -8,6 +8,17 @@ Set testing mode and disable CSRF for test client runs
 Create/drop DB tables around each test app lifecycle
 """
 
+
+@pytest.fixture(autouse=True)
+def _reset_worker_app():
+    """Clear the Huey process-wide Flask app between tests (tmp_path DBs)."""
+    import poi_broker.tasks as tasks_mod
+
+    tasks_mod._worker_app = None
+    yield
+    tasks_mod._worker_app = None
+
+
 @pytest.fixture()
 def app(tmp_path, monkeypatch):
     alerts_db = tmp_path / "alerts_test.db"

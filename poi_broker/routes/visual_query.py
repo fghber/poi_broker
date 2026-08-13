@@ -113,9 +113,11 @@ def save_watchlist():
         db.session.rollback()
         return jsonify({'error': f"A watchlist named '{name}' already exists!"}), 409
     except ValueError as e:
+        db.session.rollback()
         logger.error(f"ValueError in save_watchlist: {str(e)}", exc_info=True)
         return jsonify({'error': 'Unable to to save invalid querybuilder rules!'}), 406
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error in save_watchlist: {str(e)}", exc_info=True)
         return jsonify({'error': 'An error occurred while saving the watchlist.'}), 500
 
@@ -151,5 +153,6 @@ def delete_watchlist(wid):
         db.session.rollback()
         return jsonify({'error': 'Cannot delete watchlist because it is in use.'}), 409
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error in delete_watchlist: {str(e)}", exc_info=True)
         return jsonify({'error': 'An error occurred while deleting the watchlist.'}), 500

@@ -138,7 +138,13 @@ def export_submit():
         logger.exception(f'Failed to enqueue background task for ExportTask {export_task.id}')
         export_task.status = 'FAILED'
         export_task.error_message = 'Failed to enqueue export task'
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            logger.exception(
+                f'Could not mark ExportTask {export_task.id} as FAILED after enqueue error'
+            )
         return jsonify({'error': 'Failed to start export task'}), 500
     logger.info(f'Enqueued background task for ExportTask {export_task.id}')
     
