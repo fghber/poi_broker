@@ -1,11 +1,9 @@
 """Feature query routes blueprint."""
 
 import logging
-import json
 from flask import Blueprint, Response, request, jsonify, current_app
-from ..services.feature_service import query_features_by_alert_id, query_feature_plot_data, get_available_features
+from ..services.feature_service import query_features_by_alert_id, query_feature_plot_data
 from ..services.plotting_service import create_bokeh_feature_plot
-from ..helpers import safe_serialize
 from .. import limiter
 
 logger = logging.getLogger(__name__)

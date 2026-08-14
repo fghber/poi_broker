@@ -1,12 +1,9 @@
 """Feature query service for handling ZTF feature data."""
 
 import logging
-import json
-from flask import current_app
 from sqlalchemy.orm import Query
 from .. import db
 from ..models import Ztf
-from ..helpers import object_as_dict, safe_serialize
 from ..constants.features import FEATURE_COLUMN_LIST, default_feature_plot_columns
 
 logger = logging.getLogger(__name__)
