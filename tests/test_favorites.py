@@ -161,6 +161,24 @@ def test_favorites_validation(auth_client):
     assert r.status_code == 400
     assert "Missing locusId" in r.get_json()["error"]
 
+    # Missing fav must not delete; reject as bad request
+    r = auth_client.post("/api/favorite", json={"locusId": "validation-test"})
+    assert r.status_code == 400
+    assert "fav must be a boolean" in r.get_json()["error"]
+
+    # String fav is not accepted
+    r = auth_client.post("/api/favorite", json={"locusId": "validation-test", "fav": "true"})
+    assert r.status_code == 400
+    assert "fav must be a boolean" in r.get_json()["error"]
+
+    # Non-integer groupId
+    r = auth_client.post(
+        "/api/favorite",
+        json={"locusId": "validation-test", "fav": True, "groupId": "abc"},
+    )
+    assert r.status_code == 400
+    assert "groupId must be an integer or null" in r.get_json()["error"]
+
     # Invalid JSON
     r = auth_client.post("/api/favorite", data="invalid json")
     assert r.status_code == 400
@@ -257,8 +275,21 @@ def test_favorites_cross_user_isolation(app, auth_client):
     assert r.status_code == 404
     assert "group not found" in r.get_json()["error"]
 
-    # Verify other user's data still exists
+    # Create with another user's groupId must fail ownership check
+    r = auth_client.post(
+        "/api/favorite",
+        json={"locusId": "cross-user-group-attach", "fav": True, "groupId": other_group_id},
+    )
+    assert r.status_code == 404
+    assert "group not found" in r.get_json()["error"]
+
     with app.app_context():
+        leaked = Favorite.query.filter_by(
+            locus_id="cross-user-group-attach",
+            group_id=other_group_id,
+        ).first()
+        assert leaked is None
+
         still_fav = db.session.get(Favorite, other_fav_id)
         assert still_fav is not None
         still_group = db.session.get(FavoriteGroup, other_group_id)

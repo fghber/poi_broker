@@ -60,17 +60,21 @@ def api_favorite_post():
     JSON body: { "locusId": "...", "fav": true, "groupId": null }
     """
     data = request.get_json(silent=True)
-    if data is None:
+    if not isinstance(data, dict):
         return jsonify({'error': 'Invalid or missing JSON body'}), 400
     
     locus_id = data.get('locusId')
     if not locus_id:
         return jsonify({'error': 'Missing locusId'}), 400
-    
-    fav_flag = bool(data.get('fav'))
+
+    if 'fav' not in data or not isinstance(data['fav'], bool):
+        return jsonify({'error': 'fav must be a boolean'}), 400
+
     group_id = data.get('groupId')
+    if group_id is not None and not isinstance(group_id, int):
+        return jsonify({'error': 'groupId must be an integer or null'}), 400
     
-    result, status_code = toggle_favorite(locus_id, fav_flag, group_id)
+    result, status_code = toggle_favorite(locus_id, data['fav'], group_id)
     return jsonify(result), status_code
 
 

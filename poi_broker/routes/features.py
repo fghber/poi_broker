@@ -36,6 +36,7 @@ def query_features():
 
 
 @features_bp.route('/query_featureplot_data', methods=['GET'])
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
 def query_featureplot_data():
     """
     Get feature plot data for a locus ID.

@@ -136,6 +136,30 @@ def test_read_routes_rate_limited(secure_client):
         else:
             assert response.status_code == 429
 
+    # Test LAX limit for /query_featureplot_data
+    for i in range(31):
+        response = secure_client.get("/query_featureplot_data", query_string={"locusId": "locus-1"})
+        if i < 30:
+            assert response.status_code == 200
+        else:
+            assert response.status_code == 429
+
+    # Test LAX limit for /query_lightcurve_data
+    for i in range(31):
+        response = secure_client.get("/query_lightcurve_data", query_string={"locusId": "locus-1"})
+        if i < 30:
+            assert response.status_code == 200
+        else:
+            assert response.status_code == 429
+
+    # Test LAX limit for /locus_plot_csv
+    for i in range(31):
+        response = secure_client.get("/locus_plot_csv", query_string={"locusId": "locus-1"})
+        if i < 30:
+            assert response.status_code == 200
+        else:
+            assert response.status_code == 429
+
     # Test LAX limit for /query_crossmatches
     for i in range(31):
         response = secure_client.get("/query_crossmatches", query_string={"locusId": "locus-1"})

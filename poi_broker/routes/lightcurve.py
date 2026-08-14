@@ -1,10 +1,10 @@
 """Lightcurve visualization routes blueprint."""
 
 import logging
-from flask import Blueprint, Response, request
+from flask import Blueprint, Response, current_app, request
 from sqlalchemy.orm import Query
 from ..services.plotting_service import create_bokeh_lightcurve_figure
-from .. import db
+from .. import db, limiter
 from ..models import Ztf
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,7 @@ def build_lightcurve_csv_query(locus_id: str) -> Query:
 
 
 @lightcurve_bp.route('/query_lightcurve_data', methods=['GET'])
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
 def query_lightcurve_data():
     """
     Get lightcurve plot data for a locus ID.
@@ -52,6 +53,7 @@ def query_lightcurve_data():
 
 
 @lightcurve_bp.route('/locus_plot_csv', methods=['GET'])
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
 def get_locus_plot():
     """
     Export lightcurve data as CSV for a locus ID.

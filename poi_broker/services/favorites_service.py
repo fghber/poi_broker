@@ -80,15 +80,16 @@ def toggle_favorite(locus_id, fav_flag, group_id=None):
         fav = Favorite.query.filter_by(user_id=current_user.id, locus_id=locus_id).first()
         
         if fav_flag:
+            # Validate group ownership on both insert and update
+            if group_id is not None:
+                group = FavoriteGroup.query.filter_by(id=group_id, user_id=current_user.id).first()
+                if not group:
+                    return {'error': 'group not found'}, 404
+
             if not fav:
                 fav = Favorite(user_id=current_user.id, locus_id=locus_id, group_id=group_id)
                 db.session.add(fav)
             else:
-                # Update group if specified, Validate group_id before updating
-                if group_id is not None:
-                    group = FavoriteGroup.query.filter_by(id=group_id, user_id=current_user.id).first()
-                    if not group:
-                        return {'error': 'group not found'}, 404
                 fav.group_id = group_id
             db.session.commit()
         else:
