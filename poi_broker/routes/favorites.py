@@ -2,7 +2,7 @@
 
 import logging
 from flask import Blueprint, jsonify, request
-from flask_login import login_required, current_user
+from flask_login import login_required
 from ..services.favorites_service import (
     get_favorite_status,
     get_user_favorites,
@@ -25,6 +25,10 @@ def api_favorite_get():
     GET /api/favorite?locusId=...  -> returns {"fav": true/false}
     """
     locus_id = request.args.get('locusId')
+    if not locus_id:
+        return jsonify({'error': 'Missing locusId'}), 400
+    if len(locus_id) > 128:
+        return jsonify({'error': 'locusId is too long'}), 400
     fav = get_favorite_status(locus_id)
     return jsonify({'fav': fav})
 
@@ -33,22 +37,18 @@ def api_favorite_get():
 @login_required
 def api_favorites_get():
     """GET /api/favorites?groupId=<id> -> return favorites with IDs, optionally filtered by group."""
-    group_id = request.args.get('groupId', type=int)
-    
-    # If groupId=null explicitly, show only ungrouped
-    if 'groupId' in request.args and request.args.get('groupId') == 'null':
-        group_id = None
-    elif group_id is None and 'groupId' not in request.args:
-        # No group filter specified, show all
-        group_id = 'all'
-    
-    if group_id == 'all':
-        from .. import db
-        from ..models import Favorite
-        favs = [{'id': r.id, 'locusId': r.locus_id} for r in Favorite.query.filter_by(user_id=current_user.id).all()]
+    raw_group_id = request.args.get('groupId')
+    if raw_group_id is None:
+        favs = get_user_favorites()
+    elif raw_group_id == 'null':
+        favs = get_user_favorites(None)
     else:
+        try:
+            group_id = int(raw_group_id)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'groupId must be an integer or null'}), 400
         favs = get_user_favorites(group_id)
-    
+
     return jsonify({'favorites': favs})
 
 
@@ -66,6 +66,8 @@ def api_favorite_post():
     locus_id = data.get('locusId')
     if not locus_id:
         return jsonify({'error': 'Missing locusId'}), 400
+    if isinstance(locus_id, str) and len(locus_id) > 128:
+        return jsonify({'error': 'locusId is too long'}), 400
 
     if 'fav' not in data or not isinstance(data['fav'], bool):
         return jsonify({'error': 'fav must be a boolean'}), 400
@@ -83,10 +85,13 @@ def api_favorite_post():
 def api_favorite_update_group(favorite_id):
     """PATCH /api/favorite/<id>/group -> move favorite to a group. Body: {"groupId": <id> or null}"""
     data = request.get_json(silent=True)
-    if data is None:
+    if not isinstance(data, dict):
         return jsonify({'error': 'Invalid JSON'}), 400
-    
+
     group_id = data.get('groupId')
+    if group_id is not None and (not isinstance(group_id, int) or isinstance(group_id, bool)):
+        return jsonify({'error': 'groupId must be an integer or null'}), 400
+
     result, status_code = update_favorite_group(favorite_id, group_id)
     return jsonify(result), status_code
 

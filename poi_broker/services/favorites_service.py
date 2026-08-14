@@ -207,7 +207,9 @@ def create_favorite_group(name):
     
     try:
         name = name.strip()
-        
+        if len(name) > 128:
+            return {'error': 'name must be 128 characters or fewer'}, 400
+
         # Check if group already exists
         existing = FavoriteGroup.query.filter_by(user_id=current_user.id, name=name).first()
         if existing:
@@ -246,7 +248,7 @@ def delete_favorite_group(group_id):
             return {'error': 'group not found'}, 404
         
         # Orphan favorites (set group_id to None instead of deleting)
-        Favorite.query.filter_by(group_id=group_id).update({'group_id': None})
+        Favorite.query.filter_by(group_id=group_id, user_id=current_user.id).update({'group_id': None})
         db.session.delete(group)
         db.session.commit()
 

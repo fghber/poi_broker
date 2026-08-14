@@ -132,6 +132,11 @@ def test_favorites_groups_crud(auth_client):
     assert len(favs) == 1
     assert favs[0]["locusId"] == "grouped-fav"
 
+    # Profile Ungrouped tab sends groupId=null (not omitted, not "all")
+    r = auth_client.get("/api/favorites", query_string={"groupId": "null"})
+    assert r.status_code == 200
+    assert r.get_json()["favorites"] == []
+
     # Delete group
     r = auth_client.delete(f"/api/favorite-groups/{group_id}")
     assert r.status_code == 200
@@ -149,6 +154,12 @@ def test_favorites_groups_crud(auth_client):
     ungrouped = next(g for g in groups if g["name"] == "Ungrouped")
     assert ungrouped["count"] == 1
 
+    r = auth_client.get("/api/favorites", query_string={"groupId": "null"})
+    assert r.status_code == 200
+    ungrouped_favs = r.get_json()["favorites"]
+    assert len(ungrouped_favs) == 1
+    assert ungrouped_favs[0]["locusId"] == "grouped-fav"
+
     # Clean up
     r = auth_client.post("/api/favorite", json={"locusId": "grouped-fav", "fav": False})
     assert r.status_code == 200
@@ -160,6 +171,22 @@ def test_favorites_validation(auth_client):
     r = auth_client.post("/api/favorite", json={"fav": True})
     assert r.status_code == 400
     assert "Missing locusId" in r.get_json()["error"]
+
+    r = auth_client.get("/api/favorite")
+    assert r.status_code == 400
+    assert "Missing locusId" in r.get_json()["error"]
+
+    r = auth_client.get("/api/favorite", query_string={"locusId": "x" * 129})
+    assert r.status_code == 400
+    assert "too long" in r.get_json()["error"]
+
+    r = auth_client.post("/api/favorite", json={"locusId": "x" * 129, "fav": True})
+    assert r.status_code == 400
+    assert "too long" in r.get_json()["error"]
+
+    r = auth_client.get("/api/favorites", query_string={"groupId": "abc"})
+    assert r.status_code == 400
+    assert "groupId must be an integer or null" in r.get_json()["error"]
 
     # Missing fav must not delete; reject as bad request
     r = auth_client.post("/api/favorite", json={"locusId": "validation-test"})
@@ -189,6 +216,10 @@ def test_favorites_validation(auth_client):
     assert r.status_code == 400
     assert "name required" in r.get_json()["error"]
 
+    r = auth_client.post("/api/favorite-groups", json={"name": "x" * 129})
+    assert r.status_code == 400
+    assert "128 characters" in r.get_json()["error"]
+
     # Missing name
     r = auth_client.post("/api/favorite-groups", json={})
     assert r.status_code == 400
@@ -198,6 +229,10 @@ def test_favorites_validation(auth_client):
     r = auth_client.patch("/api/favorite/99999/group", json={"groupId": None})
     assert r.status_code == 404
     assert "favorite not found" in r.get_json()["error"]
+
+    r = auth_client.patch("/api/favorite/99999/group", json={"groupId": "abc"})
+    assert r.status_code == 400
+    assert "groupId must be an integer or null" in r.get_json()["error"]
 
     # Invalid group ID for group update
     # First create a favorite
