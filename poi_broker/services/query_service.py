@@ -58,7 +58,32 @@ def build_export_row(row: Row) -> dict[str, Any]:
     return {name: mapping[name] for name in get_export_columns()}
 
 
-def build_query_from_rules(rules_payload: dict) -> tuple[Query, dict]:
+def _rules_need_classification(rules_payload: dict) -> bool:
+    """Return True if any rule field targets the classification table."""
+    for cond in rules_payload.get('rules', []):
+        if 'condition' in cond:
+            if _rules_need_classification(cond):
+                return True
+            continue
+        field_name = cond.get('field', '')
+        if isinstance(field_name, str) and field_name.startswith('classification.'):
+            return True
+    return False
+
+
+def _validate_rules_payload(rules_payload: dict) -> None:
+    if not isinstance(rules_payload, dict) or 'rules' not in rules_payload:
+        raise ValueError('Invalid querybuilder rules payload')
+
+    if not isinstance(rules_payload.get('rules'), list) or len(rules_payload['rules']) == 0:
+        raise ValueError('At least one filter rule is required')
+
+
+def build_query_from_rules(
+    rules_payload: dict,
+    *,
+    include_classification: bool | None = None,
+) -> tuple[Query, dict]:
     """
     Build an ORM query from querybuilder rules.
 
@@ -67,6 +92,10 @@ def build_query_from_rules(rules_payload: dict) -> tuple[Query, dict]:
 
     Args:
         rules_payload: Dict with 'rules' key containing filter rules.
+        include_classification: When None, outerjoin Classification only if a
+            rule field targets ``classification.*``. Pass True to always join
+            (export SELECT needs classification columns). False cannot skip a
+            join that classification rules require.
 
     Returns:
         tuple: (filtered_query, rules_payload)
@@ -74,16 +103,23 @@ def build_query_from_rules(rules_payload: dict) -> tuple[Query, dict]:
     Raises:
         ValueError: If rules payload is invalid or builds no WHERE clause.
     """
-    if not isinstance(rules_payload, dict) or 'rules' not in rules_payload:
-        raise ValueError('Invalid querybuilder rules payload')
+    _validate_rules_payload(rules_payload)
 
-    if not isinstance(rules_payload.get('rules'), list) or len(rules_payload['rules']) == 0:
-        raise ValueError('At least one filter rule is required')
+    needs_classification = _rules_need_classification(rules_payload)
+    if include_classification is None:
+        include_classification = needs_classification
+    else:
+        # Never skip the join when rules filter classification.* (avoids
+        # Filter adding Classification with no ON clause).
+        include_classification = bool(include_classification) or needs_classification
 
-    base_query = db.session.query(Ztf, Classification).outerjoin(
-        Classification,
-        Ztf.alert_id == Classification.alert_id
-    )
+    if include_classification:
+        base_query = db.session.query(Ztf, Classification).outerjoin(
+            Classification,
+            Ztf.alert_id == Classification.alert_id,
+        )
+    else:
+        base_query = db.session.query(Ztf)
 
     models_dict = {'featuretable': Ztf, 'classification': Classification}
     myfilter = Filter(models_dict, base_query)
@@ -110,7 +146,10 @@ def build_export_query_from_rules(rules_payload: dict) -> tuple[Query, dict]:
     Returns:
         tuple: (export_query, rules_payload)
     """
-    filtered_query, rules_payload = build_query_from_rules(rules_payload)
+    filtered_query, rules_payload = build_query_from_rules(
+        rules_payload,
+        include_classification=True,
+    )
     export_query = (
         filtered_query.enable_eagerloads(False)
         .with_entities(*EXPORT_SELECT_COLS)
@@ -140,9 +179,22 @@ def get_preview_sql(rules_payload: dict) -> str:
     return str(compiled)
 
 
+def build_count_query_from_rules(rules_payload: dict) -> Query:
+    """
+    Build the COUNT query used by :func:`get_query_match_count`.
+
+    Exposed for compile-SQL tests. Classification is joined only when needed.
+    """
+    filtered_query, _ = build_query_from_rules(rules_payload)
+    return filtered_query.order_by(None).with_entities(db.func.count())
+
+
 def get_query_match_count(rules_payload: dict) -> int:
     """
     Get number of matching records for a query.
+
+    Skips the Classification outerjoin when rules only touch featuretable.*
+    so COUNT(*) is ``SELECT count(*) FROM featuretable WHERE …``.
 
     Args:
         rules_payload: Dict with 'rules' key containing filter rules.
@@ -150,8 +202,7 @@ def get_query_match_count(rules_payload: dict) -> int:
     Returns:
         int: Number of matching records.
     """
-    filtered_query, _ = build_query_from_rules(rules_payload)
-    match_count = filtered_query.order_by(None).with_entities(db.func.count()).scalar()
+    match_count = build_count_query_from_rules(rules_payload).scalar()
     return int(match_count or 0)
 
 

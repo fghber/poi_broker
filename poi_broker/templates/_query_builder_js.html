@@ -9,11 +9,19 @@
     return;
   }
 
+  // Indexed ID fields: avoid contains/ends_with (LIKE '%x%'). Keep in sync
+  // with INDEXED_ID_FIELDS / INDEXED_ID_OPERATORS in querybuilder_translator.py.
+  const ID_OPERATORS = [
+    'equal', 'not_equal', 'in', 'not_in',
+    'begins_with', 'not_begins_with',
+    'is_empty', 'is_not_empty', 'is_null', 'is_not_null'
+  ];
+
   const filters = [
-    { id: 'featuretable.alert_id', label: 'Alert ID', type: 'string' },
-    { id: 'featuretable.locus_id', label: 'Locus ID', type: 'string' },
-    { id: 'featuretable.ztf_object_id', label: 'ZTF Object ID', type: 'string' },
-    { id: 'featuretable.brightest_alert_id_ztf', label: 'Brightest Alert ID (ZTF)', type: 'string' },
+    { id: 'featuretable.alert_id', label: 'Alert ID', type: 'string', operators: ID_OPERATORS },
+    { id: 'featuretable.locus_id', label: 'Locus ID', type: 'string', operators: ID_OPERATORS },
+    { id: 'featuretable.ztf_object_id', label: 'ZTF Object ID', type: 'string', operators: ID_OPERATORS },
+    { id: 'featuretable.brightest_alert_id_ztf', label: 'Brightest Alert ID (ZTF)', type: 'string', operators: ID_OPERATORS },
     { id: 'featuretable.anomaly_mask', label: 'Anomaly Mask', type: 'string' },
     { id: 'featuretable.anomaly_type', label: 'Anomaly Type', type: 'string' },
     { id: 'featuretable.is_corrected', label: 'Is Corrected', type: 'boolean' },
@@ -285,7 +293,7 @@
     { id: 'featuretable.harmonics_chi_per_degree_g', label: 'Harmonics Chi Per Degree (g)', type: 'double' },
     { id: 'featuretable.harmonics_chi_per_degree_R', label: 'Harmonics Chi Per Degree (R)', type: 'double' },
     { id: 'featuretable.harmonics_chi_per_degree_i', label: 'Harmonics Chi Per Degree (i)', type: 'double' },
-    { id: 'classification.alert_id', label: 'Alert ID', type: 'string' },
+    { id: 'classification.alert_id', label: 'Alert ID', type: 'string', operators: ID_OPERATORS },
     { id: 'classification.p_cvnova', label: 'CV Nova Probability', type: 'double' },
     { id: 'classification.p_e', label: 'E Probability', type: 'double' },
     { id: 'classification.p_lpv', label: 'LPV Probability', type: 'double' },

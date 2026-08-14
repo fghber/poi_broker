@@ -1,4 +1,4 @@
-"""C3: bulk export projects Core columns instead of hydrating ORM entities."""
+"""C3/O3: bulk export projects Core columns; COUNT skips Classification when unused."""
 
 import csv
 from pathlib import Path
@@ -10,15 +10,25 @@ from poi_broker.models import Classification, ExportTask, User, Ztf
 from poi_broker.services.query_service import (
     CLASSIFICATION_COLUMNS,
     ZTF_COLUMNS,
+    build_count_query_from_rules,
     build_export_query_from_rules,
     build_export_row,
+    build_query_from_rules,
     get_export_columns,
+    get_query_match_count,
 )
 
 RULES = {
     'condition': 'AND',
     'rules': [
         {'field': 'featuretable.alert_id', 'operator': 'is_not_null'},
+    ],
+}
+
+CLASSIFICATION_RULES = {
+    'condition': 'AND',
+    'rules': [
+        {'field': 'classification.prob_class', 'operator': 'equal', 'value': 'sn'},
     ],
 }
 
@@ -148,3 +158,47 @@ def test_create_export_file_writes_projected_csv(app, monkeypatch):
         assert by_id['ztf_candidate:1000000000000000001']['classification_prob_class'] == 'sn'
         assert by_id['ztf_candidate:1000000000000000002']['classification_prob_class'] == ''
         path.unlink(missing_ok=True)
+
+
+def test_count_query_skips_classification_join_for_ztf_only_rules(app):
+    """O3: Ztf-only COUNT is SELECT count(*) FROM featuretable with no join."""
+    with app.app_context():
+        count_query = build_count_query_from_rules(RULES)
+        compiled = str(
+            count_query.statement.compile(dialect=sqlite_dialect.dialect())
+        ).lower()
+        assert 'count(' in compiled
+        assert 'from featuretable' in compiled
+        assert 'classification' not in compiled
+        assert 'join' not in compiled
+        # Must not wrap a 280-column entity SELECT in a subquery.
+        assert 'select *' not in compiled
+        assert 'date_log' not in compiled
+
+
+def test_count_query_joins_classification_when_needed(app):
+    with app.app_context():
+        count_query = build_count_query_from_rules(CLASSIFICATION_RULES)
+        compiled = str(
+            count_query.statement.compile(dialect=sqlite_dialect.dialect())
+        ).lower()
+        assert 'count(' in compiled
+        assert 'classification' in compiled
+
+
+def test_classification_rules_join_even_when_include_classification_false(app):
+    with app.app_context():
+        query, _ = build_query_from_rules(
+            CLASSIFICATION_RULES,
+            include_classification=False,
+        )
+        compiled = str(query.statement.compile(dialect=sqlite_dialect.dialect())).lower()
+        assert 'join' in compiled
+        assert 'classification' in compiled
+
+
+def test_get_query_match_count_returns_int(app):
+    with app.app_context():
+        _seed_export_rows()
+        assert get_query_match_count(RULES) == 2
+        assert get_query_match_count(CLASSIFICATION_RULES) == 1

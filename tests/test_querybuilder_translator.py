@@ -108,7 +108,9 @@ def test_querybuilder_unary_operator_is_null(app):
 
 def test_querybuilder_add_entity_and_nested_rules(app):
     with app.app_context():
-        base_query = db.session.query(Ztf)
+        base_query = db.session.query(Ztf, Classification).outerjoin(
+            Classification, Ztf.alert_id == Classification.alert_id
+        )
         filter_obj = Filter({'featuretable': Ztf, 'classification': Classification}, base_query)
         rules = {
             'condition': 'AND',
@@ -131,3 +133,94 @@ def test_querybuilder_add_entity_and_nested_rules(app):
         assert 'featuretable.locus_dec < 2' in sql
         assert 'classification.p_cvnova >= 0.5' in sql
         assert ' OR ' in sql.upper()
+
+
+def test_querybuilder_rejects_classification_without_join(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf, 'classification': Classification}, base_query)
+        rules = {
+            'rules': [
+                {'field': 'classification.prob_class', 'operator': 'equal', 'value': 'sn'},
+            ]
+        }
+        with pytest.raises(ValueError, match='not in the query'):
+            filter_obj.querybuilder(rules)
+
+
+def test_querybuilder_rejects_contains_on_indexed_id(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'rules': [
+                {
+                    'field': 'featuretable.alert_id',
+                    'operator': 'contains',
+                    'value': 'ztf',
+                }
+            ]
+        }
+        with pytest.raises(ValueError, match='not allowed on indexed ID'):
+            filter_obj.querybuilder(rules)
+
+
+def test_querybuilder_begins_with_is_prefix_like(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'rules': [
+                {
+                    'field': 'featuretable.alert_id',
+                    'operator': 'begins_with',
+                    'value': 'ztf_candidate:',
+                }
+            ]
+        }
+        filtered_query = filter_obj.querybuilder(rules)
+        compiled = filtered_query.whereclause.compile()
+        sql = str(compiled)
+        params = compiled.params
+        assert 'LIKE' in sql.upper()
+        assert 'ESCAPE' in sql.upper()
+        # Underscore in the value is escaped so it is literal, not a LIKE wildcard.
+        assert any(v == 'ztf\\_candidate:%' for v in params.values())
+
+
+def test_querybuilder_contains_escapes_like_metacharacters(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'rules': [
+                {
+                    'field': 'featuretable.anomaly_type',
+                    'operator': 'contains',
+                    'value': '100%',
+                }
+            ]
+        }
+        filtered_query = filter_obj.querybuilder(rules)
+        compiled = filtered_query.whereclause.compile()
+        params = compiled.params
+        assert any(v == '%100\\%%' for v in params.values())
+
+
+def test_querybuilder_contains_still_works_for_anomaly_fields(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'rules': [
+                {
+                    'field': 'featuretable.anomaly_mask',
+                    'operator': 'contains',
+                    'value': 'bad',
+                }
+            ]
+        }
+        filtered_query = filter_obj.querybuilder(rules)
+        compiled = filtered_query.whereclause.compile()
+        params = compiled.params
+        assert any(v == '%bad%' for v in params.values())

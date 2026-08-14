@@ -454,6 +454,10 @@ class FilterBookmark(db.Model):
     query_json = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
+    __table_args__ = (
+        db.Index('uix_filter_bookmark_user_name', 'user_id', 'name', unique=True),
+    )
+
     def __repr__(self):
         return f"<FilterBookmark {self.name!r}>"
 
@@ -524,6 +528,8 @@ class ExportTask(db.Model):
             unique=True,
             sqlite_where=db.text("status IN ('PENDING', 'RUNNING')"),
         ),
+        db.Index('idx_export_task_status_updated_at', 'status', 'updated_at'),
+        db.Index('idx_export_task_status_created_at', 'status', 'created_at'),
     )
 
     def __repr__(self):

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Query
 
 from poi_broker import db
 from poi_broker.models import Classification, Ztf
+from poi_broker.querybuilder_translator import escape_like
 from poi_broker.services.search_service import SearchService
 
 COMPLETE_ALERT_ID_RE = re.compile(r'^(?:ztf_candidate|lsst):\d{18,}$')
@@ -99,7 +100,9 @@ def _apply_catalog_filters(query: Query, args: Mapping) -> tuple[Query, str, boo
             has_applied_filters = True
             has_cheap_equality = True
         elif ALERT_ID_PREFIX_RE.match(alert_id):
-            query = query.filter(Ztf.alert_id.like(f'{alert_id}%'))
+            query = query.filter(
+                Ztf.alert_id.like(escape_like(alert_id) + '%', escape='\\')
+            )
             has_applied_filters = True
         elif alert_id != '':
             filter_warning += (

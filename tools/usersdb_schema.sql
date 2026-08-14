@@ -63,6 +63,8 @@ CREATE TABLE
         FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
 	);
 CREATE INDEX ix_filter_bookmark_user_id ON filter_bookmark (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uix_filter_bookmark_user_name
+    ON filter_bookmark (user_id, name);
 
 CREATE TABLE 
     user_settings (
@@ -102,6 +104,10 @@ CREATE TABLE
     );
 CREATE INDEX ix_export_task_user_id ON export_task (user_id);
 CREATE INDEX ix_export_task_status ON export_task (status);
+CREATE INDEX IF NOT EXISTS idx_export_task_status_updated_at
+    ON export_task (status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_export_task_status_created_at
+    ON export_task (status, created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS uix_export_task_one_active_per_user
     ON export_task (user_id)
     WHERE status IN ('PENDING', 'RUNNING');

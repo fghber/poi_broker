@@ -77,6 +77,17 @@ def test_filter_bookmarks_omitted_params_empty(auth_client):
     assert r.get_json()["path"] == "/"
 
 
+def test_filter_bookmarks_duplicate_name_returns_409(auth_client):
+    """O5: UniqueConstraint(user_id, name) maps to 409."""
+    payload = {"name": "Same name", "params": {"locus_id": "ANT1"}}
+    r1 = auth_client.post("/api/filter-bookmarks", json=payload)
+    assert r1.status_code == 201
+
+    r2 = auth_client.post("/api/filter-bookmarks", json=payload)
+    assert r2.status_code == 409
+    assert "already exists" in r2.get_json().get("error", "").lower()
+
+
 def test_filter_bookmarks_cross_user_delete(app, auth_client):
     from poi_broker import db
     from poi_broker.models import FilterBookmark, User

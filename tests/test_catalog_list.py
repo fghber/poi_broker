@@ -298,3 +298,13 @@ def test_unselective_list_does_not_call_count_matches(client, app, monkeypatch):
     response = client.get('/?ant_passband=g')
     assert response.status_code == 200
     assert called == []
+
+
+def test_catalog_alert_id_prefix_escapes_like_metacharacters(app):
+    with app.app_context():
+        build = build_catalog_query({'alert_id': 'ztf_'})
+        compiled = build.list_query.statement.compile()
+        sql = str(compiled)
+        assert 'LIKE' in sql.upper()
+        assert 'ESCAPE' in sql.upper()
+        assert any(v == 'ztf\\_%' for v in compiled.params.values())
