@@ -16,6 +16,30 @@ def test_profile_watchlist_renderer_escapes_user_fields():
     assert "${escapeHtml(item.sql_where || '')}" in profile_html
 
 
+def test_profile_group_tabs_escape_labels():
+    profile_html = _read_template("profile.html")
+
+    # Regression guard: favorite group names must be escaped before tab insertion.
+    assert "${escapeHtml(label)}" in profile_html
+
+
+def test_profile_favorites_list_escapes_locus_ids():
+    profile_html = _read_template("profile.html")
+
+    # Regression guard: locusId must be escaped in HTML and encoded in hrefs.
+    assert "${encodeURIComponent(fav.locusId)}" in profile_html
+    assert "${escapeHtml(fav.locusId)}" in profile_html
+    assert 'data-locus="${escapeHtml(fav.locusId)}"' in profile_html
+
+
+def test_profile_filter_bookmarks_escape_path_display():
+    profile_html = _read_template("profile.html")
+
+    # Regression guard: bookmark path must not re-enter markup after decodeURIComponent.
+    assert 'href="${escapeHtml(item.path)}"' in profile_html
+    assert "${escapeHtml(decodeURIComponent(item.path || '/'))}" in profile_html
+
+
 def test_profile_toast_renderer_avoids_html_injection_for_messages():
     profile_html = _read_template("profile.html")
 

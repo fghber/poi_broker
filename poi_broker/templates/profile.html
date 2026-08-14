@@ -268,10 +268,10 @@ document.addEventListener('DOMContentLoaded', function () {
                     <div class="list-group-item d-flex justify-content-between align-items-start">
                         <div class="pr-3 flex-grow-1">
                             <div class="d-flex justify-content-between align-items-baseline">
-                                <a class="font-weight-bold" href="${item.path}">${escapeHtml(item.name)}</a>
+                                <a class="font-weight-bold" href="${escapeHtml(item.path)}">${escapeHtml(item.name)}</a>
                                 <div class="small text-muted mb-1 float-right">Created ${formatFilterBookmarkDate(item.created_at)}</div>
                             </div>
-                            <div class="small text-muted text-break">${decodeURIComponent(item.path || '/')}</div>
+                            <div class="small text-muted text-break">${escapeHtml(decodeURIComponent(item.path || '/'))}</div>
                         </div>
                         <div class="ml-2 flex-shrink-0">
                             <button type="button" class="btn btn-sm btn-outline-danger remove-filter-bookmark-btn" data-bookmark-id="${item.id}">Delete</button>
@@ -366,7 +366,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         data-toggle="tab"
                         href="#${panelId}"
                         role="tab">
-                            ${label}
+                            ${escapeHtml(label)}
                             <span class="badge badge-secondary ml-1">${count}</span>
                             ${isGroup ? `<button class="btn btn-xs btn-link text-danger ml-2 delete-group-btn" data-id="${id}" style="font-size:0.8em">×</button>` : ''}
                         </a>
@@ -450,12 +450,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 } else {
                     listEl.innerHTML = favs.map(fav => `
                         <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <a href="{{ url_for('main.start') }}?locus_id=${fav.locusId}">${fav.locusId}</a>
+                            <a href="{{ url_for('main.start') }}?locus_id=${encodeURIComponent(fav.locusId)}">${escapeHtml(fav.locusId)}</a>
                             <div>
-                                <button class="btn btn-sm btn-outline-info move-fav-btn mr-2" data-fav-id="${fav.id}" data-locus="${fav.locusId}" title="Move to group">
+                                <button class="btn btn-sm btn-outline-info move-fav-btn mr-2" data-fav-id="${fav.id}" data-locus="${escapeHtml(fav.locusId)}" title="Move to group">
                                     <i class="fa fa-external-link"></i>
                                 </button>
-                                <button class="btn btn-sm btn-outline-danger remove-fav-btn" data-locus="${fav.locusId}">remove</button>
+                                <button class="btn btn-sm btn-outline-danger remove-fav-btn" data-locus="${escapeHtml(fav.locusId)}">remove</button>
                             </div>
                         </li>
                     `).join('');

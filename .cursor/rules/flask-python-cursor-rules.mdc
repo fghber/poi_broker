@@ -90,6 +90,7 @@ You are an expert in Python, Flask, and SqlAlchemy development.
 
   Documentation
   - Ensure all functions are properly documented.
+  - Living docs: docs/spec.md, docs/sec.md, docs/async_export/. Do not add closed audit write-ups to the repo.
 
   Deployment
   - Use Gunicorn as WSGI HTTP Server.
