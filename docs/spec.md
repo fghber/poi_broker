@@ -1,7 +1,7 @@
 # POI Broker — Project Specification (Spec-Anchored Development Reference)
 
 **Version:** 1.0.0
-**Last updated:** 2026-08-03
+**Last updated:** 2026-08-14
 **Status:** Draft — derived from codebase inspection (app v3.1.0)
 **Scope:** HTTP endpoints only (internal service-layer contracts intentionally excluded)
 
@@ -25,7 +25,38 @@ The **Point of Interest (POI) Community Broker** is a transient alert software (
 - Python 3.12, Flask (app-factory pattern), Flask-SQLAlchemy, Flask-Login, Flask-WTF, Flask-Limiter.
 - Astropy, NumPy, Matplotlib, Bokeh.
 - SQLite (main alerts DB + separate users/auth DB bind).
-- Jinja2 templates, jQuery, Bootstrap 4.
+- Jinja2 templates, jQuery, Bootstrap 4. See §1.5 for CDN/static versions and the Popper split.
+
+### 1.5 Frontend JavaScript stack
+
+Load order is fixed: jQuery → jQuery UI → **Bootstrap 4.6.2 `bootstrap.bundle`** (all pages) → catalog-only `@popperjs/core` v2 + Tempus Dominus 6 (`main_ui_js.html`).
+
+**Popper (do not “unify”)**
+
+Bootstrap 4 calls `new Popper(...)` (Popper **v1** API). Tempus Dominus 6’s peer is `@popperjs/core` (Popper **v2**, `Popper.createPopper`). Those cannot share `window.Popper`.
+
+Current split:
+
+- `common_js.html` loads `bootstrap.bundle.min.js` **4.6.2** (Popper v1 closed over inside the bundle; does not set `window.Popper`). Local fallback: `/static/js/bootstrap.bundle.min.js`.
+- `main_ui_js.html` loads `@popperjs/core@2.11.8` only on the catalog page, immediately before Tempus Dominus.
+
+**No-fix unless a major library upgrade.** Do not replace the bundle with a global `popper.js` 1.x, do not load v1 then v2 as globals (last write wins), and do not drop v2 while Tempus Dominus 6 remains. A single Popper is appropriate only with a **major** change: Bootstrap **5** (Popper v2 throughout) and/or replacing Tempus Dominus. Same bar for a global `.modal-backdrop` scrubber, `data-toggle` → `data-bs-toggle`, Font Awesome 5+, or jQuery **4** (Bootstrap 4 requires jQuery `< 4.0`).
+
+CSS is already local Bootswatch **4.6.2**. JS was aligned to 4.6.2 bundle (was 4.3.1). 4.6.2 is the last Bootstrap 4 release (EOL 2023-01-01); there is no further 4.x point release.
+
+| Library | In use | Upstream (as of 2026-08) | Notes |
+|---|---|---|---|
+| Bootstrap JS | 4.6.2 bundle | **4.6.2** (final 4.x) | Latest BS4. BS5 is a major rewrite. |
+| Bootswatch CSS | 4.6.2 | 4.6.2 | Local `/static/css/bootstrap.min.css`. |
+| jQuery | **3.7.1** | 3.7.1 (3.x); 4.0.0 | Current 3.x. Local fallback `/static/js/jquery.min.js`. jQuery 4 is incompatible with BS4. |
+| jQuery UI | 1.14.2 | 1.14.2 | Loaded globally; catalog `.sortable` is a CSS class, not the UI Sortable widget. |
+| `@popperjs/core` | 2.11.8 | 2.11.8 | Catalog page only. Keep off `common_js.html`. |
+| Tempus Dominus | 6.10.4 | 6.10.4 | Inactive project; docs site still shows 6.9.4. Stay on 6.x + Popper v2 until a datepicker replacement. |
+| jQuery QueryBuilder | 3.0.0 | **3.0.0** | Latest. 3.0.0 targets Bootstrap **5**; we stay on BS4 + `data-toggle`. Do not chase QB APIs that assume `data-bs-*` without a BS5 upgrade. |
+| `@nobleclem/jquery-multiselect` | 2.4.26 | 2.4.26 | Catalog / settings feature-plot select. |
+| Font Awesome | 4.7.0 | 4.7.0 last of v4 | Latest FA4. FA5+ is a class-name major upgrade (pair with BS5). |
+| Bokeh JS | matches `bokeh==3.*` | 3.9.2 | CDN `bokeh-{{ bokeh_version }}`. Python pin is the source of truth. CVE-2026-21883 is Bokeh **server** WebSocket origin; this app embeds `components()`, not a Bokeh server. |
+| Aladin Lite | vendored `/static/js/aladin.js` (v3 snapshot) | v3 `latest` CDN | Intentionally pinned locally (not `.../v3/latest/...`). |
 
 ---
 
@@ -312,6 +343,7 @@ CRUD custom observatories (auto timezone via `TimezoneFinder`); last selection p
 | G4 | `requirements2.txt` not guaranteed installable | Reference freeze only; may not install on all systems | `requirements2.txt` |
 | G5 | Coverage targets not enforced by CI | `tests/coverage.md` states targets but no gate | `tests/coverage.md` |
 | G6 | Internal service contracts undocumented | `QueryService`, `FavoritesService`, etc. excluded (per scope decision) | `services/` |
+| G7 | Dual Popper (BS4 v1 bundle + TD6 v2) | Required while staying on Bootstrap 4 + Tempus Dominus 6. Do not unify without a major upgrade (§1.5) | `common_js.html`, `main_ui_js.html` |
 
 ---
 

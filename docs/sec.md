@@ -84,3 +84,5 @@ The CSP header acts as a gatekeeper, specifying trusted sources for content type
 - **Compliance:** Aligns with security best practices (e.g., OWASP Top 10) and audit requirements.
 
 > **Note:** The use of `'unsafe-inline'` and `'unsafe-eval'` in `script-src` is a necessary compromise for compatibility with older libraries or CDNs. Monitor these closely to minimize XSS risks.
+
+jQuery is **3.7.1** (CVE-2020-11022 / CVE-2020-11023 in `.html()` / `.append()` were fixed in 3.5.0). jQuery 4 is blocked by Bootstrap 4. Frontend versions and the Bootstrap 4 / Popper v1+v2 split are in `docs/spec.md` §1.5.

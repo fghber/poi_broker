@@ -91,3 +91,126 @@ def test_main_feature_query_uses_success_error_instead_of_complete_parse():
     assert "error: function(xhr, status, error)" in function_block
     assert "var json_obj = JSON.parse(r.responseText);" not in function_block
     assert "complete: function(r){" not in function_block
+
+
+def test_pagination_spinner_uses_delegated_click():
+    main_html = _read_template("main.html")
+    assert "$(document).on('click', 'a[href*=\"page=\"]'" in main_html
+    assert 'document.querySelectorAll(\'a[href*="page="]\')' not in main_html
+
+
+def test_sort_restore_does_not_leak_id_global():
+    main_html = _read_template("main.html")
+    assert "$id = $('#'+key.substring(6))" not in main_html
+    assert "var $th = $('#' + key.substring(6));" in main_html
+    restore = main_html.split("adhere to sort order provided in URL params", 1)[1]
+    restore = restore.split("</script>", 1)[0]
+    assert "hasClass('asc')" not in restore
+    assert "hasClass('desc')" not in restore
+
+
+def test_favorite_click_uses_inflight_lock():
+    main_html = _read_template("main.html")
+    assert "if (btn.data('favXhr')) return;" in main_html
+    assert "btn.removeData('favXhr')" in main_html
+    assert "btn.data('favXhr', xhr);" in main_html
+
+
+def test_observing_retrieve_is_not_inline_onclick():
+    main_html = _read_template("main.html")
+    assert 'onclick="query_observing_plot()"' not in main_html
+    assert 'data-role="observing-retrieve"' in main_html
+    assert "$objectIdModal.on('click', '[data-role=\"observing-retrieve\"]'" in main_html
+
+
+def test_profile_delete_buttons_use_closest():
+    profile_html = _read_template("profile.html")
+    assert "clickEl.closest('.remove-fav-btn')" in profile_html
+    assert "clickEl.closest('.delete-group-btn')" in profile_html
+    assert "clickEl.closest('.remove-watchlist-btn')" in profile_html
+    assert "clickEl.closest('.remove-filter-bookmark-btn')" in profile_html
+    assert "e.target.classList.contains('remove-watchlist-btn')" not in profile_html
+    assert "e.target.classList.contains('delete-group-btn')" not in profile_html
+
+
+def test_query_builder_invalidates_stale_preview_and_count():
+    qb_js = _read_template("_query_builder_js.html")
+    assert "function abortPreviewRequests()" in qb_js
+    assert "if (seq !== previewSeq) return;" in qb_js
+    assert "Query is valid, but row count failed." in qb_js
+    assert "timeout: 15000" in qb_js
+
+
+def test_query_builder_destroy_splits_tooltip_and_plugin_try():
+    qb_js = _read_template("_query_builder_js.html")
+    block = qb_js.split("function destroyBuilderPlugin()", 1)[1].split("function resetState", 1)[0]
+    assert block.count("try {") >= 2
+    assert "tooltip('dispose')" in block
+    assert "queryBuilder('destroy')" in block
+    dispose_try, _, rest = block.partition("tooltip('dispose')")
+    assert "queryBuilder('destroy')" not in dispose_try
+    assert "queryBuilder('destroy')" in rest
+    profile_html = _read_template("profile.html")
+    assert "$('body > .tooltip').remove()" in profile_html
+    assert "$('.tooltip.show, .tooltip').remove()" not in profile_html
+
+
+def test_classification_ajax_has_fail_handler():
+    main_html = _read_template("main.html")
+    block = main_html.split("function query_classification(alertId, sessionId) {", 1)[1]
+    block = block.split("function renderAlert", 1)[0]
+    assert ".fail(function(_, statusText)" in block
+    assert "Error loading classification data." in block
+    assert "renderAlert('#classification_output'" in block
+    assert "timeout: 15000" in block
+
+
+def test_favorite_post_has_timeout_and_logs_non_auth_errors():
+    main_html = _read_template("main.html")
+    block = main_html.split("url: '/api/favorite'", 1)[1].split("$('#btn_save_filter_bookmark')", 1)[0]
+    assert "timeout: 10000" in block
+    assert "Failed to save favorite" in block
+
+
+def test_dead_lightcurve_helpers_removed():
+    main_html = _read_template("main.html")
+    assert "function UrlExists" not in main_html
+    assert "function CsvExists" not in main_html
+    assert "function generate_lightcurveJS" not in main_html
+
+
+def test_export_count_failure_does_not_start_export():
+    export_html = _read_template("export.html")
+    assert "Could not check export size. Please retry." in export_html
+    assert export_html.count("startExport(rules);") == 1
+    assert "pagehide" in export_html
+    start_fn = export_html.split("function startExport(rules)", 1)[1].split("// Auto-refresh", 1)[0]
+    assert start_fn.rstrip().endswith("}")
+    assert not start_fn.rstrip().endswith("});")
+
+
+def test_site_footer_block_is_not_nested_in_body():
+    site_html = _read_template("site.html")
+    without_content = site_html.replace("{% block content %}{% endblock %}", "")
+    body_pos = without_content.find("{% block body %}")
+    foot_pos = without_content.find("{% block foot %}")
+    body_end = without_content.find("{% endblock %}", body_pos)
+    assert body_pos != -1 and foot_pos != -1
+    assert body_end < foot_pos
+
+
+def test_profile_group_create_and_move_check_response_ok():
+    profile_html = _read_template("profile.html")
+    assert "if (!r.ok) throw new Error('Failed to create group');" in profile_html
+    assert "if (!r.ok) throw new Error('Failed to move favorite');" in profile_html
+    assert "confirmMoveBtn.disabled = true;" in profile_html
+    assert "confirmMoveBtn.disabled = false;" in profile_html
+
+
+def test_bootstrap_datepicker_assets_are_gone():
+    root = Path(__file__).resolve().parents[1]
+    leftover = list((root / "poi_broker" / "static").glob("**/bootstrap-datepicker*"))
+    assert leftover == [], leftover
+    templates_dir = root / "poi_broker" / "templates"
+    for path in templates_dir.glob("*.html"):
+        assert "bootstrap-datepicker" not in path.read_text(encoding="utf-8")

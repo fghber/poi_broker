@@ -164,6 +164,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const watchlistPanels = document.getElementById('watchlistPanels');
     const watchlistQueryModal = document.getElementById('watchlistQueryModal');
     const watchlistQueryRoot = watchlistQueryModal.querySelector('[data-query-builder]');
+    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
 
     function setSummaryValue(element, value) {
         if (element) {
@@ -225,13 +227,12 @@ document.addEventListener('DOMContentLoaded', function () {
         body.textContent = message == null ? '' : String(message);
 
         toastContainer.appendChild(toastElement);
-        $(toastElement).toast({ delay: duration });
-        $(toastElement).toast('show');
-
-        // Remove from DOM after hiding
-        toastElement.addEventListener('hidden.bs.toast', function () {
-            toastElement.remove();
+        const $toast = $(toastElement);
+        $toast.toast({ delay: duration, autohide: true });
+        $toast.one('hidden.bs.toast', function () {
+            $toast.toast('dispose').remove();
         });
+        $toast.toast('show');
     }
 
     function escapeHtml(str) {
@@ -306,11 +307,14 @@ document.addEventListener('DOMContentLoaded', function () {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                'X-CSRFToken': csrfToken
             },
             body: JSON.stringify({ name: name.trim() })
         })
-        .then(r => r.json())
+        .then(r => {
+            if (!r.ok) throw new Error('Failed to create group');
+            return r.json();
+        })
         .then(data => {
             if (data.error) {
                 showToast(data.error, 'error');
@@ -344,15 +348,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 const tabsEl = document.getElementById('favoriteTabs');
                 const panelsEl = document.getElementById('favoritePanels');
 
-                tabsEl.innerHTML = '';
-                panelsEl.innerHTML = '';
+                $('#favoriteTabs [data-toggle="tab"]').tab('dispose');
+                tabsEl.replaceChildren();
+                panelsEl.replaceChildren();
 
                 // Determine which tab should be active
                 if (!activeTabId) {
                     activeTabId = 'all';
                 }
 
-                // --- Helper to create a tab ---
+                // --- Helper to create a tab (markup only; content loads on first show) ---
                 function createTab(id, label, count, isActive, isGroup = false) {
                     const tabId = `tab-${id}`;
                     const panelId = `panel-${id}`;
@@ -385,9 +390,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     `;
 
                     panelsEl.appendChild(panel);
-
-                    // Load favorites for this tab
-                    loadFavorites(id === 'all' ? null : id);
                 }
 
                 // --- Create "Ungrouped" tab ---
@@ -411,6 +413,13 @@ document.addEventListener('DOMContentLoaded', function () {
                         true
                     );
                 });
+
+                const activeListId = activeTabId === 'all' ? 'list-all' : `list-${activeTabId}`;
+                const activeList = document.getElementById(activeListId);
+                if (activeList) {
+                    activeList.dataset.loaded = '1';
+                    loadFavorites(activeTabId === 'all' ? null : activeTabId);
+                }
 
                 // --- Activate tab explicitly if needed (in case it was lost during re-render) ---
                 const activeLink = document.querySelector(`#tab-${activeTabId}`);
@@ -445,6 +454,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(data => {
                 const favs = data.favorites || [];
                 const listEl = document.getElementById(listId);
+                if (!listEl) return;
                 if (favs.length === 0) {
                     listEl.innerHTML = '<li class="list-group-item text-muted text-center py-3">No favorites yet.</li>';
                 } else {
@@ -463,6 +473,15 @@ document.addEventListener('DOMContentLoaded', function () {
             })
             .catch(e => console.error(e));
     }
+
+    $('#favoriteTabs').on('shown.bs.tab', 'a[data-toggle="tab"]', function (e) {
+        const id = e.target.id.replace('tab-', '');
+        const list = document.getElementById(id === 'all' ? 'list-all' : 'list-' + id);
+        if (list && list.dataset.loaded !== '1') {
+            list.dataset.loaded = '1';
+            loadFavorites(id === 'all' ? null : id);
+        }
+    });
 
     function formatWatchlistDate(epochSeconds) {
         if (!epochSeconds) {
@@ -521,13 +540,17 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Event delegation for remove and move buttons
     document.addEventListener('click', function (e) {
-        if (e.target.classList.contains('remove-fav-btn')) {
-            const locus = e.target.dataset.locus;
+        const clickEl = e.target && e.target.closest ? e.target : (e.target && e.target.parentElement);
+        if (!clickEl) return;
+
+        const removeFavBtn = clickEl.closest('.remove-fav-btn');
+        if (removeFavBtn) {
+            const locus = removeFavBtn.dataset.locus;
             fetch('/api/favorite', {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                    'X-CSRFToken': csrfToken
                 },
                 body: JSON.stringify({ locusId: locus, fav: false })
             })
@@ -551,21 +574,22 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
         }
 
-        if (e.target.classList.contains('move-fav-btn') || e.target.closest('.move-fav-btn')) {
-            const btn = e.target.closest('.move-fav-btn');
-            currentFavId = btn.dataset.favId;
-            const locus = btn.dataset.locus;
+        const moveFavBtn = clickEl.closest('.move-fav-btn');
+        if (moveFavBtn) {
+            currentFavId = moveFavBtn.dataset.favId;
+            const locus = moveFavBtn.dataset.locus;
             document.getElementById('moveToGroupText').textContent = `Move "${locus}" to:`;
             populateGroupSelect(); // Refresh group options in case they changed
             $('#moveToGroupModal').modal('show');
         }
 
-        if (e.target.classList.contains('delete-group-btn')) {
-            const groupId = e.target.dataset.id;
+        const deleteGroupBtn = clickEl.closest('.delete-group-btn');
+        if (deleteGroupBtn) {
+            const groupId = deleteGroupBtn.dataset.id;
             if (!confirm('Delete this group? (Favorites will become ungrouped.)')) return;
             fetch(`/api/favorite-groups/${groupId}`, { 
                 method: 'DELETE',
-                headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content') }
+                headers: { 'X-CSRFToken': csrfToken }
             })
                 .then(response => {
                     if (!response.ok) {
@@ -587,13 +611,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
         }
 
-        if (e.target.classList.contains('remove-watchlist-btn')) {
-            const watchlistId = e.target.dataset.watchlistId;
+        const watchlistBtn = clickEl.closest('.remove-watchlist-btn');
+        if (watchlistBtn) {
+            const watchlistId = watchlistBtn.dataset.watchlistId;
             if (!confirm('Delete this watchlist?')) return;
 
             fetch(`/api/watchlist/${watchlistId}`, {
                 method: 'DELETE',
-                headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content') }
+                headers: { 'X-CSRFToken': csrfToken }
             })
                 .then(response => {
                     if (!response.ok) {
@@ -615,13 +640,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
         }
 
-        if (e.target.classList.contains('remove-filter-bookmark-btn')) {
-            const bookmarkId = e.target.dataset.bookmarkId;
+        const bookmarkBtn = clickEl.closest('.remove-filter-bookmark-btn');
+        if (bookmarkBtn) {
+            const bookmarkId = bookmarkBtn.dataset.bookmarkId;
             if (!confirm('Delete this filter bookmark?')) return;
 
             fetch(`/api/filter-bookmarks/${bookmarkId}`, {
                 method: 'DELETE',
-                headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content') }
+                headers: { 'X-CSRFToken': csrfToken }
             })
                 .then(response => {
                     if (!response.ok) {
@@ -645,21 +671,24 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // Confirm move button
-    document.getElementById('confirmMoveBtn').addEventListener('click', function () {
+    const confirmMoveBtn = document.getElementById('confirmMoveBtn');
+    confirmMoveBtn.addEventListener('click', function () {
+        if (confirmMoveBtn.disabled) return;
         const groupId = document.getElementById('groupSelect').value;
         const groupIdInt = groupId === 'null' ? null : parseInt(groupId);
         console.log('Moving favorite', currentFavId, 'to group', groupIdInt);
 
+        confirmMoveBtn.disabled = true;
         fetch(`/api/favorite/${currentFavId}/group`, {
             method: 'PATCH',
             headers: { 
                 'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                'X-CSRFToken': csrfToken
             },
             body: JSON.stringify({ groupId: groupIdInt })
         })
         .then(r => {
-            console.log('Response status:', r.status);
+            if (!r.ok) throw new Error('Failed to move favorite');
             return r.json();
         })
         .then(data => {
@@ -676,6 +705,9 @@ document.addEventListener('DOMContentLoaded', function () {
         .catch(e => {
             console.error('Fetch error:', e);
             showToast('Failed to move favorite', 'error');
+        })
+        .finally(function () {
+            confirmMoveBtn.disabled = false;
         });
     });
 
@@ -685,9 +717,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     $('#watchlistQueryModal').on('shown.bs.modal', function () {
         watchlistBuilderApi = window.PoiQueryBuilder.init(watchlistQueryRoot, {
-            onSave: function (_response, api) {
+            onSave: function () {
                 loadWatchlists();
-                api.reset();
                 $('#watchlistQueryModal').modal('hide');
             }
         });
@@ -695,8 +726,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     $('#watchlistQueryModal').on('hidden.bs.modal', function () {
         if (watchlistBuilderApi) {
-            watchlistBuilderApi.reset();
+            watchlistBuilderApi.destroy();
+            watchlistBuilderApi = null;
         }
+        $('body > .tooltip').remove();
     });
 
     // Initial load

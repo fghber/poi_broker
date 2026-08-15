@@ -122,7 +122,10 @@ document.addEventListener('DOMContentLoaded', function () {
             },
             body: JSON.stringify(rules)
         })
-        .then(function (response) { return response.json(); })
+        .then(function (response) {
+            if (!response.ok) throw new Error('count failed');
+            return response.json();
+        })
         .then(function (countData) {
             if (typeof countData.count === 'number' && countData.count > MAX_EXPORT_ROWS) {
                 statusMsg.innerHTML = '<span class="text-danger"><i class="glyphicon glyphicon-exclamation-sign"></i> ' +
@@ -134,8 +137,8 @@ document.addEventListener('DOMContentLoaded', function () {
             startExport(rules);
         })
         .catch(function () {
-            // If the count check fails, fall through to the server (which also enforces the limit).
-            startExport(rules);
+            statusMsg.innerHTML = '<span class="text-danger">Could not check export size. Please retry.</span>';
+            exportBtn.disabled = false;
         });
     });
 
@@ -170,7 +173,7 @@ document.addEventListener('DOMContentLoaded', function () {
             statusMsg.innerHTML = '<span class="text-danger"><i class="glyphicon glyphicon-exclamation-sign"></i> Error starting export</span>';
             exportBtn.disabled = false;
         });
-    });
+    }
 
     // Auto-refresh status if there's an active task
     {% if recent_task and recent_task.status in ['PENDING', 'RUNNING'] %}
@@ -185,6 +188,9 @@ document.addEventListener('DOMContentLoaded', function () {
             })
             .catch(function () { /* silently ignore */ });
     }, 3000);
+    window.addEventListener('pagehide', function () {
+        clearInterval(refreshInterval);
+    });
     {% endif %}
 });
 

@@ -1,21 +1,22 @@
 {% block js %}
 <!-- jQuery CDN -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <!-- jQuery local fallback -->
 <script>
     window.jQuery || document.write('<script src="/static/js/jquery.min.js"><\/script>')
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js" integrity="sha256-BRqBN7dYgABqtY9Hd4ynE+1slnEw+roEPFzQ7TRRfcg=" crossorigin="anonymous"></script>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.14.0/jquery-ui.min.js" integrity="sha512-MlEyuwT6VkRXExjj8CdBKNgd+e2H+aYZOCUaCrt9KRk6MlZDOs91V1yK22rwm8aCIsb5Ec1euL8f0g58RKT/Pg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.14.2/jquery-ui.min.js" integrity="sha512-tNGSWf0jBrMhc+g3/okGfweLw7TYGTxs3GcTK5O+gLptfqNqlkgTp8c7+mpJcJxJvAl/u8FUZtUDm3JcDJmPWQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <!-- <script src="https://code.jquery.com/jquery-1.12.4.js"></script> -->
 <!-- <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script> -->
 
-<!-- Bootstrap JS CDN -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.3.1/js/bootstrap.min.js"></script> <!-- {# TODO: Update to 4.x #} -->
-<!-- Bootstrap JS local fallback -->
+{# BS 4.6.2 bundle includes Popper v1 in its own closure. Do not load a global
+   popper.js / @popperjs/core here: Tempus Dominus 6 (catalog page) needs
+   window.Popper = @popperjs/core v2, which is incompatible with BS4's
+   `new Popper()` API. #}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.6.2/js/bootstrap.bundle.min.js" integrity="sha384-Fy6S3B9q64WdZWQUiU+q4/2Lc9npb8tCaSX9FK7E8HnRr0Jz8D6OP9dO5Vg3Q9ct" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
-    if(typeof($.fn.modal) === 'undefined') {document.write('<script src="/static/js/bootstrap.min.js"><\/script>')}
+    if(typeof($.fn.modal) === 'undefined') {document.write('<script src="/static/js/bootstrap.bundle.min.js"><\/script>')}
 </script>
 
 {% endblock %}

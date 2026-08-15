@@ -351,13 +351,52 @@
     const $nameInput = $root.find('[data-role="name-input"]');
     const $results = $root.find('[data-role="results"]');
     let previewSuccess = false;
+    let previewSeq = 0;
+    let previewXhr = null;
+    let countXhr = null;
+
+    function abortPreviewRequests() {
+      if (previewXhr) previewXhr.abort();
+      if (countXhr) countXhr.abort();
+      previewXhr = countXhr = null;
+    }
 
     function resetPreview(message) {
+      previewSeq += 1;
+      abortPreviewRequests();
       previewSuccess = false;
+      $previewButton.prop('disabled', false);
       $saveButton.prop('disabled', true).attr('title', 'Run Generate SQL first');
       if (typeof message === 'string') {
         $results.text(message);
       }
+    }
+
+    function onBuilderChange() {
+      resetPreview();
+    }
+
+    function initBuilderPlugin() {
+      $builder.queryBuilder({
+        plugins: ['bt-tooltip-errors'],
+        filters: filters
+      });
+      $builder.on(builderChangeEvents.join(' '), onBuilderChange);
+    }
+
+    function destroyBuilderPlugin() {
+      try {
+        $builder.find('[data-toggle="tooltip"]').tooltip('dispose');
+      } catch (error) {
+      }
+      try {
+        $builder.off(builderChangeEvents.join(' '));
+        $builder.queryBuilder('destroy');
+      } catch (error) {
+      }
+      $builder.empty();
+      // bt-tooltip-errors appends tips to body; strip leftovers after trigger dispose.
+      $('body > .tooltip').remove();
     }
 
     function resetState() {
@@ -365,29 +404,15 @@
       $nameInput.val('');
       $results.text('');
       resetPreview();
-      try {
-        $builder.queryBuilder('destroy');
-      } catch (error) {
-      }
-      $builder.empty();
-      $builder.queryBuilder({
-        plugins: ['bt-tooltip-errors'],
-        filters: filters
-      });
+      destroyBuilderPlugin();
+      initBuilderPlugin();
     }
 
     function getRules() {
       return $builder.queryBuilder('getRules');
     }
 
-    $builder.queryBuilder({
-      plugins: ['bt-tooltip-errors'],
-      filters: filters
-    });
-
-    $builder.on(builderChangeEvents.join(' '), function () {
-      resetPreview();
-    });
+    initBuilderPlugin();
 
     $previewButton.on('click', function () {
       try {
@@ -401,55 +426,68 @@
           return;
         }
 
-        $.ajax({
+        const seq = ++previewSeq;
+        abortPreviewRequests();
+        $previewButton.prop('disabled', true);
+
+        previewXhr = $.ajax({
           url: settings.previewUrl,
           type: 'POST',
+          timeout: 15000,
           data: JSON.stringify({ rules: rules }),
           headers: {
             'Content-Type': 'application/json',
             'X-CSRFToken': getCsrfToken()
           },
           contentType: 'application/json; charset=utf-8',
-          dataType: 'json',
-          success: function (response) {
-            if (response.sql) {
-              $results.text('Query is valid. Filter: ' + response.sql);
-              previewSuccess = true;
-              $saveButton.prop('disabled', false).attr('title', settings.saveTitle);
-              if (typeof settings.onPreview === 'function') {
-                settings.onPreview(response, rules);
-              }
-              // Optionally fetch the expected row count.
-              if (settings.countUrl) {
-                $.ajax({
-                  url: settings.countUrl,
-                  type: 'POST',
-                  data: JSON.stringify({ rules: rules }),
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCsrfToken()
-                  },
-                  contentType: 'application/json; charset=utf-8',
-                  dataType: 'json',
-                  success: function (countResp) {
-                    if (typeof countResp.count === 'number') {
-                      $results.text('Query matches ' + countResp.count.toLocaleString() + ' row(s). Filter: ' + response.sql);
-                      if (typeof settings.onCount === 'function') {
-                        settings.onCount(countResp.count);
-                      }
-                    }
-                  }
-                });
-              }
-              return;
-            }
+          dataType: 'json'
+        })
+        .done(function (response) {
+          if (seq !== previewSeq) return;
+          if (!response.sql) return resetPreview('Could not validate query.');
 
-            resetPreview('Could not validate query.');
-          },
-          error: function (xhr, status, error) {
-            const resp = xhr.responseJSON;
-            resetPreview('Query error: ' + ((resp && resp.error) || error));
+          $results.text('Query is valid. Filter: ' + response.sql);
+          previewSuccess = true;
+          $saveButton.prop('disabled', false).attr('title', settings.saveTitle);
+          if (typeof settings.onPreview === 'function') {
+            settings.onPreview(response, rules);
           }
+
+          if (!settings.countUrl) return;
+
+          countXhr = $.ajax({
+            url: settings.countUrl,
+            type: 'POST',
+            timeout: 15000,
+            data: JSON.stringify({ rules: rules }),
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': getCsrfToken()
+            },
+            contentType: 'application/json; charset=utf-8',
+            dataType: 'json'
+          })
+          .done(function (countResp) {
+            if (seq !== previewSeq) return;
+            if (typeof countResp.count === 'number') {
+              $results.text('Query matches ' + countResp.count.toLocaleString() + ' row(s). Filter: ' + response.sql);
+              if (typeof settings.onCount === 'function') {
+                settings.onCount(countResp.count);
+              }
+            }
+          })
+          .fail(function (_, status) {
+            if (status === 'abort' || seq !== previewSeq) return;
+            $results.text('Query is valid, but row count failed. Filter: ' + response.sql);
+          });
+        })
+        .fail(function (xhr, status, error) {
+          if (status === 'abort' || seq !== previewSeq) return;
+          const resp = xhr.responseJSON;
+          resetPreview('Query error: ' + ((resp && resp.error) || error || status));
+        })
+        .always(function () {
+          if (seq === previewSeq) $previewButton.prop('disabled', false);
         });
       } catch (error) {
         $output.text('Error: ' + error.message);
@@ -511,14 +549,14 @@
       root: root,
       reset: resetState,
       destroy: function () {
+        previewSeq += 1;
+        abortPreviewRequests();
         try {
-          $builder.off(builderChangeEvents.join(' '));
           $previewButton.off('click');
           $saveButton.off('click');
-          $builder.queryBuilder('destroy');
         } catch (error) {
         }
-        $builder.empty();
+        destroyBuilderPlugin();
         root.__queryBuilder = null;
       },
       getRules: getRules,

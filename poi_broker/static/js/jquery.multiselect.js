@@ -1,6 +1,6 @@
 /**
  * Display a nice easy to use multiselect list
- * @Version: 2.4.23
+ * @Version: 2.4.26
  * @Author: Patrick Springstubbe
  * @Contact: @JediNobleclem
  * @Website: springstubbe.us
@@ -62,6 +62,7 @@
         maxWidth               : null,  // maximum width of option overlay (or selector)
         maxPlaceholderWidth    : null,  // maximum width of placeholder button
         maxPlaceholderOpts     : 10,    // maximum number of placeholder options to show until "# selected" shown instead
+        showAllPlaceholderOpts : false, // always show all the selected options
         showCheckbox           : true,  // display the checkbox to the user
         checkboxAutoFit        : false,  // auto calc checkbox padding
         optionAttributes       : [],    // attributes to copy to the checkbox from the option element
@@ -106,7 +107,7 @@
         msCounter = msCounter + 1; // increment counter
 
         /* Make sure its a multiselect list */
-        if( !$(this.element).attr('multiple') ) {
+        if( !$(this.element).prop('multiple') ) {
             throw new Error( '[jQuery-MultiSelect] Select list must be a multiselect list in order to use this plugin' );
         }
 
@@ -321,7 +322,7 @@
                         }
 
                         // search non optgroup li's
-                        var searchString = $.trim( search.val().toLowerCase() );
+                        var searchString = search.val().toLowerCase().trim();
                         if( searchString ) {
                             optionsList.find('li[data-search-term*="'+ searchString +'"]:not(.optgroup)').removeClass('ms-hidden');
                             optionsList.find('li:not([data-search-term*="'+ searchString +'"], .optgroup)').addClass('ms-hidden');
@@ -837,7 +838,7 @@
                 }
 
                 selOpts.push(
-                    $.trim( select.find('option[value="'+ instance._escapeSelector( selectVals[ key ] ) +'"]').text() )
+                    select.find('option[value="'+ instance._escapeSelector( selectVals[ key ] ) +'"]').text().trim()
                 );
 
                 if( selOpts.length >= instance.options.maxPlaceholderOpts ) {
@@ -865,7 +866,7 @@
                 placeholderTxt.text( instance.options.texts.placeholder );
             }
             // if copy is larger than button width use "# selected"
-            else if( instance.options.replacePlaceholderText && ((placeholderTxt.width() > placeholder.width()) || (selOpts.length != selectVals.length)) ) {
+            else if( !instance.options.showAllPlaceholderOpts && instance.options.replacePlaceholderText && ((placeholderTxt.width() > placeholder.width()) || (selOpts.length != selectVals.length)) ) {
                 placeholderTxt.text( selectVals.length + instance.options.texts.selectedOptions );
             }
         },
@@ -906,7 +907,7 @@
                 searchTerm += ' ' + option.value.toLowerCase();
             }
 
-            container.attr( 'data-search-term', $.trim( searchTerm ) ).prepend( thisOption );
+            container.attr( 'data-search-term', searchTerm.trim() ).prepend( thisOption );
 
             msOptCounter = msOptCounter + 1;
         },
