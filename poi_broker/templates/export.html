@@ -163,8 +163,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 statusMsg.innerHTML = '<span class="text-success"><i class="glyphicon glyphicon-ok-sign"></i> Export started! Redirecting...</span>';
                 setTimeout(function () { window.location.reload(); }, 1500);
             } else {
-                statusMsg.innerHTML = '<span class="text-danger"><i class="glyphicon glyphicon-exclamation-sign"></i> ' +
-                    (res.data.error || 'Export failed') + '</span>';
+                statusMsg.replaceChildren();
+                const span = document.createElement('span');
+                span.className = 'text-danger';
+                const icon = document.createElement('i');
+                icon.className = 'glyphicon glyphicon-exclamation-sign';
+                span.appendChild(icon);
+                span.appendChild(document.createTextNode(' ' + (res.data.error || 'Export failed')));
+                statusMsg.appendChild(span);
                 exportBtn.disabled = false;
             }
         })

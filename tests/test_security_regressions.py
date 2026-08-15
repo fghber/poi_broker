@@ -71,6 +71,51 @@ def test_api_csrf_header_allows_authenticated_post(secure_app, secure_client):
     assert response.get_json().get("status") == "ok"
 
 
+def test_last_observatory_csrf_missing_token_rejected(secure_app, secure_client):
+    from poi_broker import db
+    from poi_broker.models import User
+
+    with secure_app.app_context():
+        user_id = _create_verified_user(db, User, "csrf-obs1@example.com", "Password123!", "CSRF Obs User")
+
+    _force_login(secure_client, user_id)
+
+    response = secure_client.post(
+        "/api/last-observatory",
+        json={"source": "builtin", "name": "Palomar"},
+    )
+    assert response.status_code == 400
+    assert response.is_json
+    payload = response.get_json()
+    assert payload.get("error") == "csrf validation failed"
+
+
+def test_last_observatory_csrf_header_allows_authenticated_post(secure_app, secure_client):
+    from poi_broker import db
+    from poi_broker.models import User
+    from poi_broker.user_settings import get_saved_last_selected_observatory
+
+    with secure_app.app_context():
+        user_id = _create_verified_user(db, User, "csrf-obs2@example.com", "Password123!", "CSRF Obs User 2")
+
+    _force_login(secure_client, user_id)
+
+    html = secure_client.get("/").get_data(as_text=True)
+    csrf_token = _extract_meta_csrf_token(html)
+
+    response = secure_client.post(
+        "/api/last-observatory",
+        json={"source": "builtin", "name": "Palomar"},
+        headers={"X-CSRFToken": csrf_token},
+    )
+    assert response.status_code == 200
+    assert response.is_json
+    assert response.get_json().get("status") == "ok"
+
+    with secure_app.app_context():
+        assert get_saved_last_selected_observatory(user_id) == {"source": "builtin", "name": "Palomar"}
+
+
 def test_cross_user_cannot_delete_other_watchlist(secure_app, secure_client):
     from poi_broker import db
     from poi_broker.models import User, Watchlist

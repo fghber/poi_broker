@@ -1,11 +1,14 @@
 from flask import (render_template, abort, jsonify, request, Response,
-                   redirect, url_for, make_response, Blueprint, current_app)
+                   redirect, url_for, make_response, Blueprint, current_app,
+                   send_from_directory)
 from flask_login import login_required, current_user
 import logging
 from functools import lru_cache
 import csv
 import io
 from datetime import datetime, timezone
+from pathlib import Path
+import bokeh as bokeh_pkg
 from astropy.time import Time
 from astropy.coordinates import EarthLocation
 import json
@@ -38,9 +41,16 @@ from .constants.features import FEATURE_COLUMNS, default_feature_plot_columns
 from .user_settings import user_settings_bp, get_user_settings, get_saved_feature_plot_columns, get_saved_last_selected_observatory, UserSettings
 from importlib.metadata import version
 bokeh_version = version("bokeh")
+_BOKEH_JS_DIR = Path(bokeh_pkg.__file__).resolve().parent / "server" / "static" / "js"
 
 logger = logging.getLogger(__name__)
 main_blueprint = Blueprint('main', __name__)
+
+
+@main_blueprint.route("/bokeh.min.js")
+def bokeh_js():
+    """Serve the Bokeh JS that ships with the installed Python package."""
+    return send_from_directory(_BOKEH_JS_DIR, "bokeh.min.js", max_age=86400)
 
 @lru_cache(maxsize=8192)
 def _format_mjd_cached(mjd_value: float) -> str:

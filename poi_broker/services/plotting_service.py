@@ -1,11 +1,44 @@
 """Bokeh plotting service for lightcurve and feature visualizations."""
 
+import html
 import logging
 from bokeh.plotting import figure
 from bokeh.embed import components
 from bokeh.models import Legend
 
 logger = logging.getLogger(__name__)
+
+
+def bokeh_script_body(script: str) -> str:
+    """Return the JavaScript inside a Bokeh ``<script>`` wrapper, if present."""
+    if not script:
+        return ''
+    stripped = script.strip()
+    if stripped.lower().startswith('<script'):
+        start = stripped.find('>')
+        end = stripped.lower().rfind('</script>')
+        if start != -1 and end != -1 and end > start:
+            return stripped[start + 1:end]
+    return script
+
+
+def bokeh_json_payload(div: str, script: str) -> dict[str, str]:
+    """JSON body for plot endpoints: Bokeh div HTML plus unwrapped script."""
+    return {'div': div or '', 'script': bokeh_script_body(script)}
+
+
+def bokeh_warning_payload(message: str) -> dict[str, str]:
+    """HTTP 200 empty-state for plot tabs (yellow warning, no script).
+
+    Do not replace this with 404/``{error}``. The catalog modal treats 4xx as a
+    red load failure; missing classification/lightcurve/feature data must stay
+    a warning inserted via ``insertBokehFromPayload``.
+    """
+    return bokeh_json_payload(
+        f'<div class="no-data alert alert-warning">{html.escape(message)}</div>',
+        '',
+    )
+
 
 # Color scheme for passbands (lightcurve)
 PASSBAND_COLORS = {

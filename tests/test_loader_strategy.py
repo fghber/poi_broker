@@ -67,8 +67,9 @@ def test_plot_routes_return_data_for_seeded_locus(client, app):
 
     plot_response = client.get('/query_lightcurve_data', query_string={'locusId': locus_id})
     assert plot_response.status_code == 200
-    body = plot_response.get_data(as_text=True)
-    assert 'No lightcurve data' not in body
+    assert plot_response.is_json
+    plot_payload = plot_response.get_json()
+    assert 'No lightcurve data' not in plot_payload.get('div', '')
 
     csv_response = client.get('/locus_plot_csv', query_string={'locusId': locus_id})
     assert csv_response.status_code == 200
@@ -83,11 +84,14 @@ def test_plot_routes_return_data_for_seeded_locus(client, app):
         query_string={'locusId': locus_id, 'features': SELECTED_FEATURE},
     )
     assert feature_response.status_code == 200
-    feature_body = feature_response.get_data(as_text=True)
-    assert 'no feature data' not in feature_body.lower()
-    assert 'No features selected' not in feature_body
-    assert '<script' in feature_body
-    assert 'Bokeh' in feature_body
+    assert feature_response.is_json
+    feature_payload = feature_response.get_json()
+    feature_div = feature_payload.get('div', '')
+    feature_script = feature_payload.get('script', '')
+    assert 'no feature data' not in feature_div.lower()
+    assert 'No features selected' not in feature_div
+    assert '<script' not in feature_script
+    assert 'Bokeh' in feature_script
 
 
 def test_lightcurve_query_select_list_is_projected(app):

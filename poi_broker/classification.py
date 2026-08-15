@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, abort, request, make_response
+from flask import Blueprint, jsonify, request
 import numpy as np
 from sqlalchemy import text
 from bokeh.plotting import figure, show
@@ -6,15 +6,22 @@ from bokeh.models import ColumnDataSource, HoverTool, PolarTransform, LabelSet, 
 from bokeh.colors import RGB
 from bokeh.embed import components
 
+from .services.plotting_service import bokeh_json_payload, bokeh_warning_payload
+
 classification_blueprint = Blueprint('classification', __name__)
 # IDEA: Perhaps add a URL prefix classification/
+
+_MAX_ALERT_ID_LEN = 128
+
 
 @classification_blueprint.route('/query_classification')
 def classification_plot():
 
     alertId = request.args.get('alertId')
     if not alertId:
-        return ('<div class="no-data alert alert-warning">Missing alertId</div>', '') 
+        return jsonify({'error': 'Missing alertId'}), 400
+    if len(alertId) > _MAX_ALERT_ID_LEN:
+        return jsonify({'error': 'alertId is too long'}), 400
 
     # load values from the SQLite 'classification' table using SQL (no model required)
     # local import to avoid circular import at module import time
@@ -28,7 +35,7 @@ def classification_plot():
     """)
     row = db.session.execute(sql, {'id': alertId}).fetchone()
     if row is None:
-        return (f'<div class="no-data alert alert-warning">No classification data found for alert_id={alertId}</div>', '') 
+        return jsonify(bokeh_warning_payload('No classification data found'))
 
     # ensure numeric values and replace NULL with 0.0
     values = [float(v) if v is not None else 0.0 for v in row]
@@ -136,7 +143,6 @@ def classification_plot():
     script, div = components(p)
 
     if not p.renderers:
-        return ('<div class="no-data alert alert-warning">There is no classification data to plot!</div>', '')
- 
-    # Return the components to the HTML template
-    return f'{ div }{ script }'
+        return jsonify(bokeh_warning_payload('There is no classification data to plot!'))
+
+    return jsonify(bokeh_json_payload(div, script))

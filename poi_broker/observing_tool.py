@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, abort, request, make_response
+from flask import Blueprint, jsonify, request
 from flask_login import current_user
 
 import matplotlib 
@@ -22,9 +22,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import logging
 
-from . import db
 from .models import UserObservatory
-from .user_settings import save_last_selected_observatory
 
 logger = logging.getLogger(__name__)
 
@@ -91,30 +89,29 @@ def calc_observing_plot():
         dec_value = request.args.get('dec')
 
         if not obs_loc or not obs_date or ra_value is None or dec_value is None:
-            return '<p>Missing required query parameters: obs_loc, obs_date, ra, dec</p>', 400
+            return jsonify({'error': 'Missing required query parameters: obs_loc, obs_date, ra, dec'}), 400
 
         try:
             year, month, day = obs_date.split('-')
             ra = float(ra_value)
             dec = float(dec_value)
         except (ValueError, TypeError):
-            return '<p>Invalid parameter format. Expected obs_date=YYYY-MM-DD and numeric ra/dec.</p>', 400
+            return jsonify({'error': 'Invalid parameter format. Expected obs_date=YYYY-MM-DD and numeric ra/dec.'}), 400
 
-        selected_payload = None
         if obs_loc.startswith('custom:'):
             if not current_user.is_authenticated:
-                return '<p>Authentication required for custom observatories.</p>', 401
+                return jsonify({'error': 'Authentication required for custom observatories.'}), 401
 
             custom_id = obs_loc.split(':', 1)[1].strip()
             if not custom_id.isdigit():
-                return '<p>Invalid custom observatory identifier.</p>', 400
+                return jsonify({'error': 'Invalid custom observatory identifier.'}), 400
 
             custom_row = UserObservatory.query.filter_by(
                 id=int(custom_id),
                 user_id=current_user.id,
             ).first()
             if custom_row is None:
-                return '<p>Unknown custom observatory.</p>', 400
+                return jsonify({'error': 'Unknown custom observatory.'}), 400
 
             observatory = EarthLocation(
                 lat=custom_row.latitude * u.deg,
@@ -129,15 +126,13 @@ def calc_observing_plot():
                 tz = _resolve_zoneinfo(fallback_timezone_name)
                 if tz is None:
                     logger.warning('Invalid timezone for custom observatory id=%s', custom_row.id)
-                    return '<p>Custom observatory timezone is invalid.</p>', 400
+                    return jsonify({'error': 'Custom observatory timezone is invalid.'}), 400
                 logger.warning(
                     'Recovered invalid timezone for custom observatory id=%s using coords fallback: %s -> %s',
                     custom_row.id,
                     custom_row.timezone_name,
                     fallback_timezone_name,
                 )
-
-            selected_payload = {'source': 'custom', 'id': custom_row.id}
         else:
             site_name = obs_loc.split(':', 1)[1].strip() if obs_loc.startswith('builtin:') else obs_loc
             # Observatory location
@@ -145,22 +140,26 @@ def calc_observing_plot():
                 observatory = EarthLocation.of_site(site_name)
             except Exception:
                 logger.warning('Unknown observatory location: %s', site_name)
-                return '<p>Unknown observatory location.</p>', 400
+                return jsonify({'error': 'Unknown observatory location.'}), 400
 
             obs_lon, obs_lat = observatory.lon.value, observatory.lat.value
             tf = TimezoneFinder()
             timezone_name = tf.timezone_at(lng=obs_lon, lat=obs_lat)
             if timezone_name is None:
-                return '<p>Failed to determine timezone for selected observatory.</p>', 400
+                return jsonify({'error': 'Failed to determine timezone for selected observatory.'}), 400
             tz = _resolve_zoneinfo(timezone_name)
             if tz is None:
                 logger.warning('Invalid timezone for built-in observatory %s (%s)', site_name, timezone_name)
-                return '<p>Failed to determine timezone for selected observatory.</p>', 400
-            selected_payload = {'source': 'builtin', 'name': site_name}
+                return jsonify({'error': 'Failed to determine timezone for selected observatory.'}), 400
 
         # Do not generate any plots if the object is not visible from the observatory
         if (obs_lat - dec >= 90):
-            return f"<p>Object is not visible from your location: declination = {dec} degree, observatory latitude {obs_lat} degree</p>"
+            return jsonify({
+                'message': (
+                    f'Object is not visible from your location: declination = {dec} degree, '
+                    f'observatory latitude {obs_lat} degree'
+                )
+            })
 
         stellar_object = SkyCoord(ra=ra * u.deg, dec=dec * u.deg) #e.g. SkyCoord(ra=101.28715533*u.deg, dec=16.71611586*u.deg)
 
@@ -252,30 +251,17 @@ def calc_observing_plot():
         # 1: Create observing plot
         obs_img = observing_plot()
 
-        # 2: Create moon panel
-        moon_panel = ''
+        # 2: Create moon panel. Moon-down is a plain label (moonMessage), not HTML.
         night_moon_alt = moon_alt[np.where(sun_alt < 0)]
         if np.max(night_moon_alt) < 0:
-            moon_panel = 'Moon down'
-        else:
-            moon_separation = moon.separation(stellar_object, origin_mismatch='ignore')
-            moon_panel = get_moon_phase_panel(observatory, midnight_utc, moon_separation)
+            return jsonify({'image': obs_img, 'moonMessage': 'Moon down'})
 
-        if current_user.is_authenticated and selected_payload is not None:
-            try:
-                save_last_selected_observatory(current_user.id, selected_payload)
-                db.session.commit()
-            except Exception as exc:
-                db.session.rollback()
-                logger.warning('Failed to save last-selected observatory for user_id=%s: %s', current_user.id, exc)
-
-        return f'''<hr><div class="row">
-            <div class="col-md-7"><img src="{obs_img}"></div>
-            <div class="col-md-5">{moon_panel}</div>
-        </div>'''
+        moon_separation = moon.separation(stellar_object, origin_mismatch='ignore')
+        moon_panel = get_moon_phase_panel(observatory, midnight_utc, moon_separation)
+        return jsonify({'image': obs_img, 'moonHtml': moon_panel})
     except Exception:
         logger.exception('Unhandled error while generating observing plot')
-        return '<p>Internal server error while generating observing plot. Check server logs for details.</p>', 500
+        return jsonify({'error': 'Internal server error while generating observing plot. Check server logs for details.'}), 500
 
 def get_moon_phase_panel(observatory, midnight_utc, moon_separation):
     #angle of the tilt of the Moon will be different as seen from different latitudes. 

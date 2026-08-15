@@ -1,9 +1,9 @@
 """Lightcurve visualization routes blueprint."""
 
 import logging
-from flask import Blueprint, Response, current_app, request
+from flask import Blueprint, Response, current_app, jsonify, request
 from sqlalchemy.orm import Query
-from ..services.plotting_service import create_bokeh_lightcurve_figure
+from ..services.plotting_service import bokeh_json_payload, create_bokeh_lightcurve_figure
 from .. import db, limiter
 from ..models import Ztf
 
@@ -33,23 +33,21 @@ def build_lightcurve_csv_query(locus_id: str) -> Query:
 def query_lightcurve_data():
     """
     Get lightcurve plot data for a locus ID.
-    Returns Bokeh HTML/script components.
+    Returns JSON ``{div, script}`` Bokeh components.
     """
     locusId = request.args.get('locusId')
     if not locusId:
-        return Response('Missing locusId', status=400)
+        return jsonify({'error': 'Missing locusId'}), 400
 
     try:
         data = build_lightcurve_plot_query(locusId).all()
 
         # Create Bokeh plot
         div, script = create_bokeh_lightcurve_figure(data)
-        
-        # Return the components to the HTML template
-        return f'{div}{script}'
+        return jsonify(bokeh_json_payload(div, script))
     except Exception as e:
         logger.error(f'Error querying lightcurve data: {str(e)}', exc_info=True)
-        return Response('Error querying lightcurve data', status=500)
+        return jsonify({'error': 'Error querying lightcurve data'}), 500
 
 
 @lightcurve_bp.route('/locus_plot_csv', methods=['GET'])

@@ -50,6 +50,11 @@ You are an expert in Python, Flask, and SqlAlchemy development.
   - Use poi_broker.services.catalog_list (keyset for date-only sort, OFFSET+1 otherwise) and catalog_query for shared filters.
   - Exact Rows only when cheap or via GET /api/catalog-count; do not COUNT unselective filters on the list request.
 
+  Plot empty states (do not 404)
+  - Missing plot data is a successful empty result, not an HTTP error. Lightcurve, feature-plot, and classification return HTTP 200 JSON `{div, script}` with a static warning `div` and empty `script` via `bokeh_warning_payload()`.
+  - Do not return 404/400 `{error}` for “no row” / “nothing to plot”. The catalog modal `.fail` handler paints a red hard error; empty tabs must stay yellow warnings through `.done` + `insertBokehFromPayload`.
+  - Never echo `alertId` / `locusId` into that warning. 400 is only for missing/invalid request params; 5xx for real failures.
+
   Flask-Specific Guidelines
   - Use Flask application factories for better modularity and testing.
   - Organize routes using Flask Blueprints for better code organization.

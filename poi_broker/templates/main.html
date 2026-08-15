@@ -5,7 +5,7 @@
   <link href="static/css/jquery.multiselect.css" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@eonasdan/tempus-dominus@6.10.4/dist/css/tempus-dominus.min.css" integrity="sha256-lD7ev3j/Q57xkY6BcJsAHuFP/lhMMu72Mo7/C2X1wYk=" crossorigin="anonymous">
   {% if bokeh_version is defined %}
-  <script src="https://cdn.bokeh.org/bokeh/release/bokeh-{{ bokeh_version }}.min.js"></script>
+  <script src="{{ url_for('main.bokeh_js', v=bokeh_version) }}"></script>
   {% endif %}
   <!--"https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8"-->
   <script type="text/javascript" src="/static/js/aladin.js" charset="utf-8"></script>
@@ -1086,7 +1086,7 @@
     //$('body').find('img[name="object-id-plot"]').attr("src", "/static/img/_ZTF_cutouts/"+date+"/"+ztf_object_id+"_"+alert_id+".png");
     //$('body').find('img[name="object-id-plot"]').attr("onerror", "this.src='/static/img/_ZTF_lc_plots/missing_file.png';");
     //update URL Of download button
-    $('#btn_locus_csv').attr('href', '/locus_plot_csv?locusId='+locus_id);
+    $('#btn_locus_csv').attr('href', '/locus_plot_csv?locusId=' + encodeURIComponent(locus_id));
     
     //clear observing output
     $("#observing_output").html('');
@@ -1103,7 +1103,7 @@
       favoriteRequestController.abort();
     }
     favoriteRequestController = new AbortController();
-    fetch(`/api/favorite?locusId=${locus_id}`, { signal: favoriteRequestController.signal })
+    fetch(`/api/favorite?locusId=${encodeURIComponent(locus_id)}`, { signal: favoriteRequestController.signal })
       .then(response => {
         if (!isModalSessionActive(currentSessionId)) {
           return null;
@@ -1180,54 +1180,51 @@
     }, 250);
   });
 
+  function insertBokehFromPayload(container, payload) {
+    if (!container || !payload) return;
+    container.replaceChildren();
+    const wrap = document.createElement('div');
+    wrap.innerHTML = payload.div || '';
+    const plotDiv = wrap.querySelector('div');
+    if (plotDiv) container.appendChild(plotDiv);
+    if (payload.script) {
+      try {
+        const fn = new Function(payload.script);
+        fn();
+      } catch (err) {
+        console.error('Failed to execute Bokeh component script safely:', err);
+      }
+    }
+  }
+
+  function plotRequestFail(xhr, statusText, sessionId, selector, fallback) {
+    if (!isModalSessionActive(sessionId) || statusText === 'abort') return;
+    const err = xhr.responseJSON && xhr.responseJSON.error;
+    renderAlert(selector, 'danger', err || fallback);
+  }
+
   function query_locusplot(locus_id, sessionId) {
     loadingSpinnerController.show(1000); // Show after 1 second for lightcurve loading
-    let lightcurve_data_url = '/query_lightcurve_data?locusId=' + locus_id;
+    let lightcurve_data_url = '/query_lightcurve_data?locusId=' + encodeURIComponent(locus_id);
     return $.ajax({
           url: lightcurve_data_url,
-          cache: false
-    }).done(function(data) {
+          cache: false,
+          dataType: 'json'
+    }).done(function(payload) {
         if (!isModalSessionActive(sessionId)) return;
         teardownBokehInContainer('#locus-plot');
-
-        // Safely insert the returned components HTML (div + script) without leaving raw
-        // script tags in the DOM. Extract div and script, append the div and evaluate the
-        // script in a local scope so the browser can GC its compiled function after teardown.
-        try {
-          const container = document.getElementById('locus-plot');
-          if (container) {
-            const tmp = document.createElement('div');
-            tmp.innerHTML = data;
-            const newDiv = tmp.querySelector('div');
-            const scriptElem = tmp.querySelector('script');
-            container.innerHTML = '';
-            if (newDiv) container.appendChild(newDiv);
-            if (scriptElem) {
-              const rawJs = scriptElem.textContent || scriptElem.innerText || '';
-              try {
-                const fn = new Function(rawJs);
-                fn();
-              } catch (err) {
-                console.error('Failed to execute Bokeh component script safely:', err);
-              }
-            }
-          }
-        } catch (err) {
-          console.error('Error inserting Bokeh components into #locus-plot:', err);
-          document.getElementById('locus-plot').innerHTML = data;
-        }
+        insertBokehFromPayload(document.getElementById('locus-plot'), payload);
         loadingSpinnerController.hide();
-    }).fail(function() {
-        if (!isModalSessionActive(sessionId)) return;
+    }).fail(function(xhr, statusText) {
         loadingSpinnerController.hide();
-        $("#locus-plot").html('<div class="alert alert-danger">Error loading lightcurve data.</div>');
+        plotRequestFail(xhr, statusText, sessionId, '#locus-plot', 'Error loading lightcurve data.');
     });
   }
 
   // Backwards-compat shim marker for tests expecting the older one-arg signature
   // function query_features_table(alert_id) {
   function query_features_table(alert_id, sessionId) {
-    let backend_url = `/query_features?alert_id=${alert_id}`;
+    let backend_url = `/query_features?alert_id=${encodeURIComponent(alert_id)}`;
     const output = document.getElementById('features_table_output');
 
     if (!output || !alert_id) {
@@ -1267,42 +1264,21 @@
     activeFeatureplotXhr = null;
     loadingSpinnerController.show(1000); // Show after 1 second for feature plot loading
 
-    let featureplot_data_url = '/query_featureplot_data?locusId=' + locus_id + '&features=' + selected_features;
+    let featureplot_data_url = '/query_featureplot_data?locusId=' + encodeURIComponent(locus_id) + '&features=' + encodeURIComponent(selected_features);
     activeFeatureplotXhr = trackModalRequest($.ajax({
           url: featureplot_data_url,
-          cache: false
-    }).done(function(data) {
+          cache: false,
+          dataType: 'json'
+    }).done(function(payload) {
         if (!isModalSessionActive(sessionId)) return;
         teardownBokehInContainer('#feature-plot');
-
-        try {
-          const container = document.getElementById('feature-plot');
-          if (container) {
-            const tmp = document.createElement('div');
-            tmp.innerHTML = data;
-            const newDiv = tmp.querySelector('div');
-            const scriptElem = tmp.querySelector('script');
-            container.innerHTML = '';
-            if (newDiv) container.appendChild(newDiv);
-            if (scriptElem) {
-              const rawJs = scriptElem.textContent || scriptElem.innerText || '';
-              try {
-                const fn = new Function(rawJs);
-                fn();
-              } catch (err) {
-                console.error('Failed to execute Bokeh component script safely:', err);
-              }
-            }
-          }
-        } catch (err) {
-          console.error('Error inserting Bokeh components into #feature-plot:', err);
-          document.getElementById('feature-plot').innerHTML = data;
+        insertBokehFromPayload(document.getElementById('feature-plot'), payload);
+        loadingSpinnerController.hide();
+    }).fail(function(xhr, statusText) {
+        if (statusText !== 'abort') {
+            loadingSpinnerController.hide();
         }
-        loadingSpinnerController.hide();
-    }).fail(function(_, statusText) {
-        if (!isModalSessionActive(sessionId) || statusText === 'abort') return;
-        loadingSpinnerController.hide();
-        $("#feature-plot").html('<div class="alert alert-danger">Error loading feature plot data.</div>');
+        plotRequestFail(xhr, statusText, sessionId, '#feature-plot', 'Error loading feature plot data.');
     }));
     return activeFeatureplotXhr;
   }
@@ -1337,22 +1313,76 @@
     console.log(observing_plot_data_url);
     return trackModalRequest($.ajax({
           url: observing_plot_data_url,
-          cache: false
-    }).done(function(data) {
+          cache: false,
+          dataType: 'json'
+    }).done(function(payload) {
         if (!isModalSessionActive(sessionId)) return;
-        // const divPosition = data.search("</div>");
-        // document.getElementById("locus-plot").innerHTML = data.substring(0,divPosition);//
-        // const scriptPosition = data.search("(?<=<script type=\"text/javascript\">)");
-        // var script = document.createElement('script');
-        // script.innerHTML = data.substring(scriptPosition, data.length-10);
-        // document.body.appendChild(script);
-        $("#observing_output").html(data);
+        renderObservingOutput(payload);
+        if (payload && payload.image) persistLastObservatory(obs_loc);
         loadingSpinnerController.hide(); // Hide spinner when done
-    }).fail(function(_, statusText) {
+    }).fail(function(xhr, statusText) {
         if (!isModalSessionActive(sessionId) || statusText === 'abort') return;
         loadingSpinnerController.hide(); // Hide spinner on error too
-        $("#observing_output").html('<div class="alert alert-danger">Error loading observing data. Please try again.</div>');
+        const err = xhr.responseJSON && xhr.responseJSON.error;
+        renderAlert('#observing_output', 'danger', err || 'Error loading observing data. Please try again.');
     }));
+  }
+
+  function renderObservingOutput(payload) {
+    const container = document.getElementById('observing_output');
+    if (!container) return;
+    container.replaceChildren();
+    if (!payload) return;
+    if (payload.message) {
+      renderAlert('#observing_output', 'warning', payload.message);
+      return;
+    }
+    const hr = document.createElement('hr');
+    const row = document.createElement('div');
+    row.className = 'row';
+    const plotCol = document.createElement('div');
+    plotCol.className = 'col-md-7';
+    if (payload.image && payload.image.indexOf('data:image/png;base64,') === 0) {
+      const img = document.createElement('img');
+      img.src = payload.image;
+      plotCol.appendChild(img);
+    }
+    const moonCol = document.createElement('div');
+    moonCol.className = 'col-md-5';
+    if (payload.moonMessage) {
+      const moonAlert = document.createElement('div');
+      moonAlert.className = 'alert alert-info';
+      moonAlert.textContent = payload.moonMessage;
+      moonCol.appendChild(moonAlert);
+    } else if (payload.moonHtml) {
+      moonCol.innerHTML = payload.moonHtml;
+    }
+    row.appendChild(plotCol);
+    row.appendChild(moonCol);
+    container.appendChild(hr);
+    container.appendChild(row);
+  }
+
+  function persistLastObservatory(obsLoc) {
+    if (!window.isAuthenticated || !obsLoc) return;
+    let body = null;
+    if (obsLoc.indexOf('custom:') === 0) {
+      const id = Number(obsLoc.slice(7));
+      if (!Number.isInteger(id)) return;
+      body = { source: 'custom', id: id };
+    } else {
+      const name = obsLoc.indexOf('builtin:') === 0 ? obsLoc.slice(8).trim() : String(obsLoc);
+      if (!name) return;
+      body = { source: 'builtin', name: name };
+    }
+    fetch('/api/last-observatory', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken
+      },
+      body: JSON.stringify(body)
+    }).catch(function () { /* preference write is best-effort */ });
   }
 
   $objectIdModal.on('click', '[data-role="observing-retrieve"]', function () {
@@ -1398,40 +1428,15 @@
   });
 
   function query_classification(alertId, sessionId) {
-    let classification_data_url = '/query_classification?alertId=' + alertId;
-    return $.ajax({
-          url: classification_data_url,
-          cache: false,
-          timeout: 15000
-    }).done(function(data) {
-        if (!isModalSessionActive(sessionId)) return;
-        teardownBokehInContainer('#classification_output');
-        try {
-          const container = document.getElementById('classification_output');
-          if (container) {
-            const tmp = document.createElement('div');
-            tmp.innerHTML = data;
-            const newDiv = tmp.querySelector('div');
-            const scriptElem = tmp.querySelector('script');
-            container.innerHTML = '';
-            if (newDiv) container.appendChild(newDiv);
-            if (scriptElem) {
-              const rawJs = scriptElem.textContent || scriptElem.innerText || '';
-              try {
-                const fn = new Function(rawJs);
-                fn();
-              } catch (err) {
-                console.error('Failed to execute Bokeh component script safely:', err);
-              }
-            }
-          }
-        } catch (err) {
-          console.error('Error inserting Bokeh components into #classification_output:', err);
-          document.getElementById('classification_output').innerHTML = data;
-        }
-    }).fail(function(_, statusText) {
-        if (!isModalSessionActive(sessionId) || statusText === 'abort') return;
-        renderAlert('#classification_output', 'danger', 'Error loading classification data.');
+    const url = '/query_classification?alertId=' + encodeURIComponent(alertId);
+    return $.ajax({ url: url, cache: false, timeout: 15000, dataType: 'json' })
+    .done(function (payload) {
+      if (!isModalSessionActive(sessionId)) return;
+      teardownBokehInContainer('#classification_output');
+      insertBokehFromPayload(document.getElementById('classification_output'), payload);
+    })
+    .fail(function (xhr, statusText) {
+      plotRequestFail(xhr, statusText, sessionId, '#classification_output', 'Error loading classification data.');
     });
   }
   // Render a Bootstrap alert into a container using textContent (XSS-safe).
@@ -1454,7 +1459,7 @@
       return;
     }
 
-    let backend_url = `/query_crossmatches?locusId=${locusId}`;
+    let backend_url = `/query_crossmatches?locusId=${encodeURIComponent(locusId)}`;
     console.log('Querying crossmatches:', backend_url);
     
     return $.ajax({

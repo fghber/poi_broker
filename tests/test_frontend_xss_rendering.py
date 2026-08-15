@@ -155,14 +155,81 @@ def test_query_builder_destroy_splits_tooltip_and_plugin_try():
     assert "$('.tooltip.show, .tooltip').remove()" not in profile_html
 
 
+def test_main_query_urls_encode_locus_and_alert_ids():
+    main_html = _read_template("main.html")
+
+    assert "'/locus_plot_csv?locusId=' + encodeURIComponent(locus_id)" in main_html
+    assert "`/api/favorite?locusId=${encodeURIComponent(locus_id)}`" in main_html
+    assert "`/query_features?alert_id=${encodeURIComponent(alert_id)}`" in main_html
+    assert "`/query_crossmatches?locusId=${encodeURIComponent(locusId)}`" in main_html
+    assert "cdn.bokeh.org" not in main_html
+    assert "url_for('main.bokeh_js'" in main_html
+
+
+def test_query_builder_assets_are_local_only():
+    qb_js = _read_template("_query_builder_js.html")
+    qb_css = _read_template("_query_builder_assets.html")
+
+    assert "cdn.jsdelivr.net" not in qb_js
+    assert "onerror=" not in qb_js
+    assert "cdn.jsdelivr.net" not in qb_css
+    assert "onerror=" not in qb_css
+
+
 def test_classification_ajax_has_fail_handler():
     main_html = _read_template("main.html")
     block = main_html.split("function query_classification(alertId, sessionId) {", 1)[1]
     block = block.split("function renderAlert", 1)[0]
-    assert ".fail(function(_, statusText)" in block
+    assert "dataType: 'json'" in block
+    assert "encodeURIComponent(alertId)" in block
+    assert "insertBokehFromPayload" in block
+    assert "tmp.innerHTML = data" not in block
+    assert "new Function(rawJs)" not in block
+    assert "plotRequestFail(xhr, statusText, sessionId, '#classification_output'" in block
     assert "Error loading classification data." in block
-    assert "renderAlert('#classification_output'" in block
     assert "timeout: 15000" in block
+
+
+def test_plot_ajax_uses_json_bokeh_payload():
+    main_html = _read_template("main.html")
+    assert "function insertBokehFromPayload(container, payload)" in main_html
+    assert "function plotRequestFail(xhr, statusText, sessionId, selector, fallback)" in main_html
+    assert "insertBokehFromPayload(document.getElementById('locus-plot'), payload)" in main_html
+    assert "insertBokehFromPayload(document.getElementById('feature-plot'), payload)" in main_html
+    featureplot_fail = (
+        main_html.split("function query_featureplot", 1)[1]
+        .split("const queryObservingPlot", 1)[0]
+        .split(".fail(function(xhr, statusText) {", 1)[1]
+    )
+    before_hide = featureplot_fail.split("loadingSpinnerController.hide()", 1)[0]
+    assert "statusText !== 'abort'" in before_hide or "statusText === 'abort'" in before_hide
+    assert "plotRequestFail(xhr, statusText, sessionId, '#feature-plot'" in featureplot_fail
+    assert "insertBokehFromPayload(document.getElementById('classification_output'), payload)" in main_html
+    assert "$(\"#observing_output\").html(data)" not in main_html
+    assert "function renderObservingOutput(payload)" in main_html
+    block = main_html.split("function renderObservingOutput(payload) {", 1)[1]
+    block = block.split("function persistLastObservatory", 1)[0]
+    assert "renderAlert('#observing_output', 'warning', payload.message)" in block
+    assert "moonAlert.textContent = payload.moonMessage" in block
+    assert "alert alert-info" in block
+    assert "moonCol.innerHTML = payload.moonHtml" in block
+    assert "innerHTML = payload.message" not in block
+    assert "innerHTML = payload.moonMessage" not in block
+    assert "data:image/png;base64," in main_html
+    assert "fetch('/api/last-observatory'" in main_html
+    assert "'X-CSRFToken': csrfToken" in main_html
+
+
+def test_export_error_uses_textcontent():
+    export_html = _read_template("export.html")
+    start_fn = export_html.split("function startExport(rules)", 1)[1].split("// Auto-refresh", 1)[0]
+    error_branch = start_fn.split("} else {", 1)[1].split(".catch(", 1)[0]
+    assert "res.data.error" in error_branch
+    assert "innerHTML" not in error_branch
+    assert "(res.data.error || 'Export failed') + '</span>'" not in export_html
+    assert "createElement('i')" in error_branch
+    assert "glyphicon-exclamation-sign" in error_branch
+    assert "createTextNode" in error_branch or "textContent" in error_branch
 
 
 def test_favorite_post_has_timeout_and_logs_non_auth_errors():

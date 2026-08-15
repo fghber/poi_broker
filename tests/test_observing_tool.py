@@ -27,6 +27,35 @@ def test_query_observing_plot_rejects_invalid_parameter_format(client):
     assert 'Invalid parameter format' in response.get_data(as_text=True)
 
 
+def test_query_observing_plot_not_visible_returns_message(client, monkeypatch):
+    import poi_broker.observing_tool as observing_tool
+
+    location = EarthLocation(lat=19.8261 * u.deg, lon=-155.4700 * u.deg, height=4145 * u.m)
+
+    monkeypatch.setattr(observing_tool.EarthLocation, 'of_site', lambda site_name: location)
+    monkeypatch.setattr(observing_tool.TimezoneFinder, 'timezone_at', lambda self, lng, lat: 'UTC')
+    from datetime import timezone
+    monkeypatch.setattr(observing_tool, 'ZoneInfo', lambda tz_name: timezone.utc)
+
+    response = client.get(
+        '/query_observing_plot',
+        query_string={
+            'obs_loc': 'Keck Observatory',
+            'obs_date': '2025-01-01',
+            'obs_tz': 'option_utc',
+            'ra': '101.28715533',
+            'dec': '-80',
+        },
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert response.is_json
+    assert 'not visible' in payload['message']
+    assert 'image' not in payload
+    assert 'moonHtml' not in payload
+
+
 def test_query_observing_plot_returns_400_for_unknown_observatory(client, monkeypatch):
     import poi_broker.observing_tool as observing_tool
 
@@ -72,17 +101,19 @@ def test_query_observing_plot_generates_image_and_moon_panel(client, monkeypatch
         },
     )
 
-    text = response.get_data(as_text=True)
+    payload = response.get_json()
     assert response.status_code == 200
-    assert '<img src="data:image/png;base64,' in text
-    assert '<div class="col-md-7">' in text
-    assert '<div class="col-md-5">' in text
+    assert response.is_json
+    assert payload['image'].startswith('data:image/png;base64,')
+    assert payload.get('moonHtml') or payload.get('moonMessage') == 'Moon down'
+    assert payload.get('moonHtml') != 'Moon down'
+    assert 'message' not in payload
 
 
 @pytest.mark.slow
 def test_query_observing_plot_custom_observatory_recovers_invalid_timezone(auth_client, app, monkeypatch):
     from poi_broker import db
-    from poi_broker.models import User, UserObservatory
+    from poi_broker.models import User, UserObservatory, UserSettings
 
     with app.app_context():
         user = User.query.filter_by(email='smoketest@example.com').first()
@@ -113,9 +144,15 @@ def test_query_observing_plot_custom_observatory_recovers_invalid_timezone(auth_
         },
     )
 
-    text = response.get_data(as_text=True)
+    payload = response.get_json()
     assert response.status_code == 200
-    assert '<img src="data:image/png;base64,' in text
+    assert response.is_json
+    assert payload['image'].startswith('data:image/png;base64,')
+
+    with app.app_context():
+        user = User.query.filter_by(email='smoketest@example.com').first()
+        settings = UserSettings.query.filter_by(user_id=user.id).first()
+        assert settings is None or settings.last_selected_observatory_json is None
 
 
 @pytest.mark.slow

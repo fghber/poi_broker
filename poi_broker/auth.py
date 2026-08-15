@@ -37,7 +37,18 @@ def _is_reset_token_expired(expires_at) -> bool:
 logger = logging.getLogger(__name__)
 auth_blueprint = Blueprint('auth', __name__)
 
+# Same copy + redirect for new signup, duplicate email, and uniqueness races
+# so the response is not an account-existence oracle.
+SIGNUP_GENERIC_NOTICE = (
+    'If this email is available, a verification message will be sent.'
+)
+
 #IDEA: Improve emails (body and subject), add HTML version, perhaps use a proper email template, etc.
+
+
+def _signup_accepted_response():
+    flash(SIGNUP_GENERIC_NOTICE)
+    return redirect(url_for('auth.login'))
 
 @auth_blueprint.route('/login')
 def login():
@@ -122,9 +133,8 @@ def signup_post():
 
     user = User.query.filter_by(email=email).first() # if this returns a user, then the email already exists in database
 
-    if user: # if a user is found, we want to redirect back to signup page so user can try again  
-        flash('Email address already exists')
-        return redirect(url_for('auth.signup'))
+    if user:
+        return _signup_accepted_response()
 
     # Create user but mark as unverified
     raw_verification_token = secrets.token_urlsafe(32)
@@ -161,17 +171,15 @@ def signup_post():
     try:
         db.session.commit()
     except IntegrityError:
-        db.session.rollback() #'Resource already exists or constraint violated' # 409: should be rare since we already check for existing email, but could happen in a race condition
-        flash('Failed to create user. Please sign-in with existing account or try signing up again later.') 
-        return redirect(url_for('auth.signup'))
+        db.session.rollback()  # uniqueness race; same response as a duplicate signup
+        return _signup_accepted_response()
     except Exception as e:
         db.session.rollback()
         logger.error(f'Database error during commit: {str(e)}', exc_info=True)
         flash('Failed to create user. Please try signing up again later.') 
         return redirect(url_for('auth.signup'))
 
-    flash('Welcome! A verification email has been sent to your address. Please check your inbox.')
-    return redirect(url_for('auth.login'))
+    return _signup_accepted_response()
 
 @auth_blueprint.route('/verify-email/<token>')
 def verify_email(token):

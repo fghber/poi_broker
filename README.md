@@ -19,6 +19,17 @@ Our alert broker, called *Point of Interest*, is tailored towards the needs of a
 
 *Point of Interest* differs from other brokers in the focus on updates on variable stars, thus running a rather specific than the full analysis chain of streamed data. As a consequence, the broker is rather lightweight. *Point of Interest* users are encouraged to design their own on-sky regions they want receive updates for (such as for planned follow-up campaigns) or select from a list of on-sky regions which are particularly interesting for variable star observers, such as stellar streams, globular clusters and dwarf galaxies.
 
+## Features
+
+The catalog on `/` lists recent alerts. Click a `ztf_object_id` for the light curve, thumbnails, features, observing plan, cross-matches, and classification. Signed-in users also get:
+
+- **Bookmarked filters** — save the current catalog filter URL from the main table and reopen it from the profile page.
+- **Default feature-plot columns** — pick up to 10 features on `/settings`; those columns are pre-selected when a feature plot opens.
+- **Custom observatories** — add name/lat/lon on `/settings` (timezone is resolved from coordinates). The last observatory used in the observing tool is remembered for the next session.
+- **Watchlists** — build a visual query and receive a daily email digest of new matches (`tools/watchlist_digest.py`).
+- **Favorites** — star a locus and organize favorites into groups on the profile page.
+- **Bulk CSV export** — `/export` uses the same visual query builder. The count is checked first (1,000,000 row cap); the CSV is built in the background (Huey) and the page shows a download link when it is ready. Sign-in required. Local app + worker setup is in `docs/async_export/local_app_and_worker.md`.
+
 ## Installation
 This repository contains the web frontend, including a small database for testing purposes.
 

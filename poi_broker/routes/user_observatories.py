@@ -13,7 +13,11 @@ from timezonefinder import TimezoneFinder
 
 from .. import db
 from ..models import UserObservatory
-from ..user_settings import get_saved_last_selected_observatory, save_last_selected_observatory
+from ..user_settings import (
+    _normalize_last_selected_observatory,
+    get_saved_last_selected_observatory,
+    save_last_selected_observatory,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -157,3 +161,32 @@ def delete_user_observatory(observatory_id: int):
             payload['fallback'] = {'source': 'builtin', 'name': fallback_site_name}
 
     return jsonify(payload), 200
+
+
+@user_observatories_bp.route('/last-observatory', methods=['POST'])
+@login_required
+def save_last_observatory():
+    """Persist last-selected observatory from an authenticated, CSRF-checked POST."""
+    normalized = _normalize_last_selected_observatory(request.get_json(silent=True) or {})
+    if normalized is None:
+        return jsonify({'error': 'Invalid observatory selection'}), 400
+
+    if normalized['source'] == 'custom':
+        owned = UserObservatory.query.filter_by(
+            id=normalized['id'],
+            user_id=current_user.id,
+        ).first()
+        if owned is None:
+            return jsonify({'error': 'Unknown custom observatory'}), 400
+    # TODO: validate builtin names against EarthLocation.get_site_names() on write.
+    # Invalid names are self-scoped prefs and fail later in _resolve_selected_observatory().
+
+    try:
+        save_last_selected_observatory(current_user.id, normalized)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('Failed to save last-selected observatory for user_id=%s: %s', current_user.id, exc, exc_info=True)
+        return jsonify({'error': 'Unable to save observatory selection'}), 500
+
+    return jsonify({'status': 'ok'})

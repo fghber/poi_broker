@@ -37,11 +37,12 @@
 - [x] Allow users selecting (up to 10) default features to plot
 - [x] Allow users to create custom observatory coordinates for the observing planning tool
 - [x] Add Default Observatory Coordinates -> Last-used becomes the default for the next session
-- [ ] Document new features in the README.md and add a "Changelog" section for future updates
-- [ ] Add Bulk Export based on Visual Query (Top 1000/Preview or All)
+- [x] Document new features in the README.md
+- [x] Add Bulk Export based on Visual Query (Top 1M/Preview or All)
   - Create CSV fully async, inform user when ready
 
 # Future
+- Validate builtin observatory names against `EarthLocation.get_site_names()` on `POST /api/last-observatory` (invalid names are self-scoped prefs and fail later at plot time)
 - Indepentent Python Client API Export Package 
 - Migrate to more capable DB (PostgreSQL)
 - Change column type: ant_magband REAL -> TEXT

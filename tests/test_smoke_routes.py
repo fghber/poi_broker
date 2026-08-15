@@ -15,6 +15,19 @@ def test_public_pages_smoke(client):
         assert response.status_code == 200, f"Expected 200 for {path}, got {response.status_code}"
 
 
+def test_catalog_serves_same_origin_bokeh(client):
+    page = client.get("/")
+    assert page.status_code == 200
+    assert b"cdn.bokeh.org" not in page.data
+    assert b"/bokeh.min.js" in page.data
+    assert "cdn.bokeh.org" not in (page.headers.get("Content-Security-Policy") or "")
+
+    js = client.get("/bokeh.min.js")
+    assert js.status_code == 200
+    assert js.content_type and "javascript" in js.content_type
+    assert len(js.data) > 1000
+
+
 def test_favorites_api_smoke_unauthenticated(client):
     response = client.get("/api/favorite", query_string={"locusId": "locus-1"})
     assert response.status_code == 401
@@ -79,6 +92,10 @@ def test_user_observatories_routes_require_login(client):
 
     response = client.delete("/api/user-observatories/1")
     assert response.status_code == 401
+
+    response = client.post("/api/last-observatory", json={"source": "builtin", "name": "Palomar"})
+    assert response.status_code == 401
+    assert response.is_json
 
 
 def test_ui_protected_route_sets_flash_message(client):

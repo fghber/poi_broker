@@ -41,6 +41,11 @@ def test_signup_post_rejects_short_password(client, monkeypatch):
     assert '/signup' in response.location
 
 
+def _flashed_messages(client):
+    with client.session_transaction() as session:
+        return [msg for _cat, msg in session.get('_flashes', [])]
+
+
 def test_signup_post_rejects_duplicate_email(client, app, monkeypatch, user_factory):
     user_factory(email='duplicate@example.com')
     monkeypatch.setattr(auth_module, 'normalize_email', lambda email, check_deliverability=True: 'duplicate@example.com')
@@ -52,7 +57,12 @@ def test_signup_post_rejects_duplicate_email(client, app, monkeypatch, user_fact
     )
 
     assert response.status_code == 302
-    assert '/signup' in response.location
+    assert '/login' in response.location
+    assert _flashed_messages(client) == [auth_module.SIGNUP_GENERIC_NOTICE]
+
+    with app.app_context():
+        users = User.query.filter_by(email='duplicate@example.com').all()
+        assert len(users) == 1
 
 
 def test_signup_post_creates_user_and_sends_verification_email(client, app, monkeypatch):
@@ -73,6 +83,7 @@ def test_signup_post_creates_user_and_sends_verification_email(client, app, monk
 
     assert response.status_code == 302
     assert '/login' in response.location
+    assert _flashed_messages(client) == [auth_module.SIGNUP_GENERIC_NOTICE]
     assert email_calls, 'Expected send_email() to be called'
 
     with app.app_context():

@@ -1,4 +1,5 @@
-<link rel="stylesheet" href="{{ url_for('static', filename='css/query-builder.default.min.css') }}" onerror="this.href='https://cdn.jsdelivr.net/npm/jQuery-QueryBuilder/dist/css/query-builder.default.min.css'">
+{# Local QueryBuilder 3.0.0 CSS. Do not add a jsDelivr CDN/SRI fallback: jsDelivr may re-minify and break integrity. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/query-builder.default.min.css') }}">
 <style>
     .query-builder-widget [data-role="builder"] {
         margin-bottom: 20px;

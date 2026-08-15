@@ -2,9 +2,29 @@ import pytest
 from types import SimpleNamespace
 
 from poi_broker.services.plotting_service import (
+    bokeh_json_payload,
+    bokeh_script_body,
+    bokeh_warning_payload,
     create_bokeh_feature_plot,
     create_bokeh_lightcurve_figure,
 )
+
+
+def test_bokeh_script_body_unwraps_script_tags():
+    raw = '<script type="text/javascript">\nBokeh.embed.embed_item();\n</script>'
+    assert bokeh_script_body(raw) == '\nBokeh.embed.embed_item();\n'
+    assert bokeh_script_body('already-js') == 'already-js'
+    assert bokeh_json_payload('<div id="p"></div>', raw) == {
+        'div': '<div id="p"></div>',
+        'script': '\nBokeh.embed.embed_item();\n',
+    }
+    warning = bokeh_warning_payload('No classification data found')
+    assert warning['script'] == ''
+    assert 'alert-warning' in warning['div']
+    assert 'No classification data found' in warning['div']
+    escaped = bokeh_warning_payload('<script>alert(1)</script>')
+    assert '<script>' not in escaped['div']
+    assert '&lt;script&gt;' in escaped['div']
 
 
 @pytest.mark.slow

@@ -55,7 +55,7 @@ CSS is already local Bootswatch **4.6.2**. JS was aligned to 4.6.2 bundle (was 4
 | jQuery QueryBuilder | 3.0.0 | **3.0.0** | Latest. 3.0.0 targets Bootstrap **5**; we stay on BS4 + `data-toggle`. Do not chase QB APIs that assume `data-bs-*` without a BS5 upgrade. |
 | `@nobleclem/jquery-multiselect` | 2.4.26 | 2.4.26 | Catalog / settings feature-plot select. |
 | Font Awesome | 4.7.0 | 4.7.0 last of v4 | Latest FA4. FA5+ is a class-name major upgrade (pair with BS5). |
-| Bokeh JS | matches `bokeh==3.*` | 3.9.2 | CDN `bokeh-{{ bokeh_version }}`. Python pin is the source of truth. CVE-2026-21883 is Bokeh **server** WebSocket origin; this app embeds `components()`, not a Bokeh server. |
+| Bokeh JS | matches `bokeh==3.*` | 3.9.2 | Same-origin `GET /bokeh.min.js` from the installed package (`?v={{ bokeh_version }}` cache-bust). Python pin is the source of truth. CVE-2026-21883 is Bokeh **server** WebSocket origin; this app embeds `components()`, not a Bokeh server. |
 | Aladin Lite | vendored `/static/js/aladin.js` (v3 snapshot) | v3 `latest` CDN | Intentionally pinned locally (not `.../v3/latest/...`). |
 
 ---
@@ -180,7 +180,7 @@ Two SQLite databases via SQLAlchemy binds: **alerts** (default bind) and **users
 | GET | `/login` | Public | `?forgot_password=true` | HTML `login.html` | — |
 | POST | `/login` | Public | Form: `email`, `password`, `remember` | Redirect → `main.profile` | — |
 | GET | `/signup` | Public | — | HTML `signup.html` | — |
-| POST | `/signup` | Public | Form: `email`, `name`, `password` | Sends verification email | — |
+| POST | `/signup` | Public | Form: `email`, `name`, `password` | Sends verification email. Duplicate/new/uniqueness-race share one generic flash and redirect to `/login`. | — |
 | GET | `/verify-email/<token>` | Public | Token | Verifies email | — |
 | POST | `/logout` | Login | — | Clears session | — |
 | GET | `/forgot-password` | Public | — | HTML `forgot_password.html` | — |
@@ -223,14 +223,14 @@ Two SQLite databases via SQLAlchemy binds: **alerts** (default bind) and **users
 ### 5.6 Lightcurve Blueprint (`poi_broker/routes/lightcurve.py`) — Public
 | Method | Path | Request | Response | Errors |
 |---|---|---|---|---|
-| GET | `/query_lightcurve_data` | Query: `locusId` | Bokeh `div+script` HTML | 400/500 |
+| GET | `/query_lightcurve_data` | Query: `locusId` | JSON `{div, script}` Bokeh components | 400/500 |
 | GET | `/locus_plot_csv` | Query: `locusId` | CSV `locus_id,date_alert_mjd,ant_mag_corrected` | — |
 
 ### 5.7 Features Blueprint (`poi_broker/routes/features.py`) — Public
 | Method | Path | Request | Response | Errors |
 |---|---|---|---|---|
 | GET | `/query_features` | Query: `alert_id` | JSON of all feature values | 400/404/500 |
-| GET | `/query_featureplot_data` | Query: `locusId`, `features` | Bokeh `div+script` HTML | 400/500 |
+| GET | `/query_featureplot_data` | Query: `locusId`, `features` | JSON `{div, script}` Bokeh components | 400/500 |
 
 ### 5.8 User Observatories Blueprint (`poi_broker/routes/user_observatories.py`, prefix `/api`) — all Login
 | Method | Path | Request | Response | Errors |
@@ -238,6 +238,7 @@ Two SQLite databases via SQLAlchemy binds: **alerts** (default bind) and **users
 | GET | `/api/user-observatories` | — | `{"userObservatories":[{"id","name","latitude","longitude","timezone_name","created_at"}]}` | — |
 | POST | `/api/user-observatories` | JSON: `{"name","latitude","longitude"}` | `{"status":"ok",...}` 201 | 409; idempotent 200 on duplicate |
 | DELETE | `/api/user-observatories/<int:observatory_id>` | — | `{"status":"ok"}` | idempotent 200 `already_deleted`; may include `warning`/`fallback` |
+| POST | `/api/last-observatory` | JSON: `{"source":"builtin","name"}` or `{"source":"custom","id"}` | `{"status":"ok"}` | 400 invalid/unowned; CSRF required. TODO: validate builtin `name` against `EarthLocation.get_site_names()` on write (invalid names are self-scoped and fail later at plot time). |
 
 ### 5.9 User Settings Blueprint (`poi_broker/user_settings.py`) — all Login
 | Method | Path | Request | Response |
@@ -248,12 +249,12 @@ Two SQLite databases via SQLAlchemy binds: **alerts** (default bind) and **users
 ### 5.10 Observing Tool Blueprint (`poi_broker/observing_tool.py`) — Public
 | Method | Path | Request | Response | Errors |
 |---|---|---|---|---|
-| GET | `/query_observing_plot` | Query: `obs_loc`, `obs_date`, `obs_tz`, `ra`, `dec` | Matplotlib plot (base64/HTML) | 401 for custom observatory without auth |
+| GET | `/query_observing_plot` | Query: `obs_loc`, `obs_date`, `obs_tz`, `ra`, `dec` | JSON `{image, moonHtml}` (moon up), `{image, moonMessage}` (moon down), or `{message}` (not visible) | 401 for custom observatory without auth. Does not persist last-selected observatory. |
 
 ### 5.11 Classification Blueprint (`poi_broker/classification.py`) — Public
 | Method | Path | Request | Response | Errors |
 |---|---|---|---|---|
-| GET | `/query_classification` | Query: `alertId` | Bokeh radar chart | — |
+| GET | `/query_classification` | Query: `alertId` (max 128) | JSON `{div, script}` Bokeh radar chart; empty data is 200 warning `div` (same as lightcurve/feature) | 400 missing/too long. Does not reflect `alertId`. |
 
 ---
 
@@ -271,9 +272,12 @@ Signup → email verification (SHA-256 token) → login (Flask-Login) → authen
 Daily digest: `tools/watchlist_digest.py` re-runs `rules_json` through the ORM via `create_app()`. It never executes `sql_where`. **Gotcha:** the digest reads `tools/.env`, which is separate from the web app `.env`. `create_app()` requires `SECRET_KEY`; if that file omits it, older deploys crashed before any watchlist ran. The script now falls back to a CLI placeholder and logs a warning. Prefer the same `SECRET_KEY` as the web app (see `tools/.env.example`).
 
 ### 6.4 Lightcurve / Features / Classification
-- Lightcurve: `GET /query_lightcurve_data` (Bokeh) + `/locus_plot_csv`.
-- Features: `GET /query_features` (values) + `/query_featureplot_data` (Bokeh).
-- Classification: `GET /query_classification` (radar chart).
+- Lightcurve: `GET /query_lightcurve_data` (JSON `{div, script}`) + `/locus_plot_csv`.
+- Features: `GET /query_features` (values) + `/query_featureplot_data` (JSON `{div, script}`).
+- Classification: `GET /query_classification` (JSON `{div, script}` radar chart).
+- Observing last-selected site: `POST /api/last-observatory` after a successful plot (not the GET plot itself).
+
+**Gotcha — empty plot ≠ HTTP error.** A missing classification row, empty lightcurve, or empty feature plot is HTTP **200** with `bokeh_warning_payload()` (static warning `div`, empty `script`). Do not “fix” that to 404/`{error}`: the modal `.fail` path is a red hard error, so empty tabs look like load failures. 400 is only invalid/missing params; never interpolate `alertId`/`locusId` into the warning.
 
 ### 6.5 Favorites & Groups
 Toggle favorite per locus → organize into groups → list with counts. Deleting a group orphans its favorites (group_id SET NULL).

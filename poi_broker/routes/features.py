@@ -1,9 +1,9 @@
 """Feature query routes blueprint."""
 
 import logging
-from flask import Blueprint, Response, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app
 from ..services.feature_service import query_features_by_alert_id, query_feature_plot_data
-from ..services.plotting_service import create_bokeh_feature_plot
+from ..services.plotting_service import bokeh_json_payload, create_bokeh_feature_plot
 from .. import limiter
 
 logger = logging.getLogger(__name__)
@@ -38,11 +38,11 @@ def query_features():
 def query_featureplot_data():
     """
     Get feature plot data for a locus ID.
-    Returns Bokeh HTML/script components with selected features plotted.
+    Returns JSON ``{div, script}`` Bokeh components with selected features plotted.
     """
     locusId = request.args.get('locusId')
     if not locusId:
-        return Response('Missing locusId', status=400)
+        return jsonify({'error': 'Missing locusId'}), 400
 
     selected_features = request.args.get('features')
     
@@ -59,9 +59,7 @@ def query_featureplot_data():
 
         # Create Bokeh plot
         div, script = create_bokeh_feature_plot(data, used_features)
-        
-        # Return the components to the HTML template
-        return f'{div}{script}'
+        return jsonify(bokeh_json_payload(div, script))
     except Exception as e:
         logger.error(f'Error querying feature plot data: {str(e)}', exc_info=True)
-        return Response('Error querying feature plot data', status=500)
+        return jsonify({'error': 'Error querying feature plot data'}), 500
