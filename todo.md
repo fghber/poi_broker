@@ -42,7 +42,6 @@
   - Create CSV fully async, inform user when ready
 
 # Future
-- Validate builtin observatory names against `EarthLocation.get_site_names()` on `POST /api/last-observatory` (invalid names are self-scoped prefs and fail later at plot time)
 - Indepentent Python Client API Export Package 
 - Migrate to more capable DB (PostgreSQL)
 - Change column type: ant_magband REAL -> TEXT

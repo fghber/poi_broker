@@ -151,6 +151,121 @@ def test_cross_user_cannot_delete_other_watchlist(secure_app, secure_client):
         assert still_exists is not None
 
 
+def test_signup_verification_link_uses_public_base_url(client, app, monkeypatch):
+    import poi_broker.auth as auth_module
+
+    app.config['PUBLIC_BASE_URL'] = 'https://poi.example.edu'
+    monkeypatch.setattr(
+        auth_module, 'normalize_email', lambda email, check_deliverability=True: email.lower()
+    )
+    captured = []
+
+    def fake_send_email(*args, **kwargs):
+        captured.append((args, kwargs))
+        return True
+
+    monkeypatch.setattr(auth_module, 'send_email', fake_send_email)
+
+    response = client.post(
+        '/signup',
+        data={'email': 'hostpoison@example.com', 'name': 'Host User', 'password': 'Password123!'},
+        headers={'Host': 'evil.example'},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert captured
+    message = captured[0][1].get('message') or captured[0][0][0]
+    html_text = captured[0][1].get('html_text') or ''
+    assert 'https://poi.example.edu/verify-email/' in message
+    assert 'evil.example' not in message
+    assert 'evil.example' not in html_text
+
+
+def test_forgot_password_reset_link_uses_public_base_url(client, app, monkeypatch, user_factory):
+    import poi_broker.auth as auth_module
+
+    user_factory(email='reset-host@example.com', verified=True)
+    app.config['PUBLIC_BASE_URL'] = 'https://poi.example.edu'
+    captured = []
+
+    def fake_send_email(*args, **kwargs):
+        captured.append((args, kwargs))
+        return True
+
+    monkeypatch.setattr(auth_module, 'send_email', fake_send_email)
+
+    response = client.post(
+        '/forgot-password',
+        data={'email': 'reset-host@example.com'},
+        headers={'Host': 'evil.example'},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert captured
+    message = captured[0][0][0]
+    assert 'https://poi.example.edu/reset-password/' in message
+    assert 'evil.example' not in message
+
+
+def test_ensure_adds_verification_expiry_column(tmp_path, monkeypatch):
+    import sqlite3
+
+    from sqlalchemy import inspect, text
+
+    users_db = tmp_path / 'users_legacy.db'
+    alerts_db = tmp_path / 'alerts_legacy.db'
+    conn = sqlite3.connect(users_db)
+    conn.execute(
+        """
+        CREATE TABLE user (
+            id INTEGER PRIMARY KEY,
+            email VARCHAR(100),
+            password VARCHAR(100),
+            name VARCHAR(1000),
+            role VARCHAR(20),
+            email_verified INTEGER DEFAULT 0,
+            email_verification_token VARCHAR(128),
+            reset_token VARCHAR(128),
+            reset_token_expires INTEGER
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setenv('SECRET_KEY', 'legacy-schema-secret')
+    monkeypatch.setenv('FLASK_TESTING', '1')
+    monkeypatch.setenv('FLASK_DEBUG', '0')
+    monkeypatch.setenv('ALERTS_DB_PATH', str(alerts_db))
+    monkeypatch.setenv('USERS_DB_PATH', str(users_db))
+
+    from poi_broker import create_app, db
+
+    app = create_app()
+    with app.app_context():
+        columns = {col['name'] for col in inspect(db.engines['users']).get_columns('user')}
+        assert 'email_verification_token_expires' in columns
+        db.session.execute(
+            text('SELECT email_verification_token_expires FROM user LIMIT 1'),
+            bind_arguments={'bind': db.engines['users']},
+        )
+
+
+def test_html_csrf_failure_ignores_external_referrer(secure_client):
+    response = secure_client.post(
+        "/login",
+        data={"email": "nobody@example.com", "password": "wrong-password"},
+        headers={"Referer": "https://evil.example/phish"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    location = response.headers["Location"]
+    assert "evil.example" not in location
+    assert location.endswith("/login")
+
+
 def test_login_post_rate_limited_after_retries(secure_client):
     login_page = secure_client.get("/login")
     csrf_token = _extract_hidden_csrf_token(login_page.get_data(as_text=True))
@@ -218,3 +333,49 @@ def test_authenticated_watchlist_crud(secure_app, secure_client):
     assert r.status_code == 200
     assert r.is_json
     assert r.get_json().get("status") == "ok"
+
+
+def test_export_query_rate_limited_on_cheap_400_path(secure_app, secure_client):
+    """LAX limit on /api/export-query via invalid payload (no COUNT)."""
+    from poi_broker import db
+    from poi_broker.models import User
+
+    with secure_app.app_context():
+        user_id = _create_verified_user(db, User, "export-limit@example.com", "Password123!", "Export Limit User")
+
+    _force_login(secure_client, user_id)
+    csrf_token = _extract_meta_csrf_token(secure_client.get("/").get_data(as_text=True))
+
+    for i in range(31):
+        response = secure_client.post(
+            "/api/export-query",
+            json={},
+            headers={"X-CSRFToken": csrf_token},
+        )
+        if i < 30:
+            assert response.status_code == 400
+        else:
+            assert response.status_code == 429
+
+
+def test_export_submit_rate_limited_on_cheap_400_path(secure_app, secure_client):
+    """LAX limit on POST /export via invalid payload (no COUNT / enqueue)."""
+    from poi_broker import db
+    from poi_broker.models import User
+
+    with secure_app.app_context():
+        user_id = _create_verified_user(db, User, "export-post-limit@example.com", "Password123!", "Export Post Limit User")
+
+    _force_login(secure_client, user_id)
+    csrf_token = _extract_meta_csrf_token(secure_client.get("/").get_data(as_text=True))
+
+    for i in range(31):
+        response = secure_client.post(
+            "/export",
+            json={},
+            headers={"X-CSRFToken": csrf_token},
+        )
+        if i < 30:
+            assert response.status_code == 400
+        else:
+            assert response.status_code == 429

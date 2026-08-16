@@ -138,7 +138,14 @@ def test_delete_selected_observatory_triggers_fallback(monkeypatch, auth_client,
         assert saved == {'source': 'builtin', 'name': 'Builtin Observatory'}
 
 
-def test_save_last_observatory_api_persists_builtin_selection(auth_client, app):
+def test_save_last_observatory_api_persists_builtin_selection(auth_client, app, monkeypatch):
+    monkeypatch.setattr(
+        'poi_broker.routes.user_observatories.EarthLocation.get_site_names',
+        lambda: ['Palomar'],
+    )
+    from poi_broker.routes.user_observatories import _builtin_site_names
+    _builtin_site_names.cache_clear()
+
     response = auth_client.post('/api/last-observatory', json={'source': 'builtin', 'name': 'Palomar'})
     assert response.status_code == 200
     assert response.get_json()['status'] == 'ok'
@@ -146,6 +153,26 @@ def test_save_last_observatory_api_persists_builtin_selection(auth_client, app):
     with app.app_context():
         current_user = db.session.query(User).filter_by(email='smoketest@example.com').first()
         assert get_saved_last_selected_observatory(current_user.id) == {'source': 'builtin', 'name': 'Palomar'}
+
+
+def test_save_last_observatory_api_rejects_unknown_builtin(auth_client, app, monkeypatch):
+    monkeypatch.setattr(
+        'poi_broker.routes.user_observatories.EarthLocation.get_site_names',
+        lambda: ['Palomar'],
+    )
+    from poi_broker.routes.user_observatories import _builtin_site_names
+    _builtin_site_names.cache_clear()
+
+    response = auth_client.post(
+        '/api/last-observatory',
+        json={'source': 'builtin', 'name': 'NotARealObservatory'},
+    )
+    assert response.status_code == 400
+    assert 'Unknown builtin observatory' in response.get_json().get('error', '')
+
+    with app.app_context():
+        current_user = db.session.query(User).filter_by(email='smoketest@example.com').first()
+        assert get_saved_last_selected_observatory(current_user.id) is None
 
 
 def test_save_last_observatory_api_rejects_unowned_custom(auth_client):

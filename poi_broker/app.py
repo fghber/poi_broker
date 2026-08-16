@@ -35,7 +35,7 @@ from .services.catalog_list import (
 )
 
 from . import db, limiter
-from .models import Ztf, Crossmatches, User, Favorite, FavoriteGroup, Watchlist, Classification, UserObservatory
+from .models import Ztf, Crossmatches, User, FavoriteGroup, Watchlist, Classification, UserObservatory
 from .routes import favorites_bp, filter_bookmarks_bp, visual_query_bp, lightcurve_bp, features_bp, user_observatories_bp, export_bp
 from .constants.features import FEATURE_COLUMNS, default_feature_plot_columns
 from .user_settings import user_settings_bp, get_user_settings, get_saved_feature_plot_columns, get_saved_last_selected_observatory, UserSettings
@@ -267,15 +267,8 @@ def contact():
 @main_blueprint.route('/profile')
 @login_required
 def profile():
-    """Show user profile and their favorites."""
-    try:
-        favs = [f.locus_id for f in Favorite.query.filter_by(user_id=current_user.id).order_by(Favorite.created_at.desc()).all()]
-    except Exception:
-        logger.exception('Failed to load favorites for profile (user_id=%s)', current_user.id)
-        favs = []
-    return render_template(
-        'profile.html', name=current_user.name, favorites=favs
-    )
+    """Show user profile; favorites/groups load via AJAX from /api/*."""
+    return render_template('profile.html', name=current_user.name)
 
 @main_blueprint.route('/download_alerts_csv', methods=['GET'])
 @limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_MEDIUM', '15 per minute'))

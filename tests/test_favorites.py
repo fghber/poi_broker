@@ -475,14 +475,15 @@ def test_update_favorite_group_generic_exception(app, auth_client, monkeypatch):
 
 
 def test_get_favorite_groups_generic_exception(app, auth_client, monkeypatch):
-    """Generic exception during get_favorite_groups returns empty list."""
+    """Generic exception during get_favorite_groups returns 500."""
     monkeypatch.setattr(
         "poi_broker.services.favorites_service.db.session.query",
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
     )
     r = auth_client.get("/api/favorite-groups")
-    assert r.status_code == 200
-    assert r.get_json()["groups"] == []
+    assert r.status_code == 500
+    assert "error" in r.get_json()
+    assert "listing favorite groups" in r.get_json()["error"]
 
 
 def test_create_favorite_group_integrity_error(app, auth_client, monkeypatch):

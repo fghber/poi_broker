@@ -186,7 +186,7 @@ def get_favorite_groups():
         return result
     except Exception as e:
         logger.error(f'Error getting favorite groups: {str(e)}', exc_info=True)
-        return []
+        raise
 
 
 def create_favorite_group(name):

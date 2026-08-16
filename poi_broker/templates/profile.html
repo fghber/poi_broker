@@ -339,7 +339,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function loadGroups(activeTabId = null) {
         fetch('/api/favorite-groups')
-            .then(r => r.json())
+            .then(r => {
+                if (!r.ok) throw new Error('Failed to load favorite groups');
+                return r.json();
+            })
             .then(data => {
                 allGroups = data.groups || [];
                 populateGroupSelect();
@@ -427,7 +430,17 @@ document.addEventListener('DOMContentLoaded', function () {
                     $(activeLink).tab('show');
                 }
             })
-            .catch(e => console.error(e));
+            .catch(e => {
+                console.error(e);
+                setSummaryValue(summaryFavoritesCount, '—');
+                setSummaryValue(summaryGroupsCount, '—');
+                const tabsEl = document.getElementById('favoriteTabs');
+                const panelsEl = document.getElementById('favoritePanels');
+                if (tabsEl) tabsEl.replaceChildren();
+                if (panelsEl) {
+                    panelsEl.innerHTML = '<div class="p-3 text-danger text-center">Failed to load favorites.</div>';
+                }
+            });
     }
 
     function populateGroupSelect() {
@@ -450,7 +463,10 @@ document.addEventListener('DOMContentLoaded', function () {
         const listId = groupId === null ? 'list-all' : `list-${groupId}`;
 
         fetch(url)
-            .then(r => r.json())
+            .then(r => {
+                if (!r.ok) throw new Error('Failed to load favorites');
+                return r.json();
+            })
             .then(data => {
                 const favs = data.favorites || [];
                 const listEl = document.getElementById(listId);
@@ -471,7 +487,13 @@ document.addEventListener('DOMContentLoaded', function () {
                     `).join('');
                 }
             })
-            .catch(e => console.error(e));
+            .catch(e => {
+                console.error(e);
+                const listEl = document.getElementById(listId);
+                if (listEl) {
+                    listEl.innerHTML = '<li class="list-group-item text-danger text-center py-3">Failed to load favorites.</li>';
+                }
+            });
     }
 
     $('#favoriteTabs').on('shown.bs.tab', 'a[data-toggle="tab"]', function (e) {

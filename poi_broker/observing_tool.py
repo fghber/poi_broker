@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 from flask_login import current_user
 
 import matplotlib 
@@ -22,6 +22,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import logging
 
+from . import limiter
 from .models import UserObservatory
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,7 @@ def _resolve_zoneinfo(timezone_name):
 
 
 @observing_tool_blueprint.route('/query_observing_plot')
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
 def calc_observing_plot():
     try:
         # Parse query parameters
@@ -152,8 +154,9 @@ def calc_observing_plot():
                 logger.warning('Invalid timezone for built-in observatory %s (%s)', site_name, timezone_name)
                 return jsonify({'error': 'Failed to determine timezone for selected observatory.'}), 400
 
-        # Do not generate any plots if the object is not visible from the observatory
-        if (obs_lat - dec >= 90):
+        # Never-rises: max altitude is 90 - |lat - dec|. One-sided (lat - dec)
+        # only catches southern objects from northern sites.
+        if abs(obs_lat - dec) >= 90:
             return jsonify({
                 'message': (
                     f'Object is not visible from your location: declination = {dec} degree, '

@@ -10,6 +10,7 @@ CREATE TABLE
         reset_token_expires INTEGER,
         email_verified INTEGER DEFAULT 0,
         email_verification_token VARCHAR(128),
+        email_verification_token_expires INTEGER,
         PRIMARY KEY (id),
         UNIQUE (email)
     );

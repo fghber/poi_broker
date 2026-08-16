@@ -233,4 +233,7 @@ ls -la /var/lib/poi_broker/huey.db
 
 ### Stale exports blocking a user
 - The guard fails exports with no progress for 30 minutes (`EXPORT_STALE_MAX_AGE_SECONDS`).
+  A live worker heartbeats `updated_at` while writing and only commits status
+  transitions from expected states, so a long healthy export is not false-failed
+  and cannot flip a stale `FAILED` row back to `SUCCESS`.
   The user can retry once a live worker is running.

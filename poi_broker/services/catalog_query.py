@@ -209,6 +209,14 @@ def _apply_catalog_sorts(query: Query, args: Mapping) -> tuple[Query, bool, bool
         if sort_object_order == 'asc':
             query = query.order_by(Ztf.ztf_object_id.asc())
 
+    sort_locus_order = args.get('sort__locus_id')
+    if sort_locus_order:
+        is_date_only_sort = False
+        if sort_locus_order == 'desc':
+            query = query.order_by(Ztf.locus_id.desc())
+        if sort_locus_order == 'asc':
+            query = query.order_by(Ztf.locus_id.asc())
+
     sort_ra_order = args.get('sort__locus_ra')
     if sort_ra_order:
         is_date_only_sort = False

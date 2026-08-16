@@ -6,6 +6,7 @@ import csv
 import logging
 import os
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -55,6 +56,45 @@ STALE_TASK_MAX_AGE = _env_int('EXPORT_STALE_MAX_AGE_SECONDS', 30 * 60)
 # periodic housekeeping task.
 EXPORT_RETENTION_DAYS = _env_int('EXPORT_RETENTION_DAYS', 10)
 
+# How often a live RUNNING export refreshes updated_at so the stale-task guard
+# does not false-fail a healthy long (e.g. 1M-row) export.
+EXPORT_HEARTBEAT_SECONDS = _env_int('EXPORT_HEARTBEAT_SECONDS', 60)
+
+
+def _transition_export_task(task_id: int, from_statuses: list[str], **values) -> bool:
+    """
+    Compare-and-swap update for ExportTask.
+
+    Only updates when ``id == task_id`` and ``status IN from_statuses``.
+    Always sets ``updated_at`` (Query.update does not fire ORM onupdate).
+
+    Returns:
+        True if exactly one row was updated.
+    """
+    values = dict(values)
+    values['updated_at'] = datetime.now(timezone.utc)
+    try:
+        n = ExportTask.query.filter(
+            ExportTask.id == task_id,
+            ExportTask.status.in_(from_statuses),
+        ).update(values, synchronize_session=False)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        logger.exception(f'Failed to transition ExportTask {task_id}')
+        return False
+    return n == 1
+
+
+def _unlink_export_file(file_path: Path | None) -> None:
+    """Best-effort removal of a partial or abandoned export CSV."""
+    if file_path is None:
+        return
+    try:
+        file_path.unlink(missing_ok=True)
+    except OSError:
+        logger.warning(f'Could not remove export file {file_path}')
+
 
 @huey.task()
 def create_export_file(query_params: dict, user_id: int, task_id: int):
@@ -69,6 +109,11 @@ def create_export_file(query_params: dict, user_id: int, task_id: int):
     Updates:
         ExportTask status from PENDING to RUNNING then to SUCCESS/FAILED
         Sets file_path on SUCCESS or error_message on FAILED
+
+    Status writes use compare-and-swap so a stale-guard FAILED cannot be
+    overwritten back to RUNNING/SUCCESS by a still-running worker. A periodic
+    heartbeat refreshes ``updated_at`` while writing so long exports are not
+    false-failed.
     """
     app = _get_worker_app()
 
@@ -82,10 +127,15 @@ def create_export_file(query_params: dict, user_id: int, task_id: int):
         file_path: Path | None = None
         
         try:
-            # Update status to RUNNING
-            export_task.status = 'RUNNING'
-            export_task.updated_at = datetime.now(timezone.utc)
-            db.session.commit()
+            # Claim the row: PENDING|RUNNING -> RUNNING. Skip if already terminal
+            # (e.g. stale guard FAILED the task before this worker started).
+            if not _transition_export_task(
+                task_id, ['PENDING', 'RUNNING'], status='RUNNING'
+            ):
+                logger.info(
+                    f'ExportTask {task_id} not claimed (already terminal); aborting'
+                )
+                return
             logger.info(f'ExportTask {task_id} set to RUNNING')
             
             # Build and execute query (Core columns, not ORM entities).
@@ -105,6 +155,7 @@ def create_export_file(query_params: dict, user_id: int, task_id: int):
             all_columns = get_export_columns()
 
             row_count = 0
+            last_heartbeat = time.monotonic()
             with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=all_columns)
                 writer.writeheader()
@@ -116,34 +167,51 @@ def create_export_file(query_params: dict, user_id: int, task_id: int):
                 for row in export_query.yield_per(EXPORT_YIELD_PER):
                     writer.writerow(build_export_row(row))
                     row_count += 1
+
+                    now = time.monotonic()
+                    if now - last_heartbeat >= EXPORT_HEARTBEAT_SECONDS:
+                        # Heartbeat: RUNNING -> RUNNING (updated_at only).
+                        # Miss means the stale guard already FAILED this row.
+                        if not _transition_export_task(
+                            task_id, ['RUNNING'], status='RUNNING'
+                        ):
+                            logger.info(
+                                f'ExportTask {task_id} aborted mid-write '
+                                '(status no longer RUNNING)'
+                            )
+                            _unlink_export_file(file_path)
+                            return
+                        last_heartbeat = now
             
             logger.info(f'CSV file created at {file_path} with {row_count} rows')
             
-            # Update task with SUCCESS status and file path
-            export_task.status = 'SUCCESS'
-            export_task.file_path = str(file_path)
-            export_task.updated_at = datetime.now(timezone.utc)
-            db.session.commit()
+            # RUNNING -> SUCCESS. Miss: leave FAILED, discard the CSV.
+            if not _transition_export_task(
+                task_id,
+                ['RUNNING'],
+                status='SUCCESS',
+                file_path=str(file_path),
+            ):
+                logger.info(
+                    f'ExportTask {task_id} finished writing but could not '
+                    'transition to SUCCESS (already terminal); discarding file'
+                )
+                _unlink_export_file(file_path)
+                return
             logger.info(f'ExportTask {task_id} completed successfully')
             
         except Exception:
             logger.exception(f'ExportTask {task_id} failed with an error.')
             # Remove any partially-written CSV so failed exports don't leave
             # orphan files behind (cleanup_expired_exports only cleans SUCCESS).
-            if file_path is not None:
-                try:
-                    file_path.unlink(missing_ok=True)
-                except OSError:
-                    logger.warning(f'Could not remove partial export file {file_path}')
-            export_task.status = 'FAILED'
-            # Generic user-facing text: the real exception is already logged.
-            export_task.error_message = 'Export failed. Please try again.'
-            export_task.updated_at = datetime.now(timezone.utc)
-            try:
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
-                logger.exception(f'Could not mark ExportTask {task_id} as FAILED')
+            _unlink_export_file(file_path)
+            # PENDING|RUNNING -> FAILED only; do not clobber a terminal row.
+            _transition_export_task(
+                task_id,
+                ['PENDING', 'RUNNING'],
+                status='FAILED',
+                error_message='Export failed. Please try again.',
+            )
 
 
 def reset_stale_export_tasks(max_age_seconds: int = STALE_TASK_MAX_AGE) -> int:

@@ -22,6 +22,24 @@ login_manager = LoginManager()
 csrf = CSRFProtect()
 limiter = Limiter(key_func=get_remote_address, default_limits=[])
 
+def _ensure_email_verification_expiry_column(app):
+    """Add user.email_verification_token_expires on existing users DBs."""
+    from sqlalchemy import inspect, text
+
+    engine = db.engines['users'] if 'users' in db.engines else db.engine
+    inspector = inspect(engine)
+    if 'user' not in inspector.get_table_names():
+        return
+    column_names = {col['name'] for col in inspector.get_columns('user')}
+    if 'email_verification_token_expires' in column_names:
+        return
+    with engine.begin() as conn:
+        conn.execute(text(
+            'ALTER TABLE user ADD COLUMN email_verification_token_expires INTEGER'
+        ))
+    app.logger.info('Added user.email_verification_token_expires')
+
+
 def _configure_sqlite_pragmas(dbapi_conn, connection_record):
     """Configure SQLite PRAGMAs for improved concurrent read performance."""
     cursor = dbapi_conn.cursor()
@@ -109,9 +127,11 @@ def create_app():
     if app.debug is True:
         app.jinja_env.auto_reload = True
     else:
-        # Enable ProxyFix to trust headers from NGINX reverse proxy in production
+        # Trust one hop of X-Forwarded-For/Proto/Host. x_host=1 is safe only when
+        # nginx sets X-Forwarded-Host to $server_name (not the client Host).
+        # Emailed links should still use PUBLIC_BASE_URL so a direct Gunicorn
+        # request cannot poison verification/reset URLs.
         from werkzeug.middleware.proxy_fix import ProxyFix
-        # This ensures url_for(..., _external=True) uses the correct X-Forwarded-* headers
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
         """
         NOTE: Make sure the NGINX site config passes the correct headers:
@@ -134,6 +154,21 @@ def create_app():
         # Also configure the users database if it's SQLite
         if 'users' in db.engines:
             event.listens_for(db.engines['users'], "connect")(_configure_sqlite_pragmas)
+        _ensure_email_verification_expiry_column(app)
+
+    if not app.debug and not app.config.get('TESTING'):
+        storage_uri = app.config.get('RATELIMIT_STORAGE_URI', 'memory://')
+        if storage_uri.startswith('memory:'):
+            app.logger.warning(
+                'RATELIMIT_STORAGE_URI is memory://; counters are per-process. '
+                'Under multi-worker Gunicorn set a shared backend URI.'
+            )
+        if not app.config.get('PUBLIC_BASE_URL'):
+            app.logger.warning(
+                'PUBLIC_BASE_URL is unset; verification and reset emails will '
+                'use the request Host / X-Forwarded-Host. Set PUBLIC_BASE_URL '
+                'to the canonical public origin.'
+            )
     
     csrf.init_app(app)
     limiter.init_app(app)
@@ -206,8 +241,6 @@ def create_app():
         if request.path.startswith('/api/'):
             return jsonify({'error': 'csrf validation failed', 'message': str(error)}), 400
         flash('Your form session expired or is invalid. Please reload this page and submit again. If this is a reset link, request a new one.', 'danger')
-        if request.referrer:
-            return redirect(request.referrer)
-        return redirect(url_for('auth.login'))
-    
+        return redirect(request.path)
+
     return app

@@ -56,6 +56,36 @@ def test_query_observing_plot_not_visible_returns_message(client, monkeypatch):
     assert 'moonHtml' not in payload
 
 
+def test_query_observing_plot_not_visible_southern_site(client, monkeypatch):
+    """Southern observatory + northern object never rises (|lat - dec| >= 90)."""
+    import poi_broker.observing_tool as observing_tool
+
+    location = EarthLocation(lat=-30.0 * u.deg, lon=-70.0 * u.deg, height=1000 * u.m)
+
+    monkeypatch.setattr(observing_tool.EarthLocation, 'of_site', lambda site_name: location)
+    monkeypatch.setattr(observing_tool.TimezoneFinder, 'timezone_at', lambda self, lng, lat: 'UTC')
+    from datetime import timezone
+    monkeypatch.setattr(observing_tool, 'ZoneInfo', lambda tz_name: timezone.utc)
+
+    response = client.get(
+        '/query_observing_plot',
+        query_string={
+            'obs_loc': 'CTIO',
+            'obs_date': '2025-01-01',
+            'obs_tz': 'option_utc',
+            'ra': '101.28715533',
+            'dec': '70',
+        },
+    )
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert response.is_json
+    assert 'not visible' in payload['message']
+    assert 'image' not in payload
+    assert 'moonHtml' not in payload
+
+
 def test_query_observing_plot_returns_400_for_unknown_observatory(client, monkeypatch):
     import poi_broker.observing_tool as observing_tool
 

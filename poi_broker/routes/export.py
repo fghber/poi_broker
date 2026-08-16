@@ -6,6 +6,7 @@ from pathlib import Path
 
 from flask import (
     Blueprint,
+    current_app,
     flash,
     jsonify,
     redirect,
@@ -17,7 +18,7 @@ from flask import (
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
 
-from .. import db
+from .. import db, limiter
 from ..models import ExportTask
 from ..services.query_service import get_query_match_count
 from ..tasks import create_export_file
@@ -61,6 +62,7 @@ def export_page():
 
 @export_bp.route('', methods=['POST'])
 @login_required
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
 def export_submit():
     """
     Handle export form submission. Creates an ExportTask and enqueues the background job.

@@ -368,9 +368,10 @@ class User(UserMixin, db.Model):
     name = db.Column(db.String(1000))
     role = db.Column(db.String(20), default='user')    # Email verification
     email_verified = db.Column(db.Boolean, default=False, nullable=False)
-    email_verification_token = db.Column(db.String(128), index=True, nullable=True)    # Used by the reset-password flow
+    email_verification_token = db.Column(db.String(128), index=True, nullable=True)
+    email_verification_token_expires = db.Column(db.Integer, nullable=True)  # epoch seconds
     reset_token = db.Column(db.String(128), index=True, nullable=True)
-    reset_token_expires = db.Column(db.Integer, nullable=True) # epoch seconds
+    reset_token_expires = db.Column(db.Integer, nullable=True)  # epoch seconds
     # created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     # last_password_changed = db.Column(db.DateTime(timezone=True), nullable=True)
 

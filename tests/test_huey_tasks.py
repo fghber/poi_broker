@@ -357,32 +357,23 @@ def test_create_export_file_cleans_partial_file_on_failure(app, monkeypatch):
     from pathlib import Path
 
     import poi_broker.tasks as tasks_mod
-    from poi_broker.models import ExportTask
+    from poi_broker import db
+    from poi_broker.models import ExportTask, User
 
-    fake_task = ExportTask(user_id=1, status='RUNNING')
-
-    # The task opens its own app context (_get_worker_app -> app_context), which
-    # uses a fresh scoped Session keyed by app-context id; patching db.session.get
-    # would not affect it. Replace db.session with a minimal stub for the
-    # duration of this test: the task's get/commit/rollback hit the stub, and
-    # monkeypatch restores the real session before fixture teardown.
-    class _StubSession:
-        def get(self, model, pk, *a, **kw):
-            if model is ExportTask and pk == 42:
-                return fake_task
-            return None
-
-        def commit(self, *a, **kw):
-            return None
-
-        def rollback(self, *a, **kw):
-            return None
-
-        # Fixture teardown calls db.session.remove(); stub it harmlessly.
-        def remove(self):
-            return None
-
-    monkeypatch.setattr(tasks_mod.db, 'session', _StubSession())
+    with app.app_context():
+        user = User(
+            email='export_fail_cleanup@example.com',
+            password='hashed',
+            name='Fail Cleanup',
+            email_verified=True,
+        )
+        db.session.add(user)
+        db.session.commit()
+        task = ExportTask(user_id=user.id, status='PENDING')
+        db.session.add(task)
+        db.session.commit()
+        task_id = task.id
+        user_id = user.id
 
     # build_export_query_from_rules succeeds, but iterating the result raises
     # inside the CSV-write loop (after the file is opened and the header written).
@@ -398,8 +389,6 @@ def test_create_export_file_cleans_partial_file_on_failure(app, monkeypatch):
         return _BoomQuery(), 'fake where'
 
     monkeypatch.setattr(tasks_mod, 'build_export_query_from_rules', _fake_build)
-    # The task uses the process-wide worker app; return the fixture app so the
-    # patched session applies inside the task's app context.
     monkeypatch.setattr(tasks_mod, '_get_worker_app', lambda: app)
 
     # Snapshot the exports dir before the run. The fixture app's instance path
@@ -409,19 +398,183 @@ def test_create_export_file_cleans_partial_file_on_failure(app, monkeypatch):
     exports_dir.mkdir(parents=True, exist_ok=True)
     before = {p.name for p in exports_dir.iterdir()}
 
-    # Run the task synchronously (immediate mode). The task calls
-    # _get_worker_app() which returns the fixture app. We invoke the underlying
-    # function directly (not the huey wrapper) so we don't depend on the
-    # module's Huey backend mode: at collection time a previous test may have
-    # left HUEY_BACKEND=sqlite, making the wrapper enqueue instead of execute.
+    # Run the task synchronously via .func so we don't depend on Huey backend mode.
     tasks_mod.create_export_file.func(
-        query_params={'rules': [{'x': 1}]}, user_id=1, task_id=42,
+        query_params={'rules': [{'x': 1}]}, user_id=user_id, task_id=task_id,
     )
 
-    assert fake_task.status == 'FAILED'
-    assert fake_task.error_message == 'Export failed. Please try again.'
-    assert 'simulated write failure' not in (fake_task.error_message or '')
+    with app.app_context():
+        task = db.session.get(ExportTask, task_id)
+        assert task is not None
+        assert task.status == 'FAILED'
+        assert task.error_message == 'Export failed. Please try again.'
+        assert 'simulated write failure' not in (task.error_message or '')
+        assert task.file_path is None
 
     # No NEW partial CSV may be left behind by the failed task.
     after = {p.name for p in exports_dir.iterdir()}
     assert after == before, f'failed task left a partial file: {after - before}'
+
+
+def test_create_export_file_does_not_resurrect_failed_task(app, monkeypatch):
+    """F6: if the stale guard FAILED the row mid-write, the worker must not
+    flip it back to SUCCESS and must discard the CSV.
+    """
+    from pathlib import Path
+
+    import poi_broker.tasks as tasks_mod
+    from poi_broker import db
+    from poi_broker.models import ExportTask, User
+
+    with app.app_context():
+        user = User(
+            email='export_resurrect@example.com',
+            password='hashed',
+            name='Resurrect',
+            email_verified=True,
+        )
+        db.session.add(user)
+        db.session.commit()
+        task = ExportTask(user_id=user.id, status='PENDING')
+        db.session.add(task)
+        db.session.commit()
+        task_id = task.id
+        user_id = user.id
+
+    # First yield_per iteration: simulate another process failing the task
+    # (stale guard), then yield one row so the worker would otherwise succeed.
+    failed_once = {'done': False}
+
+    def _iter():
+        if not failed_once['done']:
+            failed_once['done'] = True
+            with app.app_context():
+                row = db.session.get(ExportTask, task_id)
+                row.status = 'FAILED'
+                row.error_message = 'Export aborted: no progress for over 30 minute(s).'
+                row.updated_at = datetime.now(timezone.utc)
+                db.session.commit()
+        # One fake row so build_export_row is exercised if the worker continues.
+        yield type('Row', (), {})()
+
+    class _Query:
+        def yield_per(self, _n):
+            return iter(_iter())
+
+    monkeypatch.setattr(
+        tasks_mod,
+        'build_export_query_from_rules',
+        lambda *_a, **_kw: (_Query(), 'fake where'),
+    )
+    monkeypatch.setattr(
+        tasks_mod,
+        'build_export_row',
+        lambda _row: {col: '' for col in tasks_mod.get_export_columns()},
+    )
+    monkeypatch.setattr(tasks_mod, '_get_worker_app', lambda: app)
+
+    exports_dir = Path(app.instance_path) / 'exports'
+    exports_dir.mkdir(parents=True, exist_ok=True)
+    before = {p.name for p in exports_dir.iterdir()}
+
+    tasks_mod.create_export_file.func(
+        query_params={'rules': [{'x': 1}]}, user_id=user_id, task_id=task_id,
+    )
+
+    with app.app_context():
+        task = db.session.get(ExportTask, task_id)
+        assert task is not None
+        assert task.status == 'FAILED'
+        assert task.file_path is None
+        assert 'aborted' in (task.error_message or '')
+
+    after = {p.name for p in exports_dir.iterdir()}
+    assert after == before, f'resurrected export left a file: {after - before}'
+
+
+def test_export_heartbeat_keeps_running_task_fresh(app, monkeypatch):
+    """Heartbeat refreshes updated_at so reset_stale_export_tasks leaves a live export alone."""
+    from datetime import timedelta
+    from pathlib import Path
+
+    import poi_broker.tasks as tasks_mod
+    from poi_broker import db
+    from poi_broker.models import ExportTask, User
+    from poi_broker.tasks import reset_stale_export_tasks
+
+    with app.app_context():
+        user = User(
+            email='export_heartbeat@example.com',
+            password='hashed',
+            name='Heartbeat',
+            email_verified=True,
+        )
+        db.session.add(user)
+        db.session.commit()
+        task = ExportTask(user_id=user.id, status='PENDING')
+        db.session.add(task)
+        db.session.commit()
+        task_id = task.id
+        user_id = user.id
+
+    # Force a heartbeat on every row by setting the interval to 0.
+    monkeypatch.setattr(tasks_mod, 'EXPORT_HEARTBEAT_SECONDS', 0)
+
+    row_count = {'n': 0}
+
+    def _iter():
+        # Yield two rows so the heartbeat runs at least once inside the loop.
+        yield type('Row', (), {})()
+        row_count['n'] += 1
+        yield type('Row', (), {})()
+        row_count['n'] += 1
+
+    class _Query:
+        def yield_per(self, _n):
+            return iter(_iter())
+
+    monkeypatch.setattr(
+        tasks_mod,
+        'build_export_query_from_rules',
+        lambda *_a, **_kw: (_Query(), 'fake where'),
+    )
+    monkeypatch.setattr(
+        tasks_mod,
+        'build_export_row',
+        lambda _row: {col: '' for col in tasks_mod.get_export_columns()},
+    )
+    monkeypatch.setattr(tasks_mod, '_get_worker_app', lambda: app)
+
+    heartbeats = []
+    real_transition = tasks_mod._transition_export_task
+
+    def _tracking_transition(task_id_arg, from_statuses, **values):
+        ok = real_transition(task_id_arg, from_statuses, **values)
+        if ok and from_statuses == ['RUNNING'] and values.get('status') == 'RUNNING':
+            heartbeats.append(True)
+        return ok
+
+    monkeypatch.setattr(tasks_mod, '_transition_export_task', _tracking_transition)
+
+    tasks_mod.create_export_file.func(
+        query_params={'rules': [{'x': 1}]}, user_id=user_id, task_id=task_id,
+    )
+
+    assert heartbeats, 'expected at least one RUNNING heartbeat during write'
+    assert row_count['n'] == 2
+
+    with app.app_context():
+        task = db.session.get(ExportTask, task_id)
+        assert task is not None
+        assert task.status == 'SUCCESS'
+        file_path = task.file_path
+        # A freshly heartbeated RUNNING row must not be stale-failed.
+        task.status = 'RUNNING'
+        task.updated_at = datetime.now(timezone.utc) - timedelta(seconds=10)
+        db.session.commit()
+        n = reset_stale_export_tasks(max_age_seconds=30 * 60)
+        db.session.refresh(task)
+        assert n == 0
+        assert task.status == 'RUNNING'
+        if file_path:
+            Path(file_path).unlink(missing_ok=True)

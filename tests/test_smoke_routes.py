@@ -192,3 +192,11 @@ def test_read_routes_rate_limited(secure_client):
             assert response.status_code == 400
         else:
             assert response.status_code == 429
+
+    # Cheap 400 path only — do not render matplotlib plots in this loop.
+    for i in range(31):
+        response = secure_client.get("/query_observing_plot")
+        if i < 30:
+            assert response.status_code == 400
+        else:
+            assert response.status_code == 429

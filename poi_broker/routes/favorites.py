@@ -100,8 +100,12 @@ def api_favorite_update_group(favorite_id):
 @login_required
 def api_favorite_groups_get():
     """GET /api/favorite-groups -> return all user's groups with favorites counts."""
-    groups = get_favorite_groups()
-    return jsonify({'groups': groups})
+    try:
+        groups = get_favorite_groups()
+        return jsonify({'groups': groups})
+    except Exception as e:
+        logger.error(f'Error listing favorite groups: {str(e)}', exc_info=True)
+        return jsonify({'error': 'An error occurred while listing favorite groups.'}), 500
 
 
 @favorites_bp.route('/favorite-groups', methods=['POST'])

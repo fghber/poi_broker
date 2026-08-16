@@ -268,6 +268,33 @@ def test_export_download_not_ready_redirects(auth_client, app):
     assert response.status_code in (301, 302)
 
 
+def test_export_download_flash_is_consumed_on_export_page(auth_client, app):
+    """Failed download flashes must render on /export, not leak to later pages."""
+    with app.app_context():
+        from poi_broker.models import User
+        user = User.query.filter_by(email="smoketest@example.com").first()
+        task_id = _create_task(app, user.id, status="PENDING")
+
+    response = auth_client.get(f"/export/download/{task_id}")
+    assert response.status_code in (301, 302)
+    assert response.headers["Location"].rstrip("/").endswith("/export")
+
+    with auth_client.session_transaction() as session:
+        flashes = session.get("_flashes", [])
+    assert any("not ready for download" in msg for _cat, msg in flashes)
+
+    export_page = auth_client.get("/export")
+    assert export_page.status_code == 200
+    assert b"not ready for download" in export_page.data
+    assert b"alert-warning" in export_page.data
+
+    with auth_client.session_transaction() as session:
+        assert not session.get("_flashes")
+
+    later = auth_client.get("/login")
+    assert b"not ready for download" not in later.data
+
+
 def test_export_download_missing_file_redirects(auth_client, app):
     with app.app_context():
         from poi_broker.models import User

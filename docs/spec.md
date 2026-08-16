@@ -110,8 +110,8 @@ CSS is already local Bootswatch **4.6.2**. JS was aligned to 4.6.2 bundle (was 4
 
 | ID | Requirement | Value / Source |
 |---|---|---|
-| NFR-001 | Auth rate limiting | login 10/min, signup 5/hr, forgot-pw 5/hr, reset-pw 10/hr, change-pw 10/hr (`AUTH_RATE_LIMIT_*`) |
-| NFR-002 | Read rate limiting | `/`, `/api/catalog-count`, `/query_crossmatches`, `/query_features` 30/min (LAX); `/download_alerts_csv` 15/min (MEDIUM) |
+| NFR-001 | Auth rate limiting | login 10/min, signup 5/hr, forgot-pw 5/hr, reset-pw 10/hr, change-pw 10/hr (`AUTH_RATE_LIMIT_*`). `memory://` is per-process; multi-worker Gunicorn needs a shared `RATELIMIT_STORAGE_URI` |
+| NFR-002 | Read rate limiting | `/`, `/api/catalog-count`, `/query_crossmatches`, `/query_features`, `/query_featureplot_data`, `/query_lightcurve_data`, `/locus_plot_csv`, `/query_observing_plot`, `/api/export-query`, `POST /export` 30/min (LAX); `/download_alerts_csv` 15/min (MEDIUM) |
 | NFR-003 | CSRF protection | Flask-WTF `CSRFProtect` on all POST forms; JSON 400 for `/api/*` |
 | NFR-004 | Security headers | HSTS (HTTPS), `nosniff`, `X-Frame-Options: DENY`, Referrer-Policy, Permissions-Policy, strict CSP |
 | NFR-005 | Cookie security | HttpOnly, Secure (prod), SameSite=Lax; remember cookie 14 days |
@@ -119,7 +119,7 @@ CSS is already local Bootswatch **4.6.2**. JS was aligned to 4.6.2 bundle (was 4
 | NFR-007 | SQLite performance | WAL, `synchronous=NORMAL`, 64MB cache, 256MB mmap, `temp_store=MEMORY` |
 | NFR-008 | Caching | `lru_cache` on MJD formatting (8192) and builtin observatories (1); per-request `UserSettings` reuse; 5-min in-process cache for unfiltered catalog `COUNT(*)` |
 | NFR-009 | Coverage targets | 50–75% per module, 75%+ total (`tests/coverage.md`) |
-| NFR-010 | Proxy support | `ProxyFix` enabled in production (trust `X-Forwarded-*`) |
+| NFR-010 | Proxy support | `ProxyFix` enabled in production (trust `X-Forwarded-*`). Emailed links use `PUBLIC_BASE_URL` when set |
 
 ### 3.3 Performance Notes
 
@@ -151,7 +151,7 @@ Two SQLite databases via SQLAlchemy binds: **alerts** (default bind) and **users
 ### 4.2 Users DB
 | Model | Table | Key Columns / Constraints | Notes |
 |---|---|---|---|
-| `User` | `user` | `id` PK, `email` unique, `password` (hashed), `name`, `role` (default `'user'`), `email_verified`, `email_verification_token`, `reset_token`, `reset_token_expires` | Methods `has_role`, `is_admin`; decorator `role_required(role)` |
+| `User` | `user` | `id` PK, `email` unique, `password` (hashed), `name`, `role` (default `'user'`), `email_verified`, `email_verification_token`, `email_verification_token_expires`, `reset_token`, `reset_token_expires` | Methods `has_role`, `is_admin`; decorator `role_required(role)` |
 | `FavoriteGroup` | `favorite_group` | `id`, `user_id` FK→user CASCADE, `name`, `created_at`; unique `(user_id, name)` | |
 | `Favorite` | `favorite` | `id`, `user_id` FK CASCADE, `locus_id`, `group_id` FK→favorite_group SET NULL, `created_at`; unique `(user_id, locus_id)` | |
 | `Watchlist` | `watchlist` | `id`, `user_id` FK CASCADE, `name`, `rules_json` (Text), `sql_where` (Text), `created_at` (epoch); unique `(user_id, name)` | `rules_json` is the executable source of truth. `sql_where` is a display preview only — never concatenate or execute it. |
@@ -181,10 +181,10 @@ Two SQLite databases via SQLAlchemy binds: **alerts** (default bind) and **users
 | POST | `/login` | Public | Form: `email`, `password`, `remember` | Redirect → `main.profile` | — |
 | GET | `/signup` | Public | — | HTML `signup.html` | — |
 | POST | `/signup` | Public | Form: `email`, `name`, `password` | Sends verification email. Duplicate/new/uniqueness-race share one generic flash and redirect to `/login`. | — |
-| GET | `/verify-email/<token>` | Public | Token | Verifies email | — |
+| GET | `/verify-email/<token>` | Public | Token | Verifies email (24h expiry) | — |
 | POST | `/logout` | Login | — | Clears session | — |
 | GET | `/forgot-password` | Public | — | HTML `forgot_password.html` | — |
-| POST | `/forgot-password` | Public | Form: `email` | Sends reset email (1h) | — |
+| POST | `/forgot-password` | Public | Form: `email` | Same generic flash whether the email exists; sends reset email (1h) when it does | — |
 | GET | `/reset-password/<token>` | Public | Token | HTML `reset_password.html` | — |
 | POST | `/reset-password/<token>` | Public | Form: new password | Sets new password | — |
 | GET | `/security` | Login | — | HTML `security.html` | — |
@@ -208,7 +208,7 @@ Two SQLite databases via SQLAlchemy binds: **alerts** (default bind) and **users
 | POST | `/api/filter-bookmarks` | JSON: `{"name","params"}` | `{"status":"ok",...}` 201 | 409 duplicate name |
 | DELETE | `/api/filter-bookmarks/<int:bookmark_id>` | — | `{"status":"ok"}` | 404 |
 
-> Whitelist: `ALLOWED_KEYS` (18 keys); `MAX_BOOKMARK_JSON_BYTES=16384`; `MAX_PARAM_VALUE_LEN=512`.
+> Whitelist: `ALLOWED_KEYS` (17 keys); `MAX_BOOKMARK_JSON_BYTES=16384`; `MAX_PARAM_VALUE_LEN=512`.
 
 ### 5.5 Visual Query Blueprint (`poi_broker/routes/visual_query.py`) — all Login
 | Method | Path | Request | Response | Errors |
@@ -238,7 +238,7 @@ Two SQLite databases via SQLAlchemy binds: **alerts** (default bind) and **users
 | GET | `/api/user-observatories` | — | `{"userObservatories":[{"id","name","latitude","longitude","timezone_name","created_at"}]}` | — |
 | POST | `/api/user-observatories` | JSON: `{"name","latitude","longitude"}` | `{"status":"ok",...}` 201 | 409; idempotent 200 on duplicate |
 | DELETE | `/api/user-observatories/<int:observatory_id>` | — | `{"status":"ok"}` | idempotent 200 `already_deleted`; may include `warning`/`fallback` |
-| POST | `/api/last-observatory` | JSON: `{"source":"builtin","name"}` or `{"source":"custom","id"}` | `{"status":"ok"}` | 400 invalid/unowned; CSRF required. TODO: validate builtin `name` against `EarthLocation.get_site_names()` on write (invalid names are self-scoped and fail later at plot time). |
+| POST | `/api/last-observatory` | JSON: `{"source":"builtin","name"}` or `{"source":"custom","id"}` | `{"status":"ok"}` | 400 invalid/unowned/unknown builtin; CSRF required. Builtin `name` must be in `EarthLocation.get_site_names()`. |
 
 ### 5.9 User Settings Blueprint (`poi_broker/user_settings.py`) — all Login
 | Method | Path | Request | Response |
@@ -261,7 +261,7 @@ Two SQLite databases via SQLAlchemy binds: **alerts** (default bind) and **users
 ## 6. Workflows
 
 ### 6.1 Authentication Lifecycle
-Signup → email verification (SHA-256 token) → login (Flask-Login) → authenticated browsing. Password reset via emailed token (1h expiry). Change password requires current password. Role-based access via `role_required`.
+Signup → email verification (SHA-256 token, 24h expiry) → login (Flask-Login) → authenticated browsing. Password reset via emailed token (1h expiry). Change password requires current password. Role-based access via `role_required`.
 
 ### 6.2 Browse & Filter Alerts
 `GET /` builds a `Ztf` query with optional filters (date/MJD, alert_id prefix/full, object_id, passband, locus_id, RA/Dec ranges, magnitude, prob_class) and multiple sort keys. Uses `catalog_query` + `SearchService` + `FilterService`. Hybrid pagination 100/page (keyset for date-only sort; OFFSET+1 otherwise). Exact row counts when cheap; otherwise `GET /api/catalog-count` on demand.

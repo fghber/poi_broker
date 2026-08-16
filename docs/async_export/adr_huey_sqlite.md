@@ -64,7 +64,10 @@ web process.
   `HUEY_BACKEND=sqlite`. `HUEY_IMMEDIATE` applies only to the memory backend.
 - **User-facing state** lives in `ExportTask` (`users.db`), not in Huey’s
   result table. A stale-task guard fails `PENDING`/`RUNNING` rows after 30
-  minutes so a dead worker cannot block a user’s export slot forever.
+  minutes so a dead worker cannot block a user’s export slot forever. The
+  worker only transitions from expected statuses (compare-and-swap) and
+  heartbeats `updated_at` while `RUNNING`, so a live long export is not
+  false-failed and cannot be resurrected after a stale `FAILED`.
 - **One Flask app per consumer process:** Huey handlers reuse a lazy
   process-wide app (`_get_worker_app` in `tasks.py`) instead of calling
   `create_app()` on every task.

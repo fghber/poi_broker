@@ -91,6 +91,8 @@ def test_signup_post_creates_user_and_sends_verification_email(client, app, monk
         assert user is not None
         assert user.email_verified is False
         assert user.email_verification_token is not None
+        assert user.email_verification_token_expires is not None
+        assert user.email_verification_token_expires > int(datetime.now(timezone.utc).timestamp())
 
 
 def test_login_post_invalid_credentials_redirects_to_forgot_password(client):
@@ -149,6 +151,7 @@ def test_verify_email_marks_user_verified(client, app):
             name='Verify User',
             email_verified=False,
             email_verification_token=hash_token(raw_token),
+            email_verification_token_expires=int(datetime.now(timezone.utc).timestamp()) + 3600,
         )
         from poi_broker import db
         db.session.add(user)
@@ -163,6 +166,44 @@ def test_verify_email_marks_user_verified(client, app):
         user = User.query.filter_by(email='verify@example.com').first()
         assert user.email_verified is True
         assert user.email_verification_token is None
+        assert user.email_verification_token_expires is None
+
+
+def test_login_renders_success_and_danger_flash_categories(client, app):
+    """F12: success flashes must not paint as alert-danger on /login."""
+    from poi_broker.auth import hash_token
+
+    raw_token = 'verify-flash-token'
+    with app.app_context():
+        user = User(
+            email='verify-flash@example.com',
+            password=generate_password_hash('Password123!'),
+            name='Verify Flash User',
+            email_verified=False,
+            email_verification_token=hash_token(raw_token),
+            email_verification_token_expires=int(datetime.now(timezone.utc).timestamp()) + 3600,
+        )
+        from poi_broker import db
+        db.session.add(user)
+        db.session.commit()
+
+    success_page = client.get(f'/verify-email/{raw_token}', follow_redirects=True)
+    assert success_page.status_code == 200
+    body = success_page.get_data(as_text=True)
+    assert 'alert-success' in body
+    assert 'Email verified successfully!' in body
+    assert 'alert-danger' not in body
+
+    danger_page = client.post(
+        '/login',
+        data={'email': 'nobody@example.com', 'password': 'wrong'},
+        follow_redirects=True,
+    )
+    assert danger_page.status_code == 200
+    danger_body = danger_page.get_data(as_text=True)
+    assert 'alert-danger' in danger_body
+    assert 'Please check your login details' in danger_body
+    assert 'alert-success' not in danger_body
 
 
 def test_forgot_password_post_generates_reset_token_and_emails_user(client, app, monkeypatch, user_factory):
@@ -177,6 +218,7 @@ def test_forgot_password_post_generates_reset_token_and_emails_user(client, app,
 
     assert response.status_code == 302
     assert '/login' in response.location
+    assert _flashed_messages(client) == [auth_module.FORGOT_PASSWORD_GENERIC_NOTICE]
 
     with app.app_context():
         user = User.query.filter_by(email='reset@example.com').first()
@@ -185,11 +227,94 @@ def test_forgot_password_post_generates_reset_token_and_emails_user(client, app,
         assert user.reset_token_expires > int(datetime.now(timezone.utc).timestamp())
 
 
+def test_forgot_password_post_unknown_email_uses_same_notice(client):
+    response = client.post(
+        '/forgot-password',
+        data={'email': 'missing@example.com'},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert '/login' in response.location
+    assert _flashed_messages(client) == [auth_module.FORGOT_PASSWORD_GENERIC_NOTICE]
+
+
+def test_verify_email_expired_token_redirects_to_signup(client, app):
+    from poi_broker.auth import hash_token
+
+    raw_token = 'expired-verify-token'
+    with app.app_context():
+        user = User(
+            email='expired-verify@example.com',
+            password=generate_password_hash('Password123!'),
+            name='Expired Verify User',
+            email_verified=False,
+            email_verification_token=hash_token(raw_token),
+            email_verification_token_expires=int(datetime.now(timezone.utc).timestamp()) - 10,
+        )
+        from poi_broker import db
+        db.session.add(user)
+        db.session.commit()
+
+    response = client.get(f'/verify-email/{raw_token}', follow_redirects=False)
+
+    assert response.status_code == 302
+    assert '/signup' in response.location
+
+    with app.app_context():
+        user = User.query.filter_by(email='expired-verify@example.com').first()
+        assert user.email_verified is False
+        assert user.email_verification_token is not None
+
+
 def test_reset_password_invalid_token_redirects_to_login(client):
     response = client.get('/reset-password/invalid-token', follow_redirects=False)
 
     assert response.status_code == 302
     assert '/login' in response.location
+
+
+def test_verify_email_missing_expiry_is_rejected(client, app):
+    from poi_broker.auth import hash_token
+
+    raw_token = 'legacy-verify-token'
+    with app.app_context():
+        user = User(
+            email='legacy-verify@example.com',
+            password=generate_password_hash('Password123!'),
+            name='Legacy Verify User',
+            email_verified=False,
+            email_verification_token=hash_token(raw_token),
+            email_verification_token_expires=None,
+        )
+        from poi_broker import db
+        db.session.add(user)
+        db.session.commit()
+
+    response = client.get(f'/verify-email/{raw_token}', follow_redirects=False)
+
+    assert response.status_code == 302
+    assert '/signup' in response.location
+
+    with app.app_context():
+        user = User.query.filter_by(email='legacy-verify@example.com').first()
+        assert user.email_verified is False
+
+
+def test_public_base_url_requires_http_scheme(tmp_path, monkeypatch):
+    from poi_broker.settings import build_app_config
+
+    monkeypatch.setenv('SECRET_KEY', 'settings-secret')
+    monkeypatch.setenv('PUBLIC_BASE_URL', 'evil.example')
+    monkeypatch.setenv('ALERTS_DB_PATH', str(tmp_path / 'alerts.db'))
+    monkeypatch.setenv('USERS_DB_PATH', str(tmp_path / 'users.db'))
+
+    config, _, _ = build_app_config(tmp_path)
+    assert config['PUBLIC_BASE_URL'] is None
+
+    monkeypatch.setenv('PUBLIC_BASE_URL', 'https://poi.example.edu/')
+    config, _, _ = build_app_config(tmp_path)
+    assert config['PUBLIC_BASE_URL'] == 'https://poi.example.edu'
 
 
 def test_is_reset_token_expired_and_format_expire_time():

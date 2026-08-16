@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timezone
+from functools import lru_cache
 import logging
 
 from astropy.coordinates import EarthLocation
@@ -22,6 +23,11 @@ from ..user_settings import (
 logger = logging.getLogger(__name__)
 
 user_observatories_bp = Blueprint('user_observatories', __name__, url_prefix='/api')
+
+
+@lru_cache(maxsize=1)
+def _builtin_site_names() -> frozenset[str]:
+    return frozenset(EarthLocation.get_site_names())
 
 
 def _validate_payload(raw: object) -> tuple[dict[str, float | str] | None, str | None]:
@@ -178,8 +184,9 @@ def save_last_observatory():
         ).first()
         if owned is None:
             return jsonify({'error': 'Unknown custom observatory'}), 400
-    # TODO: validate builtin names against EarthLocation.get_site_names() on write.
-    # Invalid names are self-scoped prefs and fail later in _resolve_selected_observatory().
+    elif normalized['source'] == 'builtin':
+        if normalized['name'] not in _builtin_site_names():
+            return jsonify({'error': 'Unknown builtin observatory'}), 400
 
     try:
         save_last_selected_observatory(current_user.id, normalized)

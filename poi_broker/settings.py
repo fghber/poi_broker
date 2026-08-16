@@ -72,6 +72,15 @@ def build_app_config(base_dir):
 	read_rate_limit_lax = os.environ.get('READ_RATE_LIMIT_LAX', '30 per minute').strip() or '30 per minute'
 	read_rate_limit_medium = os.environ.get('READ_RATE_LIMIT_MEDIUM', '15 per minute').strip() or '15 per minute'
 
+	# Canonical public origin for emailed verification/reset links. When unset,
+	# url_for(_external=True) follows Host / X-Forwarded-Host (unsafe if a
+	# request reaches Gunicorn directly or a proxy forwards the client Host).
+	public_base_url = (os.environ.get('PUBLIC_BASE_URL') or '').strip().rstrip('/')
+	if public_base_url and not (
+		public_base_url.startswith('https://') or public_base_url.startswith('http://')
+	):
+		public_base_url = ''
+
 	config = {
 		'DEBUG': debug_flag,
 		'TESTING': testing_flag,
@@ -93,7 +102,9 @@ def build_app_config(base_dir):
 		'REMEMBER_COOKIE_SAMESITE': remember_samesite,
 		'REMEMBER_COOKIE_DURATION': timedelta(days=14),
 		'RATELIMIT_ENABLED': _env_bool(os.environ.get('RATELIMIT_ENABLED'), production_flag),
+		# memory:// is per-process. Multi-worker Gunicorn needs a shared URI.
 		'RATELIMIT_STORAGE_URI': os.environ.get('RATELIMIT_STORAGE_URI', 'memory://'),
+		'PUBLIC_BASE_URL': public_base_url or None,
 		'AUTH_RATE_LIMIT_LOGIN': auth_login_limit,
 		'AUTH_RATE_LIMIT_SIGNUP': auth_signup_limit,
 		'AUTH_RATE_LIMIT_FORGOT_PASSWORD': auth_forgot_limit,

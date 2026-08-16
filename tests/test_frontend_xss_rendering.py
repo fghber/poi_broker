@@ -270,8 +270,21 @@ def test_profile_group_create_and_move_check_response_ok():
     profile_html = _read_template("profile.html")
     assert "if (!r.ok) throw new Error('Failed to create group');" in profile_html
     assert "if (!r.ok) throw new Error('Failed to move favorite');" in profile_html
+    assert "if (!r.ok) throw new Error('Failed to load favorite groups');" in profile_html
+    assert "if (!r.ok) throw new Error('Failed to load favorites');" in profile_html
+    assert "Failed to load favorites." in profile_html
     assert "confirmMoveBtn.disabled = true;" in profile_html
     assert "confirmMoveBtn.disabled = false;" in profile_html
+
+
+def test_login_flash_uses_categories_not_hardcoded_danger():
+    login_html = _read_template("login.html")
+    assert "get_flashed_messages(with_categories=True)" in login_html
+    assert "for category, message in messages" in login_html
+    assert "category == 'success'" in login_html
+    assert "category == 'info'" in login_html
+    assert "category == 'warning'" in login_html
+    assert "{% with messages = get_flashed_messages() %}" not in login_html
 
 
 def test_bootstrap_datepicker_assets_are_gone():

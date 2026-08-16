@@ -266,6 +266,27 @@ def test_keyset_next_link_uses_cursor_not_page(client, app, monkeypatch):
     assert 'page=2' not in body
 
 
+def test_sort_locus_id_is_applied_and_disables_keyset(app):
+    with app.app_context():
+        _add_alert(alert_id='ztf_candidate:1300000000000000003', mjd=60700.0, locus_id='L-c', object_id='Zc')
+        _add_alert(alert_id='ztf_candidate:1300000000000000001', mjd=60700.0, locus_id='L-a', object_id='Za')
+        _add_alert(alert_id='ztf_candidate:1300000000000000002', mjd=60700.0, locus_id='L-b', object_id='Zb')
+        db.session.commit()
+
+        asc_args = {'sort__locus_id': 'asc'}
+        asc_build = build_catalog_query(asc_args)
+        assert asc_build.is_date_only_sort is False
+        assert should_use_keyset(asc_build.is_date_only_sort, asc_args) is False
+        asc_items, _ = fetch_page(asc_build.list_query, 1, page_size=10)
+        assert [row.locus_id for row in asc_items] == ['L-a', 'L-b', 'L-c']
+
+        desc_args = {'sort__locus_id': 'desc'}
+        desc_build = build_catalog_query(desc_args)
+        assert desc_build.is_date_only_sort is False
+        desc_items, _ = fetch_page(desc_build.list_query, 1, page_size=10)
+        assert [row.locus_id for row in desc_items] == ['L-c', 'L-b', 'L-a']
+
+
 def test_offset_page_past_end_is_404(client, app):
     with app.app_context():
         _add_alert(alert_id='ztf_candidate:1100000000000000001', mjd=60500.0, locus_id='Lx', object_id='Zx')

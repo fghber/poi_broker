@@ -3,10 +3,10 @@
 import logging
 import json
 import time
-from flask import Blueprint, jsonify, request, render_template
+from flask import Blueprint, current_app, jsonify, request, render_template
 from flask_login import login_required, current_user
 from sqlalchemy.exc import IntegrityError
-from .. import db
+from .. import db, limiter
 from ..models import Watchlist
 from ..services.query_service import get_preview_sql, get_query_match_count
 
@@ -47,6 +47,7 @@ def preview_query():
 
 @visual_query_bp.route('/api/export-query', methods=['POST'])
 @login_required
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
 def export_query():
     """Get match count for a query builder payload."""
     try:
