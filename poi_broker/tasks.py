@@ -222,31 +222,40 @@ def reset_stale_export_tasks(max_age_seconds: int = STALE_TASK_MAX_AGE) -> int:
     permanently blocks the user's active-task slot (the API returns 409 while one
     exists). This resets such tasks to FAILED so the user can retry.
 
+    The reset is a single compare-and-swap UPDATE (same pattern as
+    ``_transition_export_task``), so concurrent callers — multiple Gunicorn
+    workers at boot, or a web worker racing the Huey consumer's periodic
+    ``cleanup_stale_export_tasks`` — cannot tear each other's writes: the first
+    writer to match a row wins, the rest match zero rows and return 0.
+
     Returns:
-        int: number of tasks reset to FAILED
+        int: number of tasks reset to FAILED.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
     from .models import ExportTask
-    stale = ExportTask.query.filter(
-        ExportTask.status.in_(['PENDING', 'RUNNING']),
-        ExportTask.updated_at < cutoff
-    ).all()
-    for task in stale:
-        task.status = 'FAILED'
-        task.error_message = (
-            f"Export aborted: no progress for over {max_age_seconds // 60} minute(s). "
-            "Please try again."
+    try:
+        n = ExportTask.query.filter(
+            ExportTask.status.in_(['PENDING', 'RUNNING']),
+            ExportTask.updated_at < cutoff,
+        ).update(
+            {
+                'status': 'FAILED',
+                'error_message': (
+                    f"Export aborted: no progress for over {max_age_seconds // 60} minute(s). "
+                    "Please try again."
+                ),
+                'updated_at': datetime.now(timezone.utc),
+            },
+            synchronize_session=False,
         )
-        task.updated_at = datetime.now(timezone.utc)
-    if stale:
-        try:
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-            logger.exception('Failed to commit stale export task resets')
-            return 0
-        logger.info(f'Marked {len(stale)} stale export task(s) as FAILED')
-    return len(stale)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        logger.exception('Failed to commit stale export task resets')
+        return 0
+    if n:
+        logger.info(f'Marked {n} stale export task(s) as FAILED')
+    return int(n or 0)
 
 
 def cleanup_expired_exports(max_age_days: int = EXPORT_RETENTION_DAYS) -> int:

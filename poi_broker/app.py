@@ -1,26 +1,41 @@
-from flask import (render_template, abort, jsonify, request, Response,
-                   redirect, url_for, make_response, Blueprint, current_app,
-                   send_from_directory)
-from flask_login import login_required, current_user
-import logging
-from functools import lru_cache
 import csv
 import io
-from datetime import datetime, timezone
-from pathlib import Path
-import bokeh as bokeh_pkg
-from astropy.time import Time
-from astropy.coordinates import EarthLocation
 import json
+import logging
+from datetime import datetime, timezone
+from functools import lru_cache
+from importlib.metadata import version
+from pathlib import Path
 
-from .helpers import safe_serialize, result_to_dict, object_as_dict
+import bokeh as bokeh_pkg
+from astropy.coordinates import EarthLocation
+from astropy.time import Time
+from flask import (
+    Blueprint,
+    Flask,
+    Response,
+    abort,
+    current_app,
+    jsonify,
+    make_response,
+    render_template,
+    request,
+    send_from_directory,
+)
+from flask_login import current_user, login_required
 
-from .services.catalog_query import (
-    build_catalog_query,
-    catalog_filter_query_string,
-    catalog_href,
-    catalog_query_string,
-    project_catalog_columns,
+from . import db, limiter
+from .constants.features import FEATURE_COLUMNS, default_feature_plot_columns
+from .helpers import object_as_dict, result_to_dict, safe_serialize
+from .models import Classification, Crossmatches, UserObservatory, Ztf
+from .routes import (
+    export_bp,
+    favorites_bp,
+    features_bp,
+    filter_bookmarks_bp,
+    lightcurve_bp,
+    user_observatories_bp,
+    visual_query_bp,
 )
 from .services.catalog_list import (
     PAGE_SIZE,
@@ -33,13 +48,21 @@ from .services.catalog_list import (
     resolve_catalog_total,
     should_use_keyset,
 )
+from .services.catalog_query import (
+    build_catalog_query,
+    catalog_filter_query_string,
+    catalog_href,
+    catalog_query_string,
+    project_catalog_columns,
+)
+from .user_settings import (
+    UserSettings,
+    get_saved_feature_plot_columns,
+    get_saved_last_selected_observatory,
+    get_user_settings,
+    user_settings_bp,
+)
 
-from . import db, limiter
-from .models import Ztf, Crossmatches, User, FavoriteGroup, Watchlist, Classification, UserObservatory
-from .routes import favorites_bp, filter_bookmarks_bp, visual_query_bp, lightcurve_bp, features_bp, user_observatories_bp, export_bp
-from .constants.features import FEATURE_COLUMNS, default_feature_plot_columns
-from .user_settings import user_settings_bp, get_user_settings, get_saved_feature_plot_columns, get_saved_last_selected_observatory, UserSettings
-from importlib.metadata import version
 bokeh_version = version("bokeh")
 _BOKEH_JS_DIR = Path(bokeh_pkg.__file__).resolve().parent / "server" / "static" / "js"
 
@@ -48,7 +71,7 @@ main_blueprint = Blueprint('main', __name__)
 
 
 @main_blueprint.route("/bokeh.min.js")
-def bokeh_js():
+def bokeh_js() -> Response:
     """Serve the Bokeh JS that ships with the installed Python package."""
     return send_from_directory(_BOKEH_JS_DIR, "bokeh.min.js", max_age=86400)
 
@@ -159,8 +182,8 @@ def _build_observatory_context(settings_row: UserSettings | None = None) -> dict
 
 @main_blueprint.route('/', methods=['GET'])
 @limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
-def start():
-    logger.info('Request with request_args: %s', json.dumps(request.args))
+def start() -> str:
+    logger.debug('Request with request_args: %s', json.dumps(request.args.to_dict(flat=False)))
 
     page = request.args.get('page', 1, type=int)
     if page is None or page < 1:
@@ -247,32 +270,32 @@ def start():
 
 @main_blueprint.route('/api/catalog-count', methods=['GET'])
 @limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
-def catalog_count():
+def catalog_count() -> Response:
     """Exact match count for the current main-page filters (on demand)."""
     build = build_catalog_query(request.args, include_sort=False)
     return jsonify({'count': count_matches(build.count_query)})
 
 @main_blueprint.route('/help', methods=['GET'])
-def help():
+def help() -> str:
     return render_template(
         "help.html"
     )
 
 @main_blueprint.route('/contact', methods=['GET'])
-def contact():
+def contact() -> str:
     return render_template(
         "contact.html"
     )
 
 @main_blueprint.route('/profile')
 @login_required
-def profile():
+def profile() -> str:
     """Show user profile; favorites/groups load via AJAX from /api/*."""
     return render_template('profile.html', name=current_user.name)
 
 @main_blueprint.route('/download_alerts_csv', methods=['GET'])
 @limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_MEDIUM', '15 per minute'))
-def download_alerts_csv():
+def download_alerts_csv() -> Response:
     """Download featuretable + classification fields for multiple alert_ids as CSV."""
     alert_ids = [x.strip() for x in request.args.getlist('alert_id') if x and x.strip()]
     if not alert_ids:
@@ -288,11 +311,11 @@ def download_alerts_csv():
         response.mimetype = 'text/csv'
         return response
     except Exception as e:
-        logger.error('Error downloading CSV for alert_ids %s: %s', alert_ids, e, exc_info=True)
+        logger.exception(f'Error downloading CSV for alert_ids {alert_ids}: {type(e).__name__}')
         return Response('Error downloading CSV for selected alert ids!', status=500)
 
 
-def _build_alerts_csv(alert_ids):
+def _build_alerts_csv(alert_ids: list[str]) -> tuple[str, int]:
     """Build CSV text for alert IDs and return (csv_text, row_count)."""
     unique_alert_ids = list(dict.fromkeys(alert_ids))
 
@@ -307,10 +330,10 @@ def _build_alerts_csv(alert_ids):
     ordered_feature_rows = [feature_by_alert_id[aid] for aid in unique_alert_ids if aid in feature_by_alert_id]
 
     first_feature_data = object_as_dict(ordered_feature_rows[0])
-    classification_template = object_as_dict(Classification())
+    classification_columns = Classification.__table__.columns.keys()
 
     fieldnames = list(first_feature_data.keys()) + [
-        col_name for col_name in classification_template.keys() if col_name != 'alert_id'
+        col_name for col_name in classification_columns if col_name != 'alert_id'
     ]
 
     csv_buffer = io.StringIO()
@@ -323,9 +346,9 @@ def _build_alerts_csv(alert_ids):
         if classification_row is not None:
             classification_data = object_as_dict(classification_row)
         else:
-            classification_data = classification_template
+            classification_data = {col_name: None for col_name in classification_columns}
 
-        for col_name in classification_template.keys():
+        for col_name in classification_columns:
             if col_name == 'alert_id':
                 continue
             merged_row[col_name] = classification_data.get(col_name)
@@ -337,16 +360,16 @@ def _build_alerts_csv(alert_ids):
 
 @main_blueprint.route('/query_crossmatches', methods=['GET'])
 @limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
-def query_crossmatches():
+def query_crossmatches() -> Response:
     """Query crossmatches for a given locus id."""
-    locusId = request.args.get('locusId') # ex: locusname="ANT2018fywy2"
-    if not locusId:
+    locus_id = request.args.get('locusId') # ex: locusname="ANT2018fywy2"
+    if not locus_id:
         return Response('Missing locusId', status=400)
 
     try:
         #query all Crossmatches records from DB where locus id equals given id
         crossmatches_query = db.session.query(Crossmatches)
-        crossmatches_query = crossmatches_query.filter(Crossmatches.locus_id == locusId)
+        crossmatches_query = crossmatches_query.filter(Crossmatches.locus_id == locus_id)
         crossmatches_list = result_to_dict(crossmatches_query.all())
 
         response = current_app.response_class(
@@ -356,12 +379,13 @@ def query_crossmatches():
         )
         return response
     except Exception as e:
-        logger.error('Error querying crossmatches: %s', e, exc_info=True)
-        return Response('Error querying crossmatches for selected locus id!', status=500) # Internal Server Error: TODO:Return JSON error message instead of string?
+        logger.exception(f'Error querying crossmatches for locusId {locus_id}: {type(e).__name__}')
+        # Text error body is intentional: front-end error handler displays xhr.responseText verbatim
+        return Response('Error querying crossmatches for selected locus id!', status=500)
 
 # Register Jinja filters
 @main_blueprint.app_template_filter('astro_filter')
-def astro_filter(passband):
+def astro_filter(passband: str) -> str:
     if passband == "g":
         return "g"
     elif passband == "R":
@@ -372,14 +396,13 @@ def astro_filter(passband):
         return ""
 
 @main_blueprint.app_template_filter('mag_filter')
-def mag_filter(num):
-    if num: 
-        return round(num,3)
-    # else:
-    #     return ''
+def mag_filter(num: float | None) -> float | None:
+    if num is not None:
+        return round(num, 3)
+    return None
 
 @main_blueprint.app_template_filter('format_mjd_readable')
-def format_mjd_readable(value):
+def format_mjd_readable(value: float | None) -> str:
     if value is None:
         return ''
     
@@ -390,7 +413,7 @@ def format_mjd_readable(value):
         return ''
 
 
-def register_blueprints(app):
+def register_blueprints(app: Flask) -> None:
     """Register all blueprints with the Flask app."""
     app.register_blueprint(main_blueprint)
     app.register_blueprint(favorites_bp)

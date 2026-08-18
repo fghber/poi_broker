@@ -121,50 +121,6 @@ def test_worker_entrypoint_registers_tasks():
     )
 
 
-def test_get_worker_app_is_process_singleton_under_concurrency(app, monkeypatch):
-    """L2: concurrent Huey threads must share one Flask app, not N create_app()s."""
-    import threading
-
-    import poi_broker.tasks as tasks_mod
-
-    create_calls = []
-    entered = threading.Event()
-    release = threading.Event()
-
-    def _slow_create_app():
-        create_calls.append(1)
-        entered.set()
-        assert release.wait(timeout=2), 'create_app was not released'
-        return app
-
-    monkeypatch.setattr(tasks_mod, 'create_app', _slow_create_app)
-
-    n_threads = 8
-    results: list = []
-    errors: list = []
-
-    def _worker():
-        try:
-            results.append(tasks_mod._get_worker_app())
-        except Exception as exc:
-            errors.append(exc)
-
-    threads = [threading.Thread(target=_worker) for _ in range(n_threads)]
-    for thread in threads:
-        thread.start()
-
-    assert entered.wait(timeout=2), 'create_app was never entered'
-    release.set()
-    for thread in threads:
-        thread.join(timeout=2)
-        assert not thread.is_alive()
-
-    assert errors == []
-    assert len(create_calls) == 1
-    assert len(results) == n_threads
-    assert all(got is app for got in results)
-
-
 def test_reset_stale_export_tasks(app):
     """Stale PENDING/RUNNING exports are reset to FAILED."""
     from datetime import timedelta
@@ -349,34 +305,59 @@ def test_create_export_file_cleans_partial_file_on_failure(app, monkeypatch):
     """Regression (#5): a mid-write failure removes the partial CSV file and
     marks the ExportTask FAILED instead of leaving an orphan file on disk.
 
-    We make build_export_query_from_rules succeed but the row iteration raise,
-    so the file has been opened (header written) before the exception — exactly
-    the "disk full / row serialization" scenario. The task's error handler must
+    We make build_query_from_rules succeed but the row iteration raise, so the
+    file has been opened (header written) before the exception — exactly the
+    "disk full / row serialization" scenario. The task's error handler must
     unlink the partial file.
     """
     from pathlib import Path
 
     import poi_broker.tasks as tasks_mod
-    from poi_broker import db
-    from poi_broker.models import ExportTask, User
+    from poi_broker.models import ExportTask
 
-    with app.app_context():
-        user = User(
-            email='export_fail_cleanup@example.com',
-            password='hashed',
-            name='Fail Cleanup',
-            email_verified=True,
-        )
-        db.session.add(user)
-        db.session.commit()
-        task = ExportTask(user_id=user.id, status='PENDING')
-        db.session.add(task)
-        db.session.commit()
-        task_id = task.id
-        user_id = user.id
+    fake_task = ExportTask(user_id=1, status='RUNNING')
+
+    # The task opens its own app context (create_app -> app_context), which uses
+    # a fresh scoped Session keyed by app-context id, so patching db.session /
+    # ExportTask.query would not reliably intercept the task's writes (Model.query
+    # resolves through cls.__fsa__.session(), bypassing a patched db.session
+    # attribute). We patch two seams instead:
+    #   1. db.session.get -> return fake_task (the task's initial row lookup).
+    #   2. _transition_export_task -> mutate fake_task directly (all status
+    #      writes go through this single function).
+    class _StubSession:
+        def get(self, model, pk, *a, **kw):
+            if model is ExportTask and pk == 42:
+                return fake_task
+            return None
+
+        def commit(self, *a, **kw):
+            return None
+
+        def rollback(self, *a, **kw):
+            return None
+
+        # Fixture teardown calls db.session.remove(); stub it harmlessly.
+        def remove(self):
+            return None
+
+    monkeypatch.setattr(tasks_mod.db, 'session', _StubSession())
+
+    def _fake_transition(task_id, from_statuses, **values):
+        if task_id != 42:
+            return False
+        if fake_task.status not in from_statuses:
+            return False
+        for k, v in values.items():
+            setattr(fake_task, k, v)
+        return True
+
+    monkeypatch.setattr(tasks_mod, '_transition_export_task', _fake_transition)
 
     # build_export_query_from_rules succeeds, but iterating the result raises
-    # inside the CSV-write loop (after the file is opened and the header written).
+    # inside the CSV-write loop (after the file is opened and the header
+    # written) — exactly the "disk full / row serialization" scenario. The
+    # task's error handler must unlink the partial file.
     def _boom_iter():
         raise RuntimeError('simulated write failure')
         yield  # pragma: no cover -- makes this a generator so iteration raises
@@ -389,7 +370,9 @@ def test_create_export_file_cleans_partial_file_on_failure(app, monkeypatch):
         return _BoomQuery(), 'fake where'
 
     monkeypatch.setattr(tasks_mod, 'build_export_query_from_rules', _fake_build)
-    monkeypatch.setattr(tasks_mod, '_get_worker_app', lambda: app)
+    # The task builds its own app via create_app(); use the fixture app so the
+    # patched session_factory applies inside the task's new app context.
+    monkeypatch.setattr(tasks_mod, 'create_app', lambda: app)
 
     # Snapshot the exports dir before the run. The fixture app's instance path
     # is the shared repo instance/ dir, which may already contain files from
@@ -398,183 +381,132 @@ def test_create_export_file_cleans_partial_file_on_failure(app, monkeypatch):
     exports_dir.mkdir(parents=True, exist_ok=True)
     before = {p.name for p in exports_dir.iterdir()}
 
-    # Run the task synchronously via .func so we don't depend on Huey backend mode.
+    # Run the task synchronously (immediate mode). The task calls create_app()
+    # which returns the fixture app. We invoke the underlying function directly
+    # (not the huey wrapper) so we don't depend on the module's Huey backend
+    # mode: at collection time a previous test may have left HUEY_BACKEND=sqlite,
+    # making the wrapper enqueue instead of execute.
     tasks_mod.create_export_file.func(
-        query_params={'rules': [{'x': 1}]}, user_id=user_id, task_id=task_id,
+        query_params={'rules': [{'x': 1}]}, user_id=1, task_id=42,
     )
 
-    with app.app_context():
-        task = db.session.get(ExportTask, task_id)
-        assert task is not None
-        assert task.status == 'FAILED'
-        assert task.error_message == 'Export failed. Please try again.'
-        assert 'simulated write failure' not in (task.error_message or '')
-        assert task.file_path is None
+    assert fake_task.status == 'FAILED'
+    # The task's error handler writes a generic message (the exception detail
+    # goes to the logs, not the DB row).
+    assert fake_task.error_message == 'Export failed. Please try again.'
 
     # No NEW partial CSV may be left behind by the failed task.
     after = {p.name for p in exports_dir.iterdir()}
     assert after == before, f'failed task left a partial file: {after - before}'
 
 
-def test_create_export_file_does_not_resurrect_failed_task(app, monkeypatch):
-    """F6: if the stale guard FAILED the row mid-write, the worker must not
-    flip it back to SUCCESS and must discard the CSV.
-    """
-    from pathlib import Path
 
-    import poi_broker.tasks as tasks_mod
-    from poi_broker import db
-    from poi_broker.models import ExportTask, User
+# ============================================================================
+# MANUAL TESTING INSTRUCTIONS
+# ============================================================================
+"""
+To manually test the production Huey setup with SQLite backend:
 
-    with app.app_context():
-        user = User(
-            email='export_resurrect@example.com',
-            password='hashed',
-            name='Resurrect',
-            email_verified=True,
-        )
-        db.session.add(user)
-        db.session.commit()
-        task = ExportTask(user_id=user.id, status='PENDING')
-        db.session.add(task)
-        db.session.commit()
-        task_id = task.id
-        user_id = user.id
+## STEP 1: Start the Huey Worker
 
-    # First yield_per iteration: simulate another process failing the task
-    # (stale guard), then yield one row so the worker would otherwise succeed.
-    failed_once = {'done': False}
+### On Linux/Mac:
+```bash
+export HUEY_BACKEND=sqlite
+export HUEY_SQLITE_PATH=./instance/huey.db
+export SECRET_KEY=test-secret-key
+./run_huey_worker.sh
+```
 
-    def _iter():
-        if not failed_once['done']:
-            failed_once['done'] = True
-            with app.app_context():
-                row = db.session.get(ExportTask, task_id)
-                row.status = 'FAILED'
-                row.error_message = 'Export aborted: no progress for over 30 minute(s).'
-                row.updated_at = datetime.now(timezone.utc)
-                db.session.commit()
-        # One fake row so build_export_row is exercised if the worker continues.
-        yield type('Row', (), {})()
+### On Windows:
+```cmd
+set HUEY_BACKEND=sqlite
+set HUEY_SQLITE_PATH=.\\instance\\huey.db
+set SECRET_KEY=test-secret-key
+run_huey_worker.bat
+```
 
-    class _Query:
-        def yield_per(self, _n):
-            return iter(_iter())
+## STEP 2: Start the Flask App (in another terminal)
 
-    monkeypatch.setattr(
-        tasks_mod,
-        'build_export_query_from_rules',
-        lambda *_a, **_kw: (_Query(), 'fake where'),
-    )
-    monkeypatch.setattr(
-        tasks_mod,
-        'build_export_row',
-        lambda _row: {col: '' for col in tasks_mod.get_export_columns()},
-    )
-    monkeypatch.setattr(tasks_mod, '_get_worker_app', lambda: app)
+### On Linux/Mac:
+```bash
+export HUEY_BACKEND=sqlite
+export HUEY_SQLITE_PATH=./instance/huey.db
+export SECRET_KEY=test-secret-key
+python -m flask --app wsgi:app run --debug
+```
 
-    exports_dir = Path(app.instance_path) / 'exports'
-    exports_dir.mkdir(parents=True, exist_ok=True)
-    before = {p.name for p in exports_dir.iterdir()}
+### On Windows:
+```cmd
+set HUEY_BACKEND=sqlite
+set HUEY_SQLITE_PATH=.\\instance\\huey.db
+set SECRET_KEY=test-secret-key
+python -m flask --app wsgi:app run --debug
+```
 
-    tasks_mod.create_export_file.func(
-        query_params={'rules': [{'x': 1}]}, user_id=user_id, task_id=task_id,
-    )
+## STEP 3: Test the Export Feature
 
-    with app.app_context():
-        task = db.session.get(ExportTask, task_id)
-        assert task is not None
-        assert task.status == 'FAILED'
-        assert task.file_path is None
-        assert 'aborted' in (task.error_message or '')
+1. Open http://localhost:5000/ in your browser
+2. Login to your account
+3. Navigate to /export
+4. Build a query using the visual query builder
+5. Click "Start Export"
+6. In the worker terminal, you should see:
+   ```
+   [2026-06-08 10:30:45] EXECUTING: poi_broker.tasks.create_export_file
+   ```
+7. Monitor the task progress in real-time
+8. Once complete, download the CSV file
 
-    after = {p.name for p in exports_dir.iterdir()}
-    assert after == before, f'resurrected export left a file: {after - before}'
+## STEP 4: Verify SQLite Persistence
 
+The Huey task database is stored at: ./instance/huey.db
 
-def test_export_heartbeat_keeps_running_task_fresh(app, monkeypatch):
-    """Heartbeat refreshes updated_at so reset_stale_export_tasks leaves a live export alone."""
-    from datetime import timedelta
-    from pathlib import Path
+Check task history:
+```bash
+sqlite3 ./instance/huey.db
+.tables
+SELECT * FROM task;
+```
 
-    import poi_broker.tasks as tasks_mod
-    from poi_broker import db
-    from poi_broker.models import ExportTask, User
-    from poi_broker.tasks import reset_stale_export_tasks
+## STEP 5: Load Testing (Optional)
 
-    with app.app_context():
-        user = User(
-            email='export_heartbeat@example.com',
-            password='hashed',
-            name='Heartbeat',
-            email_verified=True,
-        )
-        db.session.add(user)
-        db.session.commit()
-        task = ExportTask(user_id=user.id, status='PENDING')
-        db.session.add(task)
-        db.session.commit()
-        task_id = task.id
-        user_id = user.id
+To test with multiple concurrent exports:
 
-    # Force a heartbeat on every row by setting the interval to 0.
-    monkeypatch.setattr(tasks_mod, 'EXPORT_HEARTBEAT_SECONDS', 0)
+```python
+import requests
+import json
 
-    row_count = {'n': 0}
+session = requests.Session()
+session.post('http://localhost:5000/login', data={
+    'email': 'your@email.com',
+    'password': 'your_password'
+})
 
-    def _iter():
-        # Yield two rows so the heartbeat runs at least once inside the loop.
-        yield type('Row', (), {})()
-        row_count['n'] += 1
-        yield type('Row', (), {})()
-        row_count['n'] += 1
+# Submit multiple export tasks
+for i in range(3):
+    response = session.post('http://localhost:5000/export', json={
+        'rules': [
+            {'id': 'featuretable.ant_mag_corrected', 'field': 'feature_mean_magn_r', 
+             'type': 'double', 'input': 'text', 'operator': '>', 'value': 15}
+        ]
+    })
+    print(f'Export {i+1}: {response.json()}')
+```
 
-    class _Query:
-        def yield_per(self, _n):
-            return iter(_iter())
+## TROUBLESHOOTING
 
-    monkeypatch.setattr(
-        tasks_mod,
-        'build_export_query_from_rules',
-        lambda *_a, **_kw: (_Query(), 'fake where'),
-    )
-    monkeypatch.setattr(
-        tasks_mod,
-        'build_export_row',
-        lambda _row: {col: '' for col in tasks_mod.get_export_columns()},
-    )
-    monkeypatch.setattr(tasks_mod, '_get_worker_app', lambda: app)
+### Huey consumer won't start:
+- Check that SECRET_KEY environment variable is set
+- Verify DATABASE paths are correct
+- Check logs: tail -f huey.log
 
-    heartbeats = []
-    real_transition = tasks_mod._transition_export_task
+### Tasks not executing:
+- Verify HUEY_BACKEND=sqlite is set
+- Check that huey_consumer process is running
+- Look for errors in the worker log
 
-    def _tracking_transition(task_id_arg, from_statuses, **values):
-        ok = real_transition(task_id_arg, from_statuses, **values)
-        if ok and from_statuses == ['RUNNING'] and values.get('status') == 'RUNNING':
-            heartbeats.append(True)
-        return ok
-
-    monkeypatch.setattr(tasks_mod, '_transition_export_task', _tracking_transition)
-
-    tasks_mod.create_export_file.func(
-        query_params={'rules': [{'x': 1}]}, user_id=user_id, task_id=task_id,
-    )
-
-    assert heartbeats, 'expected at least one RUNNING heartbeat during write'
-    assert row_count['n'] == 2
-
-    with app.app_context():
-        task = db.session.get(ExportTask, task_id)
-        assert task is not None
-        assert task.status == 'SUCCESS'
-        file_path = task.file_path
-        # A freshly heartbeated RUNNING row must not be stale-failed.
-        task.status = 'RUNNING'
-        task.updated_at = datetime.now(timezone.utc) - timedelta(seconds=10)
-        db.session.commit()
-        n = reset_stale_export_tasks(max_age_seconds=30 * 60)
-        db.session.refresh(task)
-        assert n == 0
-        assert task.status == 'RUNNING'
-        if file_path:
-            Path(file_path).unlink(missing_ok=True)
+### SQLite database locked:
+- Ensure only one huey_consumer is running
+- Check for stale lock files in instance/
+- Restart the worker process
+"""

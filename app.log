@@ -1,0 +1,40 @@
+2026-08-16 21:38:00,675 poi_broker:INFO:Configured alerts database at C:\dev\python\_broker_db\ztf_alerts_stream.db
+2026-08-16 21:38:00,675 poi_broker:INFO:Configured users database at C:\dev\python\_broker_db\users.db
+2026-08-16 21:38:00,676 poi_broker:INFO:Huey task queue initialized with Memory backend (async, requires worker)
+2026-08-16 21:38:00,731 poi_broker:ERROR:Failed to reset stale export tasks at startup
+Traceback (most recent call last):
+  File "C:\dev\python\poi_broker\poi_broker\__init__.py", line 87, in init_huey
+    reset_stale_export_tasks()
+  File "C:\dev\python\poi_broker\poi_broker\tasks.py", line 233, in reset_stale_export_tasks
+    ).all()
+      ^^^^^
+  File "C:\Users\wp78d\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\query.py", line 2711, in all
+    return self._iter().all()  # type: ignore
+           ^^^^^^^^^^^^
+  File "C:\Users\wp78d\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\query.py", line 2864, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+                                                  ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wp78d\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 2373, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wp78d\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 2259, in _execute_internal
+    bind = self.get_bind(**bind_arguments)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wp78d\AppData\Local\Programs\Python\Python312\Lib\site-packages\flask_sqlalchemy\session.py", line 53, in get_bind
+    engines = self._db.engines
+              ^^^^^^^^^^^^^^^^
+  File "C:\Users\wp78d\AppData\Local\Programs\Python\Python312\Lib\site-packages\flask_sqlalchemy\extension.py", line 690, in engines
+    raise RuntimeError(
+RuntimeError: The current Flask app is not registered with this 'SQLAlchemy' instance. Did you forget to call 'init_app', or did you create multiple 'SQLAlchemy' instances?
+2026-08-16 21:38:00,736 poi_broker:WARNING:RATELIMIT_STORAGE_URI is memory://; counters are per-process. Under multi-worker Gunicorn set a shared backend URI.
+2026-08-16 21:38:00,736 poi_broker:WARNING:PUBLIC_BASE_URL is unset; verification and reset emails will use the request Host / X-Forwarded-Host. Set PUBLIC_BASE_URL to the canonical public origin.
+2026-08-16 22:02:47,298 poi_broker:INFO:Configured alerts database at C:\dev\python\_broker_db\ztf_alerts_stream.db
+2026-08-16 22:02:47,298 poi_broker:INFO:Configured users database at C:\dev\python\_broker_db\users.db
+2026-08-16 22:02:47,319 poi_broker:INFO:Huey task queue initialized with Memory backend (async, requires worker)
+2026-08-16 22:02:47,371 poi_broker:WARNING:RATELIMIT_STORAGE_URI is memory://; counters are per-process. Under multi-worker Gunicorn set a shared backend URI.
+2026-08-16 22:02:47,372 poi_broker:WARNING:PUBLIC_BASE_URL is unset; verification and reset emails will use the request Host / X-Forwarded-Host. Set PUBLIC_BASE_URL to the canonical public origin.
+2026-08-18 01:10:16,361 poi_broker:INFO:Configured alerts database at C:\dev\python\_broker_db\ztf_alerts_stream.db
+2026-08-18 01:10:16,361 poi_broker:INFO:Configured users database at C:\dev\python\_broker_db\users.db
+2026-08-18 01:10:16,378 poi_broker:INFO:Huey task queue initialized with Memory backend (async, requires worker)
+2026-08-18 01:10:16,378 poi_broker:WARNING:RATELIMIT_STORAGE_URI is memory://; counters are per-process. Under multi-worker Gunicorn set a shared backend URI.
+2026-08-18 01:10:16,378 poi_broker:WARNING:PUBLIC_BASE_URL is unset; verification and reset emails will use the request Host / X-Forwarded-Host. Set PUBLIC_BASE_URL to the canonical public origin.

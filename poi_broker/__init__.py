@@ -78,15 +78,12 @@ def init_huey(app):
     
     app.logger.info(f'Huey task queue initialized with {backend_name} backend{immediate_str}')
 
-    # Reset exports stuck in PENDING/RUNNING from a previous crash/restart so
-    # users are not permanently blocked by the active-task guard. Safe to run at
-    # startup in both the web app and the worker; it only touches stale rows.
-    try:
-        from .tasks import reset_stale_export_tasks
-        with app.app_context():
-            reset_stale_export_tasks()
-    except Exception:
-        app.logger.exception('Failed to reset stale export tasks at startup')
+    # NOTE: stale-export cleanup is intentionally NOT run at startup. It is the
+    # Huey consumer's periodic task (cleanup_stale_export_tasks, every 5 min)
+    # that fails PENDING/RUNNING exports stuck past EXPORT_STALE_MAX_AGE_SECONDS.
+    # Running it here would race across Gunicorn workers at boot and would hit
+    # export_task before migrations/tests create it. The periodic task is the
+    # single, race-free owner of this responsibility.
 
 def create_app():
     app = Flask(__name__)
@@ -121,9 +118,6 @@ def create_app():
     app.logger.info('Configured alerts database at %s', db_path)
     app.logger.info('Configured users database at %s', login_db_path)
 
-    # Initialize Huey task queue
-    init_huey(app)
-
     if app.debug is True:
         app.jinja_env.auto_reload = True
     else:
@@ -155,6 +149,10 @@ def create_app():
         if 'users' in db.engines:
             event.listens_for(db.engines['users'], "connect")(_configure_sqlite_pragmas)
         _ensure_email_verification_expiry_column(app)
+
+    # Initialize Huey task queue. Must run AFTER db.init_app(app) so that
+    # reset_stale_export_tasks() (which queries ExportTask) has a bound app.
+    init_huey(app)
 
     if not app.debug and not app.config.get('TESTING'):
         storage_uri = app.config.get('RATELIMIT_STORAGE_URI', 'memory://')

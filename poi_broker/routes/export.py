@@ -195,7 +195,7 @@ def export_download(task_id: int):
             mimetype='text/csv',
         )
     except Exception as e:
-        logger.exception(f'Failed to serve export file {export_task.file_path}: {e.__class__.__name__}')
+        logger.exception(f'Failed to serve export file {export_task.file_path}: {type(e).__name__}')
         flash('Failed to download file', 'danger')
         return redirect(url_for('export.export_page'))
 
