@@ -206,6 +206,23 @@ def test_login_renders_success_and_danger_flash_categories(client, app):
     assert 'alert-success' not in danger_body
 
 
+def test_login_renders_info_flash_category(client, monkeypatch):
+    """Signup generic notice must render as alert-info, not alert-danger."""
+    monkeypatch.setattr(auth_module, 'normalize_email', lambda email, check_deliverability=True: email.lower())
+    monkeypatch.setattr(auth_module, 'send_email', lambda *args, **kwargs: True)
+
+    response = client.post(
+        '/signup',
+        data={'email': 'info-flash@example.com', 'name': 'Info Flash', 'password': 'Password123!'},
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert 'alert-info' in body
+    assert auth_module.SIGNUP_GENERIC_NOTICE in body
+    assert 'alert-danger' not in body
+
+
 def test_forgot_password_post_generates_reset_token_and_emails_user(client, app, monkeypatch, user_factory):
     user_factory(email='reset@example.com', verified=True)
     monkeypatch.setattr(auth_module, 'send_email', lambda *args, **kwargs: True)

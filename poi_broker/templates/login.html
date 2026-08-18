@@ -7,16 +7,6 @@
 
         <div class="card">
             <div class="card-body">
-                {% with messages = get_flashed_messages(with_categories=True) %}
-                {% if messages %}
-                {% for category, message in messages %}
-                <div class="alert alert-{% if category == 'success' %}success{% elif category == 'info' %}info{% elif category == 'warning' %}warning{% else %}danger{% endif %}" role="alert">
-                    {{ message }}
-                </div>
-                {% endfor %}
-                {% endif %}
-                {% endwith %}
-
                 <form method="POST" action="/login">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="form-group">

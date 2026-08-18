@@ -132,16 +132,16 @@ def signup_post():
     # Validate and normalize email (check deliverability for new accounts)
     email = normalize_email(email_input, check_deliverability=True)
     if not email:
-        flash('Invalid email address.')
+        flash('Invalid email address.', 'danger')
         return redirect(url_for('auth.signup'))
     
     # Validate password length
     if not password or len(password) < 8:
-        flash('Password must be at least 8 characters.')
+        flash('Password must be at least 8 characters.', 'danger')
         return redirect(url_for('auth.signup'))
     
     if not name:
-        flash('Name is required.')
+        flash('Name is required.', 'danger')
         return redirect(url_for('auth.signup'))
 
     user = User.query.filter_by(email=email).first() # if this returns a user, then the email already exists in database
@@ -180,7 +180,7 @@ def signup_post():
     )
 
     if not result:
-        flash('Failed to send verification email. Please try signing up again later.')
+        flash('Failed to send verification email. Please try signing up again later.', 'danger')
         return redirect(url_for('auth.signup'))
     
     #only add the user to the database if the email was sent successfully to avoid creating unverified accounts with invalid emails
@@ -193,7 +193,7 @@ def signup_post():
     except Exception as e:
         db.session.rollback()
         logger.error(f'Database error during commit: {str(e)}', exc_info=True)
-        flash('Failed to create user. Please try signing up again later.') 
+        flash('Failed to create user. Please try signing up again later.', 'danger')
         return redirect(url_for('auth.signup'))
 
     return _signup_accepted_response()
@@ -204,7 +204,7 @@ def verify_email(token):
     user = User.query.filter_by(email_verification_token=hash_token(token)).first()
     
     if not user or _is_reset_token_expired(user.email_verification_token_expires):
-        flash('Invalid or expired verification link.')
+        flash('Invalid or expired verification link.', 'danger')
         return redirect(url_for('auth.signup'))
     
     if user.email_verified:
@@ -296,15 +296,15 @@ def reset_password_post(token):
     password_confirm = request.form.get('password_confirm')
 
     if not password or not password_confirm:
-        flash('Please provide and confirm your new password')
+        flash('Please provide and confirm your new password', 'danger')
         return redirect(url_for('auth.reset_password', token=token))
 
     if password != password_confirm:
-        flash('Passwords do not match')
+        flash('Passwords do not match', 'danger')
         return redirect(url_for('auth.reset_password', token=token))
 
     if len(password) < 8:
-        flash('Password must be at least 8 characters')
+        flash('Password must be at least 8 characters', 'danger')
         return redirect(url_for('auth.reset_password', token=token))
 
     user = User.query.filter_by(reset_token=hash_token(token)).first()
@@ -321,7 +321,7 @@ def reset_password_post(token):
     except Exception as e:
         db.session.rollback()
         logger.error(f'Database error during commit: {str(e)}', exc_info=True)
-        flash('Failed to update password. Please try again later.')
+        flash('Failed to update password. Please try again later.', 'danger')
         return redirect(url_for('auth.reset_password', token=token))
 
     flash('Password updated. Please log in.', 'success')
@@ -349,27 +349,27 @@ def change_password():
     
     # Validate that all fields are provided
     if not current_password or not new_password or not new_password_confirm:
-        flash('Please provide current password and new password.')
+        flash('Please provide current password and new password.', 'danger')
         return redirect(url_for('auth.security'))
     
     # Verify current password
     if not check_password_hash(current_user.password, current_password):
-        flash('Current password is incorrect.')
+        flash('Current password is incorrect.', 'danger')
         return redirect(url_for('auth.security'))
     
     # Validate new password matches confirmation
     if new_password != new_password_confirm:
-        flash('New passwords do not match.')
+        flash('New passwords do not match.', 'danger')
         return redirect(url_for('auth.security'))
     
     # Validate password length
     if len(new_password) < 8:
-        flash('New password must be at least 8 characters.')
+        flash('New password must be at least 8 characters.', 'danger')
         return redirect(url_for('auth.security'))
     
     # Check that new password is different from current
     if check_password_hash(current_user.password, new_password):
-        flash('New password must be different from current password.')
+        flash('New password must be different from current password.', 'danger')
         return redirect(url_for('auth.security'))
     
     # Update password
@@ -379,8 +379,8 @@ def change_password():
     except Exception as e:
         db.session.rollback()
         logger.error(f'Database error during commit: {str(e)}', exc_info=True)
-        flash('Failed to change password. Please try again later.')
+        flash('Failed to change password. Please try again later.', 'danger')
         return redirect(url_for('auth.security'))
 
-    flash('Password changed successfully.')
+    flash('Password changed successfully.', 'success')
     return redirect(url_for('auth.security'))

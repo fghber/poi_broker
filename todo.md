@@ -1,29 +1,18 @@
 # Fixes
+
 - [x] change order of Summary: Watchlist <-> Bookmarks
 - [x] Rename "Saved Filters" to Bookmarked Filters
 
 # Cleanup
-- align jQuery/Bootstrap versions and integrity tags
+
+- [x] align jQuery/Bootstrap versions and integrity tags
 - JSON responses differs on error types and escaping: Some endpoints use jsonify, others build Response/current_app.response_class with json.dumps or safe_serialize (query_features, query_crossmatches).
-- request.query_string.decode('ascii'): Non-ASCII query strings can raise; utf-8 with errors policy is safer.
-- implement `get_flashed_messages(with_categories=True)` globally for all categoires used: 'danger', 'success', 'info',  'warning'
-- apply db.session.commit() pattern when
-  - Violating a unique constraint (email column)
-  - Violating a foreign key constraint
-  - Violating a NOT NULL constraint
-  ```
-    try:
-        db.session.commit()
-    except IntegrityError:
-        db.session.rollback()
-        flash('Failed to generate password reset link. Please try again later.')
-        return redirect(url_for('auth.forgot_password'))
-    except Exception as e:
-        db.session.rollback()
-        logger.error('Database error during commit', exc_info=True)
-        flash('Failed to generate password reset link. Please try again later.')
-        return redirect(url_for('auth.forgot_password'))
-  ```
+- [x] request.query_string.decode('ascii'): Non-ASCII query strings can raise; utf-8 with errors policy is safer.
+- [x] implement `get_flashed_messages(with_categories=True)` globally for all categoires used: 'danger', 'success', 'info',  'warning'
+- [x] apply db.session.commit() pattern when
+  * Violating a unique constraint (email column)
+  * Violating a foreign key constraint
+  * Violating a NOT NULL constraint
 
 # Considerations
 
@@ -33,16 +22,17 @@
 - Update main table data via AJAX/API calls instead of page loads/GET
 
 # New Features
+
 - [x] Save table filters (URL) as bookmark (My Search/Filter)
 - [x] Allow users selecting (up to 10) default features to plot
 - [x] Allow users to create custom observatory coordinates for the observing planning tool
 - [x] Add Default Observatory Coordinates -> Last-used becomes the default for the next session
 - [x] Document new features in the README.md
 - [x] Add Bulk Export based on Visual Query (Top 1M/Preview or All)
-  - Create CSV fully async, inform user when ready
+  - [x] Create CSV fully async, inform user when ready
 
 # Future
-- Indepentent Python Client API Export Package 
+
 - Migrate to more capable DB (PostgreSQL)
 - Change column type: ant_magband REAL -> TEXT
   ```

@@ -390,7 +390,7 @@ def role_required(role):
         @wraps(f)
         def decorated_function(*args, **kwargs):
             if not current_user.is_authenticated or not current_user.has_role(role):
-                flash('Access denied. Insufficient permissions.')
+                flash('Access denied. Insufficient permissions.', 'danger')
                 return redirect(url_for('main.start'))
             return f(*args, **kwargs)
         return decorated_function

@@ -177,6 +177,9 @@ Two SQLite databases via SQLAlchemy binds: **alerts** (default bind) and **users
 | GET | `/api/catalog-count` | Public | Same filter query params as `/` (sort/page ignored) | JSON `{count}` | — |
 
 ### 5.2 Auth Blueprint (`poi_broker/auth.py`)
+
+Flash messages are rendered once in `site.html` via `get_flashed_messages(with_categories=True)` using Bootstrap alert classes `danger`, `success`, `info`, and `warning` (unknown categories fall back to `danger`).
+
 | Method | Path | Auth | Request | Response | Errors |
 |---|---|---|---|---|---|
 | GET | `/login` | Public | `?forgot_password=true` | HTML `login.html` | — |

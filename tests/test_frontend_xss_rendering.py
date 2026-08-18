@@ -277,14 +277,21 @@ def test_profile_group_create_and_move_check_response_ok():
     assert "confirmMoveBtn.disabled = false;" in profile_html
 
 
-def test_login_flash_uses_categories_not_hardcoded_danger():
-    login_html = _read_template("login.html")
-    assert "get_flashed_messages(with_categories=True)" in login_html
-    assert "for category, message in messages" in login_html
-    assert "category == 'success'" in login_html
-    assert "category == 'info'" in login_html
-    assert "category == 'warning'" in login_html
-    assert "{% with messages = get_flashed_messages() %}" not in login_html
+def test_site_flash_uses_categories_globally():
+    site_html = _read_template("site.html")
+    assert "get_flashed_messages(with_categories=True)" in site_html
+    assert "for category, message in messages" in site_html
+    assert "['danger', 'success', 'info', 'warning']" in site_html
+    assert "{% with messages = get_flashed_messages() %}" not in site_html
+
+    templates_dir = Path(__file__).resolve().parents[1] / "poi_broker" / "templates"
+    for path in templates_dir.glob("*.html"):
+        if path.name == "site.html":
+            continue
+        content = path.read_text(encoding="utf-8")
+        assert "get_flashed_messages" not in content, (
+            f"{path.name} still calls get_flashed_messages; flashes belong in site.html"
+        )
 
 
 def test_bootstrap_datepicker_assets_are_gone():

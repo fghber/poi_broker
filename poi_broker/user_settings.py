@@ -143,7 +143,7 @@ def save_settings():
         selected_features = request.form.getlist('default_feature_plot_columns[]')
 
     if not selected_features:
-        flash('No features selected. Please select at least one feature.', 'error')
+        flash('No features selected. Please select at least one feature.', 'danger')
         return redirect(url_for('user_settings.settings'))
 
     settings = UserSettings.query.filter_by(user_id=current_user.id).first()
