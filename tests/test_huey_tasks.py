@@ -401,13 +401,17 @@ def test_export_task_status_transitions(app):
         # PENDING -> RUNNING
         task.status = 'RUNNING'
         db.session.commit()
-        assert ExportTask.query.get(task.id).status == 'RUNNING'
+        running = db.session.get(ExportTask, task.id)
+        assert running is not None
+        assert running.status == 'RUNNING'
         
         # RUNNING -> SUCCESS
         task.status = 'SUCCESS'
         task.file_path = '/tmp/export_123.csv'
         db.session.commit()
-        assert ExportTask.query.get(task.id).status == 'SUCCESS'
+        success = db.session.get(ExportTask, task.id)
+        assert success is not None
+        assert success.status == 'SUCCESS'
         
         # Verify timestamps updated
         assert task.updated_at is not None

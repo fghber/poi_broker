@@ -26,7 +26,7 @@ def _ensure_email_verification_expiry_column(app):
     """Add user.email_verification_token_expires on existing users DBs."""
     from sqlalchemy import inspect, text
 
-    engine = db.engines['users'] if 'users' in db.engines else db.engine
+    engine = db.engines.get('users', db.engine)
     inspector = inspect(engine)
     if 'user' not in inspector.get_table_names():
         return
@@ -171,12 +171,13 @@ def create_app():
     login_manager.init_app(app)
 
     # import and register blueprints here to avoid circular imports
-    from .app import register_blueprints
+    # Alias avoids shadowing the local Flask `app` variable (Pylance).
+    from .app import register_blueprints as _register_blueprints
     from .auth import auth_blueprint
     from .classification import classification_blueprint
     from .observing_tool import observing_tool_blueprint
 
-    register_blueprints(app)
+    _register_blueprints(app)
     app.register_blueprint(auth_blueprint)
     app.register_blueprint(observing_tool_blueprint)
     app.register_blueprint(classification_blueprint)
