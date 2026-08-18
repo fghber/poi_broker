@@ -89,8 +89,9 @@ def test_export_submit_creates_task(auth_client, app, mock_export_task):
     assert isinstance(data["task_id"], int)
 
     with app.app_context():
+        from poi_broker import db
         from poi_broker.models import ExportTask
-        task = ExportTask.query.get(data["task_id"])
+        task = db.session.get(ExportTask, data["task_id"])
         assert task is not None
         assert task.status == "PENDING"
 
