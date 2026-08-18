@@ -150,8 +150,6 @@ def create_app():
             event.listens_for(db.engines['users'], "connect")(_configure_sqlite_pragmas)
         _ensure_email_verification_expiry_column(app)
 
-    # Initialize Huey task queue. Must run AFTER db.init_app(app) so that
-    # reset_stale_export_tasks() (which queries ExportTask) has a bound app.
     init_huey(app)
 
     if not app.debug and not app.config.get('TESTING'):
@@ -240,5 +238,8 @@ def create_app():
             return jsonify({'error': 'csrf validation failed', 'message': str(error)}), 400
         flash('Your form session expired or is invalid. Please reload this page and submit again. If this is a reset link, request a new one.', 'danger')
         return redirect(request.path)
+
+    from .cli import register_cli
+    register_cli(app)
 
     return app

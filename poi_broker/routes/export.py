@@ -21,7 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from .. import db, limiter
 from ..models import ExportTask
 from ..services.query_service import get_query_match_count
-from ..tasks import create_export_file
+from ..tasks import create_export_file, reset_stale_export_tasks
 
 logger = logging.getLogger(__name__)
 
@@ -83,11 +83,20 @@ def export_submit():
     if not query_params or not isinstance(query_params.get('rules'), list):
         return jsonify({'error': 'No query parameters provided'}), 400
     
-    # Check if user already has an active (PENDING or RUNNING) export task
+    # One active export per user. If the only blocker is past
+    # EXPORT_STALE_MAX_AGE_SECONDS (consumer down / no periodic tick), fail that
+    # user's stale row and continue. Fresh PENDING/RUNNING still 409s.
     active_task = ExportTask.query.filter_by(user_id=current_user.id).filter(
         ExportTask.status.in_(['PENDING', 'RUNNING'])
     ).first()
-    
+
+    if active_task:
+        reset_stale_export_tasks(user_id=current_user.id)
+        db.session.expire(active_task)
+        active_task = ExportTask.query.filter_by(user_id=current_user.id).filter(
+            ExportTask.status.in_(['PENDING', 'RUNNING'])
+        ).first()
+
     if active_task:
         return jsonify({
             'error': 'You already have an active export task. Please wait for it to complete or download the file.',
@@ -206,7 +215,7 @@ def export_status(task_id: int):
     """
     Get the status of an export task.
     
-    GET /api/export/status/<task_id> -> JSON with task status
+    GET /export/status/<task_id> -> JSON with task status
     """
     export_task = db.session.get(ExportTask, task_id)
     

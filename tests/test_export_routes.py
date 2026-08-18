@@ -118,11 +118,101 @@ def test_export_submit_duplicate_active_task(auth_client, app, mock_export_task)
     with app.app_context():
         from poi_broker.models import User
         user = User.query.filter_by(email="smoketest@example.com").first()
-        _create_task(app, user.id, status="RUNNING")
+        task_id = _create_task(app, user.id, status="RUNNING")
 
     response = auth_client.post("/export", json={"rules": VALID_RULES})
     assert response.status_code == 409
     assert "active export task" in response.get_json()["error"]
+
+    with app.app_context():
+        from poi_broker import db
+        from poi_broker.models import ExportTask
+        assert db.session.get(ExportTask, task_id).status == "RUNNING"
+
+
+def test_export_submit_stale_active_task_is_failed_and_enqueued(
+    auth_client, app, mock_export_task
+):
+    """Stale PENDING (past EXPORT_STALE window) is failed; POST then enqueues."""
+    from datetime import datetime, timedelta, timezone
+
+    with app.app_context():
+        from poi_broker import db
+        from poi_broker.models import ExportTask, User
+        user = User.query.filter_by(email="smoketest@example.com").first()
+        stale_id = _create_task(app, user.id, status="PENDING")
+        stale = db.session.get(ExportTask, stale_id)
+        stale.updated_at = datetime.now(timezone.utc) - timedelta(hours=1)
+        db.session.commit()
+
+    response = auth_client.post("/export", json={"rules": VALID_RULES})
+    assert response.status_code == 202, response.get_data(as_text=True)
+    new_id = response.get_json()["task_id"]
+    assert new_id != stale_id
+
+    with app.app_context():
+        from poi_broker import db
+        from poi_broker.models import ExportTask
+        assert db.session.get(ExportTask, stale_id).status == "FAILED"
+        assert db.session.get(ExportTask, new_id).status == "PENDING"
+
+
+def test_export_submit_does_not_fail_other_users_stale_task(
+    auth_client, app, mock_export_task, user_factory
+):
+    """POST /export age-aware fail is scoped to the caller, not a global reset."""
+    from datetime import datetime, timedelta, timezone
+
+    with app.app_context():
+        from poi_broker import db
+        from poi_broker.models import ExportTask, User
+
+        user_factory(email="other-export@example.com", name="Other Exporter")
+        caller = User.query.filter_by(email="smoketest@example.com").first()
+        other_id = User.query.filter_by(email="other-export@example.com").first().id
+        old = datetime.now(timezone.utc) - timedelta(hours=1)
+
+        caller_stale_id = _create_task(app, caller.id, status="PENDING")
+        other_stale_id = _create_task(app, other_id, status="PENDING")
+        for task_id in (caller_stale_id, other_stale_id):
+            db.session.get(ExportTask, task_id).updated_at = old
+        db.session.commit()
+
+    response = auth_client.post("/export", json={"rules": VALID_RULES})
+    assert response.status_code == 202, response.get_data(as_text=True)
+    new_id = response.get_json()["task_id"]
+
+    with app.app_context():
+        from poi_broker import db
+        from poi_broker.models import ExportTask
+        assert db.session.get(ExportTask, caller_stale_id).status == "FAILED"
+        assert db.session.get(ExportTask, other_stale_id).status == "PENDING"
+        assert db.session.get(ExportTask, new_id).status == "PENDING"
+        assert new_id != other_stale_id
+
+
+def test_export_page_still_shows_stale_active_task(auth_client, app):
+    """GET /export does not auto-fail a stale row; it still renders as queued."""
+    from datetime import datetime, timedelta, timezone
+
+    with app.app_context():
+        from poi_broker import db
+        from poi_broker.models import ExportTask, User
+        user = User.query.filter_by(email="smoketest@example.com").first()
+        stale_id = _create_task(app, user.id, status="PENDING")
+        stale = db.session.get(ExportTask, stale_id)
+        stale.updated_at = datetime.now(timezone.utc) - timedelta(hours=1)
+        db.session.commit()
+
+    response = auth_client.get("/export")
+    assert response.status_code == 200
+    assert b"Export Queued" in response.data
+    assert b"Export Failed" not in response.data
+
+    with app.app_context():
+        from poi_broker import db
+        from poi_broker.models import ExportTask
+        assert db.session.get(ExportTask, stale_id).status == "PENDING"
 
 
 def test_export_submit_enqueue_failure_marks_task_failed(auth_client, app, monkeypatch):

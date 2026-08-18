@@ -61,6 +61,22 @@ EXPORT_RETENTION_DAYS = _env_int('EXPORT_RETENTION_DAYS', 10)
 EXPORT_HEARTBEAT_SECONDS = _env_int('EXPORT_HEARTBEAT_SECONDS', 60)
 
 
+def _is_sqlite_lock_error(exc: BaseException) -> bool:
+    """True when ``exc`` is a SQLite busy/locked OperationalError (any nesting)."""
+    import sqlite3
+
+    from sqlalchemy.exc import OperationalError as SAOperationalError
+
+    cur: BaseException | None = exc
+    while cur is not None:
+        if isinstance(cur, (sqlite3.OperationalError, SAOperationalError)):
+            msg = str(cur).lower()
+            if 'locked' in msg or 'busy' in msg:
+                return True
+        cur = cur.__cause__ or cur.__context__
+    return False
+
+
 def _transition_export_task(task_id: int, from_statuses: list[str], **values) -> bool:
     """
     Compare-and-swap update for ExportTask.
@@ -70,20 +86,35 @@ def _transition_export_task(task_id: int, from_statuses: list[str], **values) ->
 
     Returns:
         True if exactly one row was updated.
+        False only when the UPDATE committed and matched 0 rows (CAS miss).
+
+    Raises:
+        OperationalError (and other DB errors) after one lock retry — never
+        collapses a lock into False (callers treat False as "already terminal").
     """
     values = dict(values)
     values['updated_at'] = datetime.now(timezone.utc)
-    try:
-        n = ExportTask.query.filter(
-            ExportTask.id == task_id,
-            ExportTask.status.in_(from_statuses),
-        ).update(values, synchronize_session=False)
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
-        logger.exception(f'Failed to transition ExportTask {task_id}')
-        return False
-    return n == 1
+
+    for attempt in range(2):
+        try:
+            n = ExportTask.query.filter(
+                ExportTask.id == task_id,
+                ExportTask.status.in_(from_statuses),
+            ).update(values, synchronize_session=False)
+            db.session.commit()
+            return n == 1
+        except Exception as exc:
+            db.session.rollback()
+            if _is_sqlite_lock_error(exc) and attempt == 0:
+                logger.warning(
+                    'ExportTask %s transition locked; retrying once', task_id
+                )
+                time.sleep(0.05)
+                continue
+            logger.exception(f'Failed to transition ExportTask {task_id}')
+            raise
+    # range(2) always returns or raises on the last attempt.
+    raise RuntimeError('unreachable')  # pragma: no cover
 
 
 def _unlink_export_file(file_path: Path | None) -> None:
@@ -171,16 +202,27 @@ def create_export_file(query_params: dict, user_id: int, task_id: int):
                     now = time.monotonic()
                     if now - last_heartbeat >= EXPORT_HEARTBEAT_SECONDS:
                         # Heartbeat: RUNNING -> RUNNING (updated_at only).
-                        # Miss means the stale guard already FAILED this row.
-                        if not _transition_export_task(
-                            task_id, ['RUNNING'], status='RUNNING'
-                        ):
-                            logger.info(
-                                f'ExportTask {task_id} aborted mid-write '
-                                '(status no longer RUNNING)'
+                        # False = CAS miss (stale guard already FAILED).
+                        # Lock after retry raises; keep writing — stale window
+                        # is the backstop if updated_at cannot refresh.
+                        try:
+                            if not _transition_export_task(
+                                task_id, ['RUNNING'], status='RUNNING'
+                            ):
+                                logger.info(
+                                    f'ExportTask {task_id} aborted mid-write '
+                                    '(status no longer RUNNING)'
+                                )
+                                _unlink_export_file(file_path)
+                                return
+                        except Exception as heartbeat_exc:
+                            if not _is_sqlite_lock_error(heartbeat_exc):
+                                raise
+                            logger.warning(
+                                'ExportTask %s heartbeat skipped (DB locked); '
+                                'continuing write',
+                                task_id,
                             )
-                            _unlink_export_file(file_path)
-                            return
                         last_heartbeat = now
             
             logger.info(f'CSV file created at {file_path} with {row_count} rows')
@@ -206,15 +248,26 @@ def create_export_file(query_params: dict, user_id: int, task_id: int):
             # orphan files behind (cleanup_expired_exports only cleans SUCCESS).
             _unlink_export_file(file_path)
             # PENDING|RUNNING -> FAILED only; do not clobber a terminal row.
-            _transition_export_task(
-                task_id,
-                ['PENDING', 'RUNNING'],
-                status='FAILED',
-                error_message='Export failed. Please try again.',
-            )
+            try:
+                _transition_export_task(
+                    task_id,
+                    ['PENDING', 'RUNNING'],
+                    status='FAILED',
+                    error_message='Export failed. Please try again.',
+                )
+            except Exception:
+                logger.exception(
+                    'ExportTask %s could not be marked FAILED after error',
+                    task_id,
+                )
 
 
-def reset_stale_export_tasks(max_age_seconds: int = STALE_TASK_MAX_AGE) -> int:
+def reset_stale_export_tasks(
+    max_age_seconds: int = STALE_TASK_MAX_AGE,
+    *,
+    ignore_age: bool = False,
+    user_id: int | None = None,
+) -> int:
     """
     Fail export tasks that are stuck in PENDING or RUNNING for too long.
 
@@ -223,27 +276,41 @@ def reset_stale_export_tasks(max_age_seconds: int = STALE_TASK_MAX_AGE) -> int:
     exists). This resets such tasks to FAILED so the user can retry.
 
     The reset is a single compare-and-swap UPDATE (same pattern as
-    ``_transition_export_task``), so concurrent callers — multiple Gunicorn
-    workers at boot, or a web worker racing the Huey consumer's periodic
-    ``cleanup_stale_export_tasks`` — cannot tear each other's writes: the first
+    ``_transition_export_task``), so overlapping runs of the consumer's periodic
+    ``cleanup_stale_export_tasks`` cannot tear each other's writes: the first
     writer to match a row wins, the rest match zero rows and return 0.
+
+    ``ignore_age=True`` fails every PENDING/RUNNING row regardless of
+    ``updated_at``. That is the local unstick path (Flask CLI
+    ``fail-stale-exports --force``) when there is no Huey consumer.
+
+    ``user_id`` scopes the UPDATE to one user. ``POST /export`` uses that so a
+    retry can free a stale slot without touching other users' rows. The consumer
+    periodic task and the CLI omit it (global cleanup).
 
     Returns:
         int: number of tasks reset to FAILED.
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
     from .models import ExportTask
+
+    filters = [ExportTask.status.in_(['PENDING', 'RUNNING'])]
+    if user_id is not None:
+        filters.append(ExportTask.user_id == user_id)
+    if not ignore_age:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+        filters.append(ExportTask.updated_at < cutoff)
+    if ignore_age:
+        error_message = 'Export aborted. Please try again.'
+    else:
+        error_message = (
+            f"Export aborted: no progress for over {max_age_seconds // 60} minute(s). "
+            "Please try again."
+        )
     try:
-        n = ExportTask.query.filter(
-            ExportTask.status.in_(['PENDING', 'RUNNING']),
-            ExportTask.updated_at < cutoff,
-        ).update(
+        n = ExportTask.query.filter(*filters).update(
             {
                 'status': 'FAILED',
-                'error_message': (
-                    f"Export aborted: no progress for over {max_age_seconds // 60} minute(s). "
-                    "Please try again."
-                ),
+                'error_message': error_message,
                 'updated_at': datetime.now(timezone.utc),
             },
             synchronize_session=False,
@@ -302,13 +369,13 @@ def cleanup_expired_exports(max_age_days: int = EXPORT_RETENTION_DAYS) -> int:
 @huey.periodic_task(crontab(minute='*/5'))
 def cleanup_stale_export_tasks() -> int:
     """
-    Periodic housekeeping task (every 5 minutes):
+    Periodic housekeeping (every 5 minutes), owned by the Huey consumer:
       - fail stale PENDING/RUNNING exports (reset_stale_export_tasks)
       - remove exports older than EXPORT_RETENTION_DAYS (cleanup_expired_exports)
 
-    In memory/development mode this only executes when the consumer runs with
-    periodic enabled; the startup reset in :func:`reset_stale_export_tasks`
-    covers the app side.
+    Web-app startup does not run this. Periodic scheduling is on by default in
+    huey_consumer; do not start the consumer with ``--no-periodic``.
+    Memory/development mode only executes this when a consumer is running.
     """
     app = _get_worker_app()
     with app.app_context():

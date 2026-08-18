@@ -38,8 +38,9 @@ Nginx (unchanged)  ── proxy ──▶ Gunicorn (existing unit, unchanged exc
 - **Huey consumer (NEW):** a separate long-running process. systemd
   `Restart=always` restarts it if it exits.
 - **ExportTask (NEW):** rows in `users.db` track PENDING → RUNNING →
-  SUCCESS/FAILED. The stale-task guard fails stuck tasks after 30 minutes so a
-  dead worker cannot permanently block a user’s export slot.
+  SUCCESS/FAILED. The Huey consumer's periodic stale-task guard fails stuck
+  tasks after 30 minutes so a dead worker cannot permanently block a user’s
+  export slot. The web app does not reset stale rows at startup.
 
 ---
 
@@ -60,7 +61,12 @@ Optional (defaults are fine):
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `EXPORT_STALE_MAX_AGE_SECONDS` | `1800` (30 min) | Fail stuck PENDING/RUNNING exports |
+| `EXPORT_HEARTBEAT_SECONDS` | `60` | How often a live RUNNING export refreshes `updated_at` |
 | `EXPORT_RETENTION_DAYS` | `10` | Delete old CSV files and `ExportTask` rows |
+
+Keep `EXPORT_STALE_MAX_AGE_SECONDS >= 2 * EXPORT_HEARTBEAT_SECONDS` (defaults
+1800 vs 60). If stale age is tuned near the heartbeat interval, a healthy long
+export can be false-failed between heartbeats.
 
 `HUEY_IMMEDIATE` applies only to the in-memory **development** backend. Do not
 set it in production.
@@ -177,10 +183,12 @@ Two separate mechanisms, both already in this repo / on Ubuntu:
 1. **systemd** (`Restart=always` in `poi-broker-huey.service`) restarts the
    consumer if it exits. That is the process-level stall protection.
 2. **Stale-task guard** (application code) marks `PENDING`/`RUNNING` exports
-   older than 30 minutes as `FAILED` — at web/worker startup and every 5
-   minutes via `cleanup_stale_export_tasks`. That frees the user’s active-export
-   slot. It does **not** restart the worker; a live consumer is still required
-   to run new jobs.
+   older than 30 minutes as `FAILED`. The Huey consumer's periodic
+   `cleanup_stale_export_tasks` (every 5 minutes) is the sole owner of that
+   cleanup; the web app does not reset stale rows at startup. That frees the
+   user’s active-export slot. It does **not** restart the worker; a live
+   consumer with periodic scheduling enabled (Huey’s default; do not pass
+   `--no-periodic`) is still required to run new jobs and to fail stuck ones.
 
 ## 5. Nginx — no change
 
@@ -232,8 +240,14 @@ ls -la /var/lib/poi_broker/huey.db
   process. Check the existing web env.
 
 ### Stale exports blocking a user
-- The guard fails exports with no progress for 30 minutes (`EXPORT_STALE_MAX_AGE_SECONDS`).
-  A live worker heartbeats `updated_at` while writing and only commits status
-  transitions from expected states, so a long healthy export is not false-failed
-  and cannot flip a stale `FAILED` row back to `SUCCESS`.
-  The user can retry once a live worker is running.
+- The consumer's periodic guard fails exports with no progress for 30 minutes
+  (`EXPORT_STALE_MAX_AGE_SECONDS`). A live worker heartbeats `updated_at` while
+  writing and only commits status transitions from expected states, so a long
+  healthy export is not false-failed and cannot flip a stale `FAILED` row back
+  to `SUCCESS`. After that stale window, `POST /export` itself fails the
+  **current user’s** stale `PENDING`/`RUNNING` row and lets them enqueue again
+  (even if the consumer is still down). Fresh active rows still 409 until they
+  finish or go stale. To unstick **immediately** (aborts in-flight exports,
+  including rows younger than 30 minutes):
+  `python -m flask --app wsgi:app fail-stale-exports --force` with the web app
+  env.

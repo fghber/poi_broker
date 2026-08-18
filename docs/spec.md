@@ -18,7 +18,7 @@ The **Point of Interest (POI) Community Broker** is a transient alert software (
 
 ### 1.3 Key Stakeholders
 - Astronomers (variable-star observers) — primary users.
-- Vanderbilt University development team.
+- Internal development team.
 - Rubin Observatory / LSST community broker program.
 
 ### 1.4 Tech Stack
@@ -105,6 +105,7 @@ CSS is already local Bootswatch **4.6.2**. JS was aligned to 4.6.2 bundle (was 4
 | REQ-017 | User can view observing plot (AltAz visibility) for builtin/custom observatory | `tests/test_observing_tool*.py` |
 | REQ-018 | User can view classification radar chart for an alert | `tests/test_classification.py` |
 | REQ-019 | User can configure default feature-plot columns and last-selected observatory in settings | `tests/test_user_settings*.py` |
+| REQ-020 | User can enqueue a visual-query CSV export (`POST /export`); one non-stale active task per user (409); stale `PENDING`/`RUNNING` past `EXPORT_STALE_MAX_AGE_SECONDS` is failed on retry so a down Huey consumer cannot block forever | `tests/test_export_routes.py`, `tests/test_huey_tasks.py` |
 
 ### 3.2 Non-Functional Requirements
 
@@ -158,6 +159,7 @@ Two SQLite databases via SQLAlchemy binds: **alerts** (default bind) and **users
 | `FilterBookmark` | `filter_bookmark` | `id`, `user_id` FK CASCADE, `name`, `query_json` (Text), `created_at` | |
 | `UserObservatory` | `user_observatory` | `id`, `user_id` FK CASCADE, `name` (max 100, NOCASE), `latitude`, `longitude`, `timezone_name`, `created_at`; unique `(user_id, name)` | |
 | `UserSettings` | `user_settings` | `id`, `user_id` FK CASCADE, `default_feature_plot_columns` (JSON Text), `last_selected_observatory_json` (JSON Text); unique `user_id` | |
+| `ExportTask` | `export_task` | `id`, `user_id` FK CASCADE, `status` (`PENDING`/`RUNNING`/`SUCCESS`/`FAILED`), `created_at`, `updated_at`, `file_path`, `error_message`; partial unique one active (`PENDING`/`RUNNING`) per user | Heartbeat refreshes `updated_at` while `RUNNING`. Stale guard / age-aware `POST /export` use `updated_at` vs `EXPORT_STALE_MAX_AGE_SECONDS`. |
 
 ---
 
@@ -256,6 +258,14 @@ Two SQLite databases via SQLAlchemy binds: **alerts** (default bind) and **users
 |---|---|---|---|---|
 | GET | `/query_classification` | Query: `alertId` (max 128) | JSON `{div, script}` Bokeh radar chart; empty data is 200 warning `div` (same as lightcurve/feature) | 400 missing/too long. Does not reflect `alertId`. |
 
+### 5.12 Export Blueprint (`poi_broker/routes/export.py`, prefix `/export`) — all Login
+| Method | Path | Request | Response | Errors |
+|---|---|---|---|---|
+| GET | `/export` | — | HTML `export.html` (query builder + recent task) | — |
+| POST | `/export` | JSON rules (query-builder shape) | `{"success":true,"task_id"}` 202 | 400 invalid/too large; 409 if a **non-stale** active task exists; stale active row (past `EXPORT_STALE_MAX_AGE_SECONDS`) is failed for this user then enqueue proceeds |
+| GET | `/export/status/<int:task_id>` | — | JSON status (no `file_path`) | 403/404 |
+| GET | `/export/download/<int:task_id>` | — | CSV attachment | redirect + flash if not SUCCESS / missing file |
+
 ---
 
 ## 6. Workflows
@@ -293,6 +303,7 @@ CRUD custom observatories (auto timezone via `TimezoneFinder`); last selection p
 - Group delete → favorites orphaned (not deleted).
 - Observatory delete → idempotent 200 `already_deleted`; may return `warning`/`fallback`.
 - Watchlists strictly private (per-user).
+- Active export slot → 409 only while a **non-stale** `PENDING`/`RUNNING` exists for the user; past `EXPORT_STALE_MAX_AGE_SECONDS`, `POST /export` fails that row and enqueues.
 
 ---
 
@@ -313,6 +324,7 @@ CRUD custom observatories (auto timezone via `TimezoneFinder`); last selection p
 | Observing tool | REQ-017 | `observing_tool.py` |
 | Classification | REQ-018 | `classification.py` |
 | Settings | REQ-019 | `user_settings.py` |
+| Async CSV export | REQ-020 | `routes/export.py`, `tasks.py` |
 
 ---
 
@@ -333,6 +345,7 @@ CRUD custom observatories (auto timezone via `TimezoneFinder`); last selection p
 | REQ-017 | `observing_tool.py` | `tests/test_observing_tool*.py` |
 | REQ-018 | `classification.py` | `tests/test_classification.py` |
 | REQ-019 | `user_settings.py` | `tests/test_user_settings*.py` |
+| REQ-020 | `routes/export.py` `export_submit` + `tasks.reset_stale_export_tasks` | `tests/test_export_routes.py`, `tests/test_huey_tasks.py` |
 | NFR-001..010 | `settings.py`, `__init__.py` (limiter, CSRF, headers, pragmas) | `tests/test_security_regressions.py`, `tests/test_smoke_routes.py` |
 
 ---

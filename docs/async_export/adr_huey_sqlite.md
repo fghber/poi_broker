@@ -60,14 +60,24 @@ web process.
   `HUEY_SQLITE_PATH` or they silently use two empty queues.
 - **Dev vs prod:** default `HUEY_BACKEND=memory` runs tasks in-process (no
   worker). In that mode `POST /export` blocks until the CSV is written; keep
-  local queries small or lower `EXPORT_MAX_ROWS`. Production sets
-  `HUEY_BACKEND=sqlite`. `HUEY_IMMEDIATE` applies only to the memory backend.
+  local queries small or lower `EXPORT_MAX_ROWS`. There is no consumer, so
+  periodic stale-cleanup never runs: unstick a Ctrl+C with
+  `python -m flask --app wsgi:app fail-stale-exports --force` (same env as
+  the app). Production sets `HUEY_BACKEND=sqlite`. `HUEY_IMMEDIATE` applies
+  only to the memory backend.
 - **User-facing state** lives in `ExportTask` (`users.db`), not in Huey’s
-  result table. A stale-task guard fails `PENDING`/`RUNNING` rows after 30
-  minutes so a dead worker cannot block a user’s export slot forever. The
-  worker only transitions from expected statuses (compare-and-swap) and
-  heartbeats `updated_at` while `RUNNING`, so a live long export is not
-  false-failed and cannot be resurrected after a stale `FAILED`.
+  result table. The consumer’s periodic stale-task guard
+  (`cleanup_stale_export_tasks`, every 5 minutes) fails all stale
+  `PENDING`/`RUNNING` rows after 30 minutes so a dead worker cannot block a
+  user’s export slot forever. Independently, `POST /export` may fail **the
+  current user’s** stale active row (same age window) before returning 409, so
+  a down consumer cannot strand a user forever. Web processes do not run
+  global cleanup at startup. The worker only transitions from expected
+  statuses (compare-and-swap) and heartbeats `updated_at` while `RUNNING`, so
+  a live long export is not false-failed and cannot be resurrected after a
+  stale `FAILED`. Keep `EXPORT_STALE_MAX_AGE_SECONDS >= 2 *
+  EXPORT_HEARTBEAT_SECONDS` (defaults 1800 vs 60) so a healthy export is not
+  false-failed between heartbeats.
 - **One Flask app per consumer process:** Huey handlers reuse a lazy
   process-wide app (`_get_worker_app` in `tasks.py`) instead of calling
   `create_app()` on every task.
@@ -83,7 +93,12 @@ These are easy to get wrong; the consumer will look "fine" while doing nothing.
    `huey_consumer` is a console script, not an importable module.
 3. Do not introduce Celery, Redis, or a second queue backend without a new ADR.
 4. Do not run export work in the request thread when `HUEY_BACKEND=sqlite`.
-5. Automated tests: `tests/test_huey_tasks.py` (memory backend via `conftest.py`).
+5. Do not call `reset_stale_export_tasks()` from `create_app()` / `init_huey()`.
+   The Huey consumer’s periodic `cleanup_stale_export_tasks` is the **global**
+   owner. `POST /export` may call it with `user_id=` (age-aware only, never
+   `ignore_age`) to free that user’s stale slot. Leave periodic scheduling
+   enabled (do not pass `--no-periodic`).
+6. Automated tests: `tests/test_huey_tasks.py` (memory backend via `conftest.py`).
    Manual two-process check: `docs/async_export/local_app_and_worker.md`.
 
 ## Related code
@@ -94,5 +109,6 @@ These are easy to get wrong; the consumer will look "fine" while doing nothing.
 | `poi_broker/extensions.py` | Shared `huey` object |
 | `poi_broker/worker.py` | Consumer entrypoint (registers tasks) |
 | `poi_broker/tasks.py` | `create_export_file`, stale-task / retention jobs |
-| `poi_broker/routes/export.py` | Enqueue + download |
+| `poi_broker/cli.py` | `fail-stale-exports` one-off (local `--force` unstick) |
+| `poi_broker/routes/export.py` | Enqueue + download; age-aware per-user stale fail |
 | `docs/async_export/poi-broker-huey.service` | systemd unit template |

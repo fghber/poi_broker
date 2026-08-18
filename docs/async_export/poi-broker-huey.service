@@ -15,6 +15,8 @@
 #
 # NOTE: point the consumer at poi_broker.worker.huey (not
 # poi_broker.extensions.huey) so tasks are registered on the shared Huey instance.
+# Leave periodic scheduling enabled (do not pass --no-periodic):
+# cleanup_stale_export_tasks is the sole stale-export guard.
 
 [Unit]
 Description=POI Broker Huey task consumer

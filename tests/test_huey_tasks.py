@@ -171,6 +171,124 @@ def test_reset_stale_export_tasks(app):
         db.session.commit()
 
 
+def test_reset_stale_export_tasks_user_id_scopes(app):
+    """user_id= fails only that user's stale row (POST /export path)."""
+    from datetime import timedelta
+
+    from poi_broker import db
+    from poi_broker.models import ExportTask, User
+    from poi_broker.tasks import reset_stale_export_tasks
+
+    with app.app_context():
+        ExportTask.query.delete()
+        User.query.filter_by(email='scope1@example.com').delete()
+        User.query.filter_by(email='scope2@example.com').delete()
+        db.session.commit()
+
+        user1 = User(
+            email='scope1@example.com', password='hashed', name='S1', email_verified=True
+        )
+        user2 = User(
+            email='scope2@example.com', password='hashed', name='S2', email_verified=True
+        )
+        db.session.add_all([user1, user2])
+        db.session.commit()
+
+        old = datetime.now(timezone.utc) - timedelta(hours=1)
+        t1 = ExportTask(user_id=user1.id, status='PENDING')
+        t2 = ExportTask(user_id=user2.id, status='PENDING')
+        t1.updated_at = old
+        t2.updated_at = old
+        db.session.add_all([t1, t2])
+        db.session.commit()
+
+        n = reset_stale_export_tasks(user_id=user1.id)
+        db.session.refresh(t1)
+        db.session.refresh(t2)
+
+        assert n == 1
+        assert t1.status == 'FAILED'
+        assert t2.status == 'PENDING'
+
+        ExportTask.query.delete()
+        User.query.delete()
+        db.session.commit()
+
+
+def test_reset_stale_export_tasks_ignore_age(app):
+    """ignore_age=True fails a fresh PENDING row (local --force unstick)."""
+    from poi_broker import db
+    from poi_broker.models import ExportTask, User
+    from poi_broker.tasks import reset_stale_export_tasks
+
+    with app.app_context():
+        ExportTask.query.delete()
+        User.query.filter_by(email='force@example.com').delete()
+        db.session.commit()
+
+        user = User(
+            email='force@example.com', password='hashed', name='Force', email_verified=True
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        fresh = ExportTask(user_id=user.id, status='PENDING')
+        db.session.add(fresh)
+        db.session.commit()
+
+        n = reset_stale_export_tasks(ignore_age=True)
+        db.session.refresh(fresh)
+        assert n == 1
+        assert fresh.status == 'FAILED'
+
+        ExportTask.query.delete()
+        User.query.delete()
+        db.session.commit()
+
+
+def test_fail_stale_exports_cli_force(app):
+    """flask fail-stale-exports --force unsticks a just-created PENDING row."""
+    from poi_broker import db
+    from poi_broker.models import ExportTask, User
+
+    with app.app_context():
+        ExportTask.query.delete()
+        User.query.filter_by(email='cli-force@example.com').delete()
+        db.session.commit()
+
+        user = User(
+            email='cli-force@example.com',
+            password='hashed',
+            name='CLI Force',
+            email_verified=True,
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        fresh = ExportTask(user_id=user.id, status='PENDING')
+        db.session.add(fresh)
+        db.session.commit()
+        task_id = fresh.id
+
+    runner = app.test_cli_runner()
+    without_force = runner.invoke(args=['fail-stale-exports'])
+    assert without_force.exit_code == 0
+    assert 'Marked 0 export task(s) FAILED' in without_force.output
+
+    with app.app_context():
+        assert db.session.get(ExportTask, task_id).status == 'PENDING'
+
+    forced = runner.invoke(args=['fail-stale-exports', '--force'])
+    assert forced.exit_code == 0
+    assert 'Marked 1 export task(s) FAILED' in forced.output
+
+    with app.app_context():
+        assert db.session.get(ExportTask, task_id).status == 'FAILED'
+        ExportTask.query.delete()
+        User.query.delete()
+        db.session.commit()
+
+
 def test_export_task_creation(app):
     """Test creating an ExportTask and enqueuing a background job."""
     from poi_broker import db
@@ -399,6 +517,232 @@ def test_create_export_file_cleans_partial_file_on_failure(app, monkeypatch):
     after = {p.name for p in exports_dir.iterdir()}
     assert after == before, f'failed task left a partial file: {after - before}'
 
+
+def test_transition_export_task_retries_lock_once(app, monkeypatch):
+    """A single SQLite lock error is retried; False is only a CAS miss."""
+    import sqlite3
+
+    import poi_broker.tasks as tasks_mod
+    from poi_broker import db
+    from poi_broker.models import ExportTask, User
+
+    with app.app_context():
+        ExportTask.query.delete()
+        User.query.filter_by(email='lock-retry@example.com').delete()
+        db.session.commit()
+
+        user = User(
+            email='lock-retry@example.com',
+            password='hashed',
+            name='Lock Retry',
+            email_verified=True,
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        task = ExportTask(user_id=user.id, status='PENDING')
+        db.session.add(task)
+        db.session.commit()
+        task_id = task.id
+
+        real_commit = db.session.commit
+        calls = {'n': 0}
+
+        def _commit_then_ok():
+            calls['n'] += 1
+            if calls['n'] == 1:
+                raise sqlite3.OperationalError('database is locked')
+            return real_commit()
+
+        monkeypatch.setattr(db.session, 'commit', _commit_then_ok)
+        monkeypatch.setattr(tasks_mod.time, 'sleep', lambda *_a, **_kw: None)
+
+        assert tasks_mod._transition_export_task(
+            task_id, ['PENDING'], status='RUNNING'
+        ) is True
+        assert calls['n'] == 2
+
+        db.session.expire_all()
+        assert db.session.get(ExportTask, task_id).status == 'RUNNING'
+
+        ExportTask.query.delete()
+        User.query.delete()
+        db.session.commit()
+
+
+def test_transition_export_task_lock_raises_not_false(app, monkeypatch):
+    """Persistent lock re-raises; never returns False (False = CAS miss only)."""
+    import sqlite3
+
+    import pytest
+
+    import poi_broker.tasks as tasks_mod
+    from poi_broker import db
+    from poi_broker.models import ExportTask, User
+
+    with app.app_context():
+        ExportTask.query.delete()
+        User.query.filter_by(email='lock-raise@example.com').delete()
+        db.session.commit()
+
+        user = User(
+            email='lock-raise@example.com',
+            password='hashed',
+            name='Lock Raise',
+            email_verified=True,
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        task = ExportTask(user_id=user.id, status='PENDING')
+        db.session.add(task)
+        db.session.commit()
+        task_id = task.id
+
+        real_commit = db.session.commit
+
+        def _always_locked():
+            raise sqlite3.OperationalError('database is locked')
+
+        monkeypatch.setattr(db.session, 'commit', _always_locked)
+        monkeypatch.setattr(tasks_mod.time, 'sleep', lambda *_a, **_kw: None)
+
+        with pytest.raises(sqlite3.OperationalError, match='locked'):
+            tasks_mod._transition_export_task(
+                task_id, ['PENDING'], status='RUNNING'
+            )
+
+        monkeypatch.setattr(db.session, 'commit', real_commit)
+        db.session.expire_all()
+        assert db.session.get(ExportTask, task_id).status == 'PENDING'
+
+        ExportTask.query.delete()
+        User.query.delete()
+        db.session.commit()
+
+
+def test_transition_export_task_cas_miss_returns_false(app):
+    """Committed 0-row UPDATE is the only False path (already terminal)."""
+    import poi_broker.tasks as tasks_mod
+    from poi_broker import db
+    from poi_broker.models import ExportTask, User
+
+    with app.app_context():
+        ExportTask.query.delete()
+        User.query.filter_by(email='cas-miss@example.com').delete()
+        db.session.commit()
+
+        user = User(
+            email='cas-miss@example.com',
+            password='hashed',
+            name='CAS Miss',
+            email_verified=True,
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        task = ExportTask(user_id=user.id, status='FAILED')
+        db.session.add(task)
+        db.session.commit()
+        task_id = task.id
+
+        assert tasks_mod._transition_export_task(
+            task_id, ['PENDING', 'RUNNING'], status='RUNNING'
+        ) is False
+        assert db.session.get(ExportTask, task_id).status == 'FAILED'
+
+        ExportTask.query.delete()
+        User.query.delete()
+        db.session.commit()
+
+
+def test_create_export_file_heartbeat_continues_on_lock(app, monkeypatch):
+    """Heartbeat lock must not abort mid-write or unlink the CSV."""
+    import sqlite3
+    from pathlib import Path
+
+    import poi_broker.tasks as tasks_mod
+    from poi_broker.models import ExportTask
+
+    fake_task = ExportTask(user_id=1, status='PENDING')
+
+    class _StubSession:
+        def get(self, model, pk, *a, **kw):
+            if model is ExportTask and pk == 42:
+                return fake_task
+            return None
+
+        def commit(self, *a, **kw):
+            return None
+
+        def rollback(self, *a, **kw):
+            return None
+
+        def remove(self):
+            return None
+
+    monkeypatch.setattr(tasks_mod.db, 'session', _StubSession())
+
+    heartbeats = {'n': 0}
+
+    def _fake_transition(task_id, from_statuses, **values):
+        if task_id != 42:
+            return False
+        # Claim: PENDING|RUNNING -> RUNNING
+        if values.get('status') == 'RUNNING' and 'PENDING' in from_statuses:
+            fake_task.status = 'RUNNING'
+            return True
+        # Heartbeat: RUNNING -> RUNNING — raise lock once, then succeed
+        if from_statuses == ['RUNNING'] and values.get('status') == 'RUNNING':
+            heartbeats['n'] += 1
+            if heartbeats['n'] == 1:
+                raise sqlite3.OperationalError('database is locked')
+            return True
+        # SUCCESS
+        if values.get('status') == 'SUCCESS':
+            for k, v in values.items():
+                setattr(fake_task, k, v)
+            return True
+        return False
+
+    monkeypatch.setattr(tasks_mod, '_transition_export_task', _fake_transition)
+    monkeypatch.setattr(tasks_mod, 'EXPORT_HEARTBEAT_SECONDS', 0)
+
+    class _Row:
+        pass
+
+    class _OkQuery:
+        def yield_per(self, _n):
+            return iter([_Row(), _Row()])
+
+    monkeypatch.setattr(
+        tasks_mod,
+        'build_export_query_from_rules',
+        lambda *_a, **_kw: (_OkQuery(), 'where'),
+    )
+    monkeypatch.setattr(
+        tasks_mod, 'get_export_columns', lambda: ['alert_id']
+    )
+    monkeypatch.setattr(
+        tasks_mod, 'build_export_row', lambda _row: {'alert_id': 1}
+    )
+    monkeypatch.setattr(tasks_mod, 'create_app', lambda: app)
+
+    exports_dir = Path(app.instance_path) / 'exports'
+    exports_dir.mkdir(parents=True, exist_ok=True)
+    before = {p.name for p in exports_dir.iterdir()}
+
+    tasks_mod.create_export_file.func(
+        query_params={'rules': [{'x': 1}]}, user_id=1, task_id=42,
+    )
+
+    assert fake_task.status == 'SUCCESS'
+    assert heartbeats['n'] >= 1
+    after = {p.name for p in exports_dir.iterdir()}
+    new_files = after - before
+    assert len(new_files) == 1
+    for name in new_files:
+        (exports_dir / name).unlink(missing_ok=True)
 
 
 # ============================================================================

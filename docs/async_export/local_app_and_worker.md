@@ -40,5 +40,26 @@ ls -la ./instance/huey.db
 sqlite3 ./instance/huey.db .tables
 ```
 
+## Stuck export after killing the app (memory backend)
+
+Default `HUEY_BACKEND=memory` has no consumer, so periodic cleanup never runs.
+A Ctrl+C during `POST /export` leaves a `PENDING`/`RUNNING` row that 409s
+retries. Age-aware `POST /export` only frees rows past
+`EXPORT_STALE_MAX_AGE_SECONDS` (default 30 minutes), so a just-interrupted
+export still needs an immediate unstick.
+
+Unstick with the **same environment** as the app (same `USERS_DB_PATH`):
+
+```bash
+python -m flask --app wsgi:app fail-stale-exports --force
+```
+
+`--force` fails every `PENDING`/`RUNNING` row now (aborts in-flight exports).
+Without `--force`, only rows older than `EXPORT_STALE_MAX_AGE_SECONDS`
+(default 30 minutes) are failed.
+
+Do not put this in `tools/`: that directory has its own `.env` and would
+point at the wrong `users.db`.
+
 Production (existing Ubuntu site): `docs/async_export/ubuntu_add_worker.md`.
 Decision record (Huey + SQLite vs Celery + Redis): `docs/async_export/adr_huey_sqlite.md`.
