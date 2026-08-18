@@ -1,6 +1,6 @@
 [project]
 name = "poi_broker-frontend"
-version = "3.1.0"
+version = "3.5.0"
 description = "A web application for the POI Broker."
 readme = "README.md"
 dependencies = [

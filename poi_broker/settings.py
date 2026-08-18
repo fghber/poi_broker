@@ -85,7 +85,7 @@ def build_app_config(base_dir):
 		'DEBUG': debug_flag,
 		'TESTING': testing_flag,
 		'TEMPLATES_AUTO_RELOAD': True,
-		'APP_VERSION': '3.1.0',
+		'APP_VERSION': '3.5.0',
 		'SQLALCHEMY_DATABASE_URI': db_uri,
 		'SQLALCHEMY_BINDS': {
 			'users': login_db_uri,

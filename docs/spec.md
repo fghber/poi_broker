@@ -2,7 +2,7 @@
 
 **Version:** 1.0.0
 **Last updated:** 2026-08-14
-**Status:** Draft — derived from codebase inspection (app v3.1.0)
+**Status:** Draft — derived from codebase inspection (app v3.5.0)
 **Scope:** HTTP endpoints only (internal service-layer contracts intentionally excluded)
 
 ---
@@ -65,7 +65,7 @@ CSS is already local Bootswatch **4.6.2**. JS was aligned to 4.6.2 bundle (was 4
 | Source | Path | Authoritative For | Notes |
 |---|---|---|---|
 | This spec | `docs/spec.md` | System behavior, API contracts, requirements | Primary reference for spec-anchored development |
-| App config | `poi_broker/settings.py` | Env vars, rate limits, security config | `APP_VERSION='3.1.0'` |
+| App config | `poi_broker/settings.py` | Env vars, rate limits, security config | `APP_VERSION='3.5.0'` |
 | Env template | `.env.example` | Required/optional env vars | `SECRET_KEY` mandatory |
 | Data models | `poi_broker/models.py` | Entities, columns, relationships, binds | Alerts + users DB |
 | Alerts schema | `tools/alertsdb_schema.sql` | Alerts-side schema reference | |
