@@ -1,3 +1,5 @@
+from datetime import date, datetime
+
 from sqlalchemy import inspect
 import re
 import json
@@ -31,8 +33,8 @@ def serialize_fallback(obj):
         return {k: serialize_fallback(v) for k, v in obj.items()}  # Keep dict as-is and process its values
     elif isinstance(obj, list):
         return [serialize_fallback(v) for v in obj]  # Keep list as-is and process its elements
-    #elif hasattr(obj, 'isoformat'):  # datetime/date objects
-    #    return obj.isoformat()
+    elif isinstance(obj, (datetime, date)):
+        return obj.isoformat()
     else:
         return obj  # Return other types as-is
     

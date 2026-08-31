@@ -9,6 +9,8 @@ Test run result:
 Execute command via workspace Python env: `pytest -q` or `python -m pytest -q`
 """
 
+from poi_broker.services.catalog_list import PAGE_SIZE
+
 def test_public_pages_smoke(client):
     for path in ["/", "/help", "/contact"]:
         response = client.get(path)
@@ -128,11 +130,32 @@ def test_lightcurve_and_features_smoke(client):
     assert response.status_code == 400
 
 
+def test_download_alerts_csv_caps_alert_id_count(client):
+    """The endpoint serves one UI page of rows; reject larger lists server-side."""
+    too_many = {"alert_id": [f"alert-{i}" for i in range(PAGE_SIZE + 1)]}
+    response = client.get("/download_alerts_csv", query_string=too_many)
+    assert response.status_code == 400
+    assert str(PAGE_SIZE) in response.get_data(as_text=True)
+
+
 def test_query_features_missing_alert_id_returns_json_error(client):
     response = client.get("/query_features")
     assert response.status_code == 400
     assert response.is_json
     assert response.get_json()["error"] == "Missing alert_id"
+
+
+def test_features_routes_reject_oversized_ids(client):
+    """alert_id/locusId enforce the same 128-char cap as favorites and classification."""
+    long_id = "a" * 129
+
+    response = client.get("/query_features", query_string={"alert_id": long_id})
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "alert_id is too long"
+
+    response = client.get("/query_featureplot_data", query_string={"locusId": long_id})
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "locusId is too long"
 
 
 def test_read_routes_rate_limited(secure_client):

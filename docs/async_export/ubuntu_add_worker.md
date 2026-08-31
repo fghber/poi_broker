@@ -102,6 +102,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uix_export_task_one_active_per_user
 If that statement errors, two `PENDING`/`RUNNING` rows already exist for the
 same user — fail or delete the extras, then retry the index.
 
+If `export_task` already exists from an older build and must be preserved,
+alter it in place with the matching one-shot script
+(`tools/apply_export_snapshot_mjd.sql`) instead of recreating the table.
+Databases created from `usersdb_schema.sql` already include the column.
+
 ## 2. Add Huey variables to the existing web env
 
 Add these two lines to the **existing** EnvironmentFile that Gunicorn already

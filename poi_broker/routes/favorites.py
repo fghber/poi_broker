@@ -1,8 +1,9 @@
 """Favorites API routes blueprint."""
 
 import logging
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 from flask_login import login_required
+from .. import limiter
 from ..services.favorites_service import (
     get_favorite_status,
     get_user_favorites,
@@ -54,6 +55,7 @@ def api_favorites_get():
 
 @favorites_bp.route('/favorite', methods=['POST'])
 @login_required
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_MEDIUM', '15 per minute'))
 def api_favorite_post():
     """
     POST /api/favorite
@@ -82,6 +84,7 @@ def api_favorite_post():
 
 @favorites_bp.route('/favorite/<int:favorite_id>/group', methods=['PATCH'])
 @login_required
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_MEDIUM', '15 per minute'))
 def api_favorite_update_group(favorite_id):
     """PATCH /api/favorite/<id>/group -> move favorite to a group. Body: {"groupId": <id> or null}"""
     data = request.get_json(silent=True)
@@ -110,6 +113,7 @@ def api_favorite_groups_get():
 
 @favorites_bp.route('/favorite-groups', methods=['POST'])
 @login_required
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_MEDIUM', '15 per minute'))
 def api_favorite_groups_post():
     """POST /api/favorite-groups -> create a new group. Body: {"name": "Group A"}"""
     data = request.get_json(silent=True)
@@ -122,6 +126,7 @@ def api_favorite_groups_post():
 
 @favorites_bp.route('/favorite-groups/<int:group_id>', methods=['DELETE'])
 @login_required
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_MEDIUM', '15 per minute'))
 def api_favorite_groups_delete(group_id):
     """DELETE /api/favorite-groups/<id> -> delete a group (orphans its favorites)."""
     result, status_code = delete_favorite_group(group_id)

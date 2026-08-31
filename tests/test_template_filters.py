@@ -5,9 +5,12 @@ Covers:
 - mag_filter: rounding and the 0.0 (falsy) edge case
 - astro_filter: passband mapping
 - format_mjd_readable: MJD -> human-readable UTC string
+- epoch_utc_date: epoch-seconds -> UTC date string (User.password_changed_at)
 """
 
-from poi_broker.app import astro_filter, format_mjd_readable, mag_filter
+from datetime import datetime, timezone
+
+from poi_broker.app import astro_filter, epoch_utc_date, format_mjd_readable, mag_filter
 
 
 def test_mag_filter_rounds_to_three_decimals():
@@ -48,3 +51,25 @@ def test_format_mjd_readable_handles_none():
 
 def test_format_mjd_readable_handles_invalid():
     assert format_mjd_readable("not-a-number") == ""
+
+
+def test_epoch_utc_date_renders_utc_date():
+    # 2026-08-27 12:00:00 UTC as epoch seconds
+    epoch = int(datetime(2026, 8, 27, 12, 0, tzinfo=timezone.utc).timestamp())
+    assert epoch_utc_date(epoch) == "2026-08-27"
+
+
+def test_epoch_utc_date_uses_utc_not_local_tz():
+    # 2026-08-27 23:30 UTC is still 2026-08-27 in UTC but already 2026-08-28
+    # in UTC+1 — the filter must report the UTC date.
+    epoch = int(datetime(2026, 8, 27, 23, 30, tzinfo=timezone.utc).timestamp())
+    assert epoch_utc_date(epoch) == "2026-08-27"
+
+
+def test_epoch_utc_date_handles_none():
+    assert epoch_utc_date(None) == ""
+
+
+def test_epoch_utc_date_handles_invalid():
+    assert epoch_utc_date("not-a-number") == ""
+    assert epoch_utc_date(float("nan")) == ""

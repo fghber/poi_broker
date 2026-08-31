@@ -300,6 +300,8 @@ def download_alerts_csv() -> Response:
     alert_ids = [x.strip() for x in request.args.getlist('alert_id') if x and x.strip()]
     if not alert_ids:
         return Response('Missing alert_id', status=400)
+    if len(alert_ids) > PAGE_SIZE:
+        return Response(f'Too many alert_id parameters (maximum {PAGE_SIZE})', status=400)
 
     try:
         csv_text, row_count = _build_alerts_csv(alert_ids)
@@ -405,11 +407,21 @@ def mag_filter(num: float | None) -> float | None:
 def format_mjd_readable(value: float | None) -> str:
     if value is None:
         return ''
-    
+
     try:
         mjd_value = float(value)
         return _format_mjd_cached(mjd_value) # Use Astropy for accurate conversion
     except (TypeError, ValueError, OverflowError):
+        return ''
+
+@main_blueprint.app_template_filter('epoch_utc_date')
+def epoch_utc_date(value: int | None) -> str:
+    """Render an epoch-seconds column (e.g. User.password_changed_at) as a UTC date."""
+    if value is None:
+        return ''
+    try:
+        return datetime.fromtimestamp(int(value), tz=timezone.utc).strftime('%Y-%m-%d')
+    except (TypeError, ValueError, OSError, OverflowError):
         return ''
 
 

@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, make_response
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, make_response, session
 from flask_login import login_user, logout_user, login_required
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.exc import IntegrityError
@@ -48,6 +48,11 @@ FORGOT_PASSWORD_GENERIC_NOTICE = (
 VERIFICATION_TOKEN_TTL_SECONDS = int(timedelta(hours=24).total_seconds())
 RESET_TOKEN_TTL_SECONDS = int(timedelta(hours=1).total_seconds())
 
+# Checked against unknown emails so login burns one password-hash comparison
+# either way; otherwise timing reveals whether the account exists (CWE-208).
+# Generated with the same defaults as real password hashes.
+DUMMY_PASSWORD_HASH = generate_password_hash(secrets.token_urlsafe(32))
+
 
 def _absolute_url(endpoint: str, **values) -> str:
     """Absolute URL for email links; PUBLIC_BASE_URL wins over request Host."""
@@ -87,8 +92,15 @@ def login_post():
 
     user = User.query.filter_by(email=email).first()
 
-    # check if user actually exists & provided the right password (compared to hashed password in database)
-    if not user or not check_password_hash(user.password, password):
+    # Exactly one password-hash comparison runs on every attempt — known
+    # emails against the stored hash, unknown ones against DUMMY_PASSWORD_HASH
+    # — so response timing does not reveal whether an account exists (CWE-208).
+    if user:
+        valid_password = check_password_hash(user.password, password)
+    else:
+        check_password_hash(DUMMY_PASSWORD_HASH, password)
+        valid_password = False
+    if not valid_password:
         flash('Please check your login details and try again.', 'danger')
         return redirect(url_for('auth.login', forgot_password=True)) # if user doesn't exist or password is wrong, reload the page
     
@@ -99,6 +111,9 @@ def login_post():
     
     # otherwise, we know the user has the right credentials
     login_user(user, remember=remember)
+    # A login proves the current credential, so stamp past the watermark even
+    # in the watermark second (docs/password_reset/adr_session_invalidation.md).
+    session['login_at'] = max(_utc_now_epoch(), (user.password_changed_at or 0) + 1)
     return redirect(url_for('main.profile'))
 
 @auth_blueprint.route('/signup')
@@ -127,16 +142,18 @@ def normalize_email(email: str, check_deliverability: bool = False) -> str | Non
 def signup_post():
     email_input = request.form.get('email', '').strip()
     name = request.form.get('name', '').strip()
-    password = request.form.get('password', '').strip()
+    password = request.form.get('password', '')
 
     # Validate and normalize email (check deliverability for new accounts)
     email = normalize_email(email_input, check_deliverability=True)
     if not email:
         flash('Invalid email address.', 'danger')
         return redirect(url_for('auth.signup'))
-    
-    # Validate password length
-    if not password or len(password) < 8:
+
+    # Validate password length. Leading/trailing spaces are part of the
+    # password (login compares the raw value), so only the trimmed copy
+    # feeds the emptiness check — otherwise 8 spaces would pass len().
+    if not password.strip() or len(password) < 8:
         flash('Password must be at least 8 characters.', 'danger')
         return redirect(url_for('auth.signup'))
     
@@ -198,19 +215,41 @@ def signup_post():
 
     return _signup_accepted_response()
 
+# Email links must arrive by GET (they land in browser history, proxy logs and
+# link-scanner prefetches), so like reset-password the GET only validates the
+# token and shows a confirmation page; the state change happens on POST, which
+# also keeps email scanners (e.g. Outlook SafeLinks) from burning the
+# one-time token by prefetching it before the user clicks.
 @auth_blueprint.route('/verify-email/<token>')
 def verify_email(token):
-    """Verify user email via token link."""
+    """Validate the token from the email link and show a confirmation page."""
     user = User.query.filter_by(email_verification_token=hash_token(token)).first()
-    
+
     if not user or _is_reset_token_expired(user.email_verification_token_expires):
         flash('Invalid or expired verification link.', 'danger')
         return redirect(url_for('auth.signup'))
-    
+
     if user.email_verified:
         flash('Email is already verified. You can now log in.', 'info')
         return redirect(url_for('auth.login'))
-    
+
+    return render_template('verify_email.html', token=token)
+
+
+@auth_blueprint.route('/verify-email/<token>', methods=['POST'])
+@limiter.limit(lambda: current_app.config.get('AUTH_RATE_LIMIT_VERIFY_EMAIL', '10 per hour'))
+def verify_email_post(token):
+    """Mark the email verified; the token stays valid until this succeeds."""
+    user = User.query.filter_by(email_verification_token=hash_token(token)).first()
+
+    if not user or _is_reset_token_expired(user.email_verification_token_expires):
+        flash('Invalid or expired verification link.', 'danger')
+        return redirect(url_for('auth.signup'))
+
+    if user.email_verified:
+        flash('Email is already verified. You can now log in.', 'info')
+        return redirect(url_for('auth.login'))
+
     # Mark email as verified and clear the token
     user.email_verified = True
     user.email_verification_token = None
@@ -221,8 +260,8 @@ def verify_email(token):
         db.session.rollback()
         logger.error(f'Database error during commit: {str(e)}', exc_info=True)
         flash('Failed to verify email. Please try again later.', 'danger')
-        return redirect(url_for('auth.signup'))
-    
+        return redirect(url_for('auth.verify_email', token=token))
+
     flash('Email verified successfully! You can now log in.', 'success')
     return redirect(url_for('auth.login'))
 
@@ -312,8 +351,11 @@ def reset_password_post(token):
         flash('Invalid or expired reset token', 'danger')
         return redirect(url_for('auth.login'))
 
-    # Hash and store new password, clear the token fields
+    # Hash and store new password, clear the token fields. Bumping
+    # password_changed_at ends every existing session and remembered login;
+    # the user logs back in with the new password below.
     user.password = generate_password_hash(password)
+    user.password_changed_at = _utc_now_epoch()
     user.reset_token = None
     user.reset_token_expires = None
     try:
@@ -324,7 +366,12 @@ def reset_password_post(token):
         flash('Failed to update password. Please try again later.', 'danger')
         return redirect(url_for('auth.reset_password', token=token))
 
-    flash('Password updated. Please log in.', 'success')
+    # The submitting browser may still hold a live session (e.g. the account
+    # owner clicking their own reset link); drop it along with the rest.
+    if session.get('_user_id'):
+        logout_user()
+
+    flash('Password updated. Please log in with your new password.', 'success')
     return redirect(url_for('auth.login'))
 
 
@@ -372,8 +419,17 @@ def change_password():
         flash('New password must be different from current password.', 'danger')
         return redirect(url_for('auth.security'))
     
-    # Update password
+    # Update password. Bumping password_changed_at ends every session
+    # including this one — the user_loader demands login_at after
+    # the change everywhere. logout_user() also clears the remember-me cookie
+    # on this browser; tokens left on other devices become inert server-side.
+    changed_at = _utc_now_epoch()
     current_user.password = generate_password_hash(new_password)
+    current_user.password_changed_at = changed_at
+    # A reset link requested before this change is a bearer credential that
+    # must not outlive the rotation, so clear it like reset_password_post does.
+    current_user.reset_token = None
+    current_user.reset_token_expires = None
     try:
         db.session.commit()
     except Exception as e:
@@ -382,5 +438,7 @@ def change_password():
         flash('Failed to change password. Please try again later.', 'danger')
         return redirect(url_for('auth.security'))
 
-    flash('Password changed successfully.', 'success')
-    return redirect(url_for('auth.security'))
+    logout_user()
+    flash('Password changed. For your security you have been signed out on all '
+          'devices — please log in with your new password.', 'success')
+    return redirect(url_for('auth.login'))

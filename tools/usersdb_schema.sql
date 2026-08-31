@@ -11,6 +11,7 @@ CREATE TABLE
         email_verified INTEGER DEFAULT 0,
         email_verification_token VARCHAR(128),
         email_verification_token_expires INTEGER,
+        password_changed_at INTEGER,
         PRIMARY KEY (id),
         UNIQUE (email)
     );
@@ -101,6 +102,7 @@ CREATE TABLE
         updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
         file_path VARCHAR(512),
         error_message TEXT,
+        snapshot_mjd REAL NOT NULL,
         FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
     );
 CREATE INDEX ix_export_task_user_id ON export_task (user_id);

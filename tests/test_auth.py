@@ -157,7 +157,17 @@ def test_verify_email_marks_user_verified(client, app):
         db.session.add(user)
         db.session.commit()
 
-    response = client.get(f'/verify-email/{raw_token}', follow_redirects=False)
+    # GET only validates the token and shows the confirmation page, so
+    # link-scanner prefetches cannot consume the one-time token.
+    page = client.get(f'/verify-email/{raw_token}', follow_redirects=False)
+    assert page.status_code == 200
+
+    with app.app_context():
+        user = User.query.filter_by(email='verify@example.com').first()
+        assert user.email_verified is False
+        assert user.email_verification_token is not None
+
+    response = client.post(f'/verify-email/{raw_token}', follow_redirects=False)
 
     assert response.status_code == 302
     assert '/login' in response.location
@@ -187,7 +197,10 @@ def test_login_renders_success_and_danger_flash_categories(client, app):
         db.session.add(user)
         db.session.commit()
 
-    success_page = client.get(f'/verify-email/{raw_token}', follow_redirects=True)
+    confirm_page = client.get(f'/verify-email/{raw_token}', follow_redirects=True)
+    assert confirm_page.status_code == 200
+
+    success_page = client.post(f'/verify-email/{raw_token}', follow_redirects=True)
     assert success_page.status_code == 200
     body = success_page.get_data(as_text=True)
     assert 'alert-success' in body

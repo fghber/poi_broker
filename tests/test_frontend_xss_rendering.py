@@ -64,9 +64,9 @@ def test_main_modal_table_renderers_bind_dynamic_values_with_textcontent():
 def test_main_auth_required_toast_uses_inline_template_clone():
     main_html = _read_template("main.html")
 
-    # Regression guard: auth-required toast should avoid string HTML injection.
-    assert "showAuthRequiredToast.template" in main_html
-    assert "toast = showAuthRequiredToast.template.content.firstElementChild.cloneNode(true);" in main_html
+    # Regression guard: alert toasts (auth-required, rate limit) avoid string HTML injection.
+    assert "showAlertToast.template" in main_html
+    assert "toast = showAlertToast.template.content.firstElementChild.cloneNode(true);" in main_html
     assert "toast.innerHTML =" not in main_html
 
 
@@ -256,6 +256,34 @@ def test_export_count_failure_does_not_start_export():
     assert not start_fn.rstrip().endswith("});")
 
 
+def test_main_rate_limited_ajax_callers_show_actionable_429_message():
+    main_html = _read_template("main.html")
+
+    # Rate-limited (HTTP 429) API callers surface an actionable in-panel message.
+    assert "function apiFailureMessage(xhr, fallback)" in main_html
+    assert "return xhr && xhr.status === 429" in main_html
+    assert "apiFailureMessage(xhr, err || fallback));" in main_html
+    assert "apiFailureMessage(xhr, (response && response.error) || 'Failed to load feature data.');" in main_html
+    assert "apiFailureMessage(xhr, `Failed to load crossmatches data for LocusID ${locusId}!" in main_html
+    assert "apiFailureMessage(xhr, err || 'Error loading observing data. Please try again.'));" in main_html
+
+    # The catalog-count fetch reports a 429 via the alert toast.
+    count_block = main_html.split("var $countBtn = $('#btn-catalog-count');", 1)[1]
+    assert "throw Object.assign(new Error('count failed'), { status: response.status });" in count_block
+    assert "error.status === 429" in count_block
+
+
+def test_export_page_shows_actionable_429_message():
+    export_html = _read_template("export.html")
+    assert "const RATE_LIMIT_MESSAGE = 'Too many requests. Please wait a few seconds and try again.';" in export_html
+    assert "throw Object.assign(new Error('count failed'), { status: response.status });" in export_html
+    count_catch = export_html.split(".catch(function (error) {", 1)[1].split("});", 1)[0]
+    assert "error.status === 429" in count_catch
+    start_fn = export_html.split("function startExport(rules)", 1)[1].split("// Auto-refresh", 1)[0]
+    assert "if (response.status === 429) {" in start_fn
+    assert "data: { error: RATE_LIMIT_MESSAGE }" in start_fn
+
+
 def test_site_footer_block_is_not_nested_in_body():
     site_html = _read_template("site.html")
     without_content = site_html.replace("{% block content %}{% endblock %}", "")
@@ -268,8 +296,8 @@ def test_site_footer_block_is_not_nested_in_body():
 
 def test_profile_group_create_and_move_check_response_ok():
     profile_html = _read_template("profile.html")
-    assert "if (!r.ok) throw new Error('Failed to create group');" in profile_html
-    assert "if (!r.ok) throw new Error('Failed to move favorite');" in profile_html
+    assert "if (!r.ok) throw Object.assign(new Error('Failed to create group'), { status: r.status });" in profile_html
+    assert "if (!r.ok) throw Object.assign(new Error('Failed to move favorite'), { status: r.status });" in profile_html
     assert "if (!r.ok) throw new Error('Failed to load favorite groups');" in profile_html
     assert "if (!r.ok) throw new Error('Failed to load favorites');" in profile_html
     assert "Failed to load favorites." in profile_html

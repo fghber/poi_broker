@@ -1,7 +1,7 @@
 # POI Broker — Project Specification (Spec-Anchored Development Reference)
 
-**Version:** 1.0.0
-**Last updated:** 2026-08-14
+**Version:** 1.1.0
+**Last updated:** 2026-08-27
 **Status:** Draft — derived from codebase inspection (app v3.5.0)
 **Scope:** HTTP endpoints only (internal service-layer contracts intentionally excluded)
 
@@ -75,6 +75,8 @@ CSS is already local Bootswatch **4.6.2**. JS was aligned to 4.6.2 bundle (was 4
 | Repo map | `Repomap.md` | Module/route overview | |
 | README | `README.md` | Install/usage/ops guidance | Operational, not behavioral spec |
 | Huey ADR | `docs/async_export/adr_huey_sqlite.md` | Why Huey + SQLite for async export | Not Celery/Redis |
+| Session-invalidation ADR | `docs/password_reset/adr_session_invalidation.md` | Why epoch-based session invalidation on password change/reset | No server-side session store |
+| Deployment runbook | `docs/password_reset/deployment.md` | Manual SQL upgrade steps for the users DB | Apply-before-restart ordering |
 
 > **Note:** No formal external spec document exists. All requirements below are **inferred from code** unless a test explicitly enforces them (marked accordingly).
 
@@ -90,8 +92,8 @@ CSS is already local Bootswatch **4.6.2**. JS was aligned to 4.6.2 bundle (was 4
 | REQ-002 | User verifies email via emailed token (SHA-256 hashed) | `tests/test_auth.py` |
 | REQ-003 | User can log in with email/password (optional remember-me) | `tests/test_auth.py` |
 | REQ-004 | User can log out (secure session cookie cleared) | `tests/test_auth.py` |
-| REQ-005 | User can request password reset (1-hour expiry token) and set new password | `tests/test_auth.py` |
-| REQ-006 | User can change password (requires current password) | `tests/test_auth.py` |
+| REQ-005 | User can request password reset (1-hour expiry token) and set new password; the reset ends every existing session and remembered login for the account | `tests/test_auth.py`, `tests/test_security_regressions.py` |
+| REQ-006 | User can change password (requires current password); the change signs out all devices including the acting browser and clears its remember-me cookie | `tests/test_auth.py`, `tests/test_security_regressions.py` |
 | REQ-007 | User can browse/filter alerts on main page (date/MJD, alert_id, object_id, passband, locus_id, RA/Dec, magnitude, prob_class; multiple sort keys; 100 rows/page) | `tests/test_app.py`, `tests/test_alert_id_filter.py`, `tests/test_dec_filter.py`, `tests/test_ant_passband_filter.py` |
 | REQ-008 | User can download filtered alerts as CSV | `tests/test_app.py` |
 | REQ-009 | User can query crossmatches for a locus | `tests/test_app.py` |
@@ -105,7 +107,7 @@ CSS is already local Bootswatch **4.6.2**. JS was aligned to 4.6.2 bundle (was 4
 | REQ-017 | User can view observing plot (AltAz visibility) for builtin/custom observatory | `tests/test_observing_tool*.py` |
 | REQ-018 | User can view classification radar chart for an alert | `tests/test_classification.py` |
 | REQ-019 | User can configure default feature-plot columns and last-selected observatory in settings | `tests/test_user_settings*.py` |
-| REQ-020 | User can enqueue a visual-query CSV export (`POST /export`); one non-stale active task per user (409); stale `PENDING`/`RUNNING` past `EXPORT_STALE_MAX_AGE_SECONDS` is failed on retry so a down Huey consumer cannot block forever | `tests/test_export_routes.py`, `tests/test_huey_tasks.py` |
+| REQ-020 | User can enqueue a visual-query CSV export (`POST /export`); one non-stale active task per user (409); stale `PENDING`/`RUNNING` past `EXPORT_STALE_MAX_AGE_SECONDS` is failed on retry so a down Huey consumer cannot block forever; the export and its pre-count are snapshot-bounded by `ExportTask.snapshot_mjd` (alert-time cutoff set at submit) so re-running the same rules reproduces the CSV | `tests/test_export_routes.py`, `tests/test_huey_tasks.py`, `tests/test_export_query.py` |
 
 ### 3.2 Non-Functional Requirements
 
@@ -120,7 +122,8 @@ CSS is already local Bootswatch **4.6.2**. JS was aligned to 4.6.2 bundle (was 4
 | NFR-007 | SQLite performance | WAL, `synchronous=NORMAL`, 64MB cache, 256MB mmap, `temp_store=MEMORY` |
 | NFR-008 | Caching | `lru_cache` on MJD formatting (8192) and builtin observatories (1); per-request `UserSettings` reuse; 5-min in-process cache for unfiltered catalog `COUNT(*)` |
 | NFR-009 | Coverage targets | 50–75% per module, 75%+ total (`tests/coverage.md`) |
-| NFR-010 | Proxy support | `ProxyFix` enabled in production (trust `X-Forwarded-*`). Emailed links use `PUBLIC_BASE_URL` when set |
+| NFR-010 | Proxy support | `ProxyFix` enabled in production (trust `X-Forwarded-*`). Emailed links use `PUBLIC_BASE_URL` when set. Accepted residual risk: `x_host=1` trusts `X-Forwarded-Host`, but Gunicorn binds to loopback behind nginx (`proxy_pass http://127.0.0.1:8000`, nginx sets `X-Forwarded-Host: $server_name`), app redirects use relative `url_for()`, and `PUBLIC_BASE_URL` overrides the host for emailed links — so a spoofed forwarded host has no effect unless the proxy is bypassed or misconfigured |
+| NFR-011 | Session invalidation | Password write stamps `user.password_changed_at`; `user_loader` rejects sessions without integer `login_at > password_changed_at` (remember-cookie restores included). Schema upgrades are manual SQL only — the app never writes DDL | `docs/password_reset/adr_session_invalidation.md`, `tests/test_security_regressions.py` |
 
 ### 3.3 Performance Notes
 
@@ -152,14 +155,14 @@ Two SQLite databases via SQLAlchemy binds: **alerts** (default bind) and **users
 ### 4.2 Users DB
 | Model | Table | Key Columns / Constraints | Notes |
 |---|---|---|---|
-| `User` | `user` | `id` PK, `email` unique, `password` (hashed), `name`, `role` (default `'user'`), `email_verified`, `email_verification_token`, `email_verification_token_expires`, `reset_token`, `reset_token_expires` | Methods `has_role`, `is_admin`; decorator `role_required(role)` |
+| `User` | `user` | `id` PK, `email` unique, `password` (hashed), `name`, `role` (default `'user'`), `email_verified`, `email_verification_token`, `email_verification_token_expires`, `reset_token`, `reset_token_expires`, `password_changed_at` (epoch s; session-invalidation watermark, NULL until first rotation) | Methods `has_role`, `is_admin`; decorator `role_required(role)` |
 | `FavoriteGroup` | `favorite_group` | `id`, `user_id` FK→user CASCADE, `name`, `created_at`; unique `(user_id, name)` | |
 | `Favorite` | `favorite` | `id`, `user_id` FK CASCADE, `locus_id`, `group_id` FK→favorite_group SET NULL, `created_at`; unique `(user_id, locus_id)` | |
 | `Watchlist` | `watchlist` | `id`, `user_id` FK CASCADE, `name`, `rules_json` (Text), `sql_where` (Text), `created_at` (epoch); unique `(user_id, name)` | `rules_json` is the executable source of truth. `sql_where` is a display preview only — never concatenate or execute it. |
 | `FilterBookmark` | `filter_bookmark` | `id`, `user_id` FK CASCADE, `name`, `query_json` (Text), `created_at` | |
 | `UserObservatory` | `user_observatory` | `id`, `user_id` FK CASCADE, `name` (max 100, NOCASE), `latitude`, `longitude`, `timezone_name`, `created_at`; unique `(user_id, name)` | |
 | `UserSettings` | `user_settings` | `id`, `user_id` FK CASCADE, `default_feature_plot_columns` (JSON Text), `last_selected_observatory_json` (JSON Text); unique `user_id` | |
-| `ExportTask` | `export_task` | `id`, `user_id` FK CASCADE, `status` (`PENDING`/`RUNNING`/`SUCCESS`/`FAILED`), `created_at`, `updated_at`, `file_path`, `error_message`; partial unique one active (`PENDING`/`RUNNING`) per user | Heartbeat refreshes `updated_at` while `RUNNING`. Stale guard / age-aware `POST /export` use `updated_at` vs `EXPORT_STALE_MAX_AGE_SECONDS`. |
+| `ExportTask` | `export_task` | `id`, `user_id` FK CASCADE, `status` (`PENDING`/`RUNNING`/`SUCCESS`/`FAILED`), `created_at`, `updated_at`, `file_path`, `error_message`, `snapshot_mjd`; partial unique one active (`PENDING`/`RUNNING`) per user | Heartbeat refreshes `updated_at` while `RUNNING`. Stale guard / age-aware `POST /export` use `updated_at` vs `EXPORT_STALE_MAX_AGE_SECONDS`. `snapshot_mjd` is the alert-time cutoff computed at submit: the export and its pre-count only include rows with `date_alert_mjd` below it, so the CSV is reproducible independent of queue latency. The worker reads `snapshot_mjd` from the ExportTask row, never from the queue payload, so web app and Huey consumer can deploy independently. |
 
 ---
 
@@ -172,13 +175,15 @@ Two SQLite databases via SQLAlchemy binds: **alerts** (default bind) and **users
 | GET | `/help` | Public | — | HTML `help.html` | — |
 | GET | `/contact` | Public | — | HTML `contact.html` | — |
 | GET | `/profile` | Login | — | HTML `profile.html` | — |
-| GET | `/download_alerts_csv` | Public | Query: `alert_id` (repeatable) | CSV | 400 missing, 404 no records, 500 error |
+| GET | `/download_alerts_csv` | Public | Query: `alert_id` (repeatable, max 100 = one page) | CSV | 400 missing, 400 too many `alert_id`s, 404 no records, 500 error |
 | GET | `/query_crossmatches` | Public | Query: `locusId` | JSON array | 400 missing, 500 error |
 | GET | `/api/catalog-count` | Public | Same filter query params as `/` (sort/page ignored) | JSON `{count}` | — |
 
 ### 5.2 Auth Blueprint (`poi_broker/auth.py`)
 
 Flash messages are rendered once in `site.html` via `get_flashed_messages(with_categories=True)` using Bootstrap alert classes `danger`, `success`, `info`, and `warning` (unknown categories fall back to `danger`).
+
+`POST /login` records an epoch `login_at` marker in the signed session; both password-write routes stamp `user.password_changed_at` and terminate all sessions (see §6.1).
 
 | Method | Path | Auth | Request | Response | Errors |
 |---|---|---|---|---|---|
@@ -191,9 +196,9 @@ Flash messages are rendered once in `site.html` via `get_flashed_messages(with_c
 | GET | `/forgot-password` | Public | — | HTML `forgot_password.html` | — |
 | POST | `/forgot-password` | Public | Form: `email` | Same generic flash whether the email exists; sends reset email (1h) when it does | — |
 | GET | `/reset-password/<token>` | Public | Token | HTML `reset_password.html` | — |
-| POST | `/reset-password/<token>` | Public | Form: new password | Sets new password | — |
-| GET | `/security` | Login | — | HTML `security.html` | — |
-| POST | `/change-password` | Login | Form: `current_password`, `new_password`, `new_password_confirm` | Changes password | — |
+| POST | `/reset-password/<token>` | Public | Form: new password | Sets new password; ends all sessions and remembered logins; drops any session held by the submitting browser | — |
+| GET | `/security` | Login | — | HTML `security.html` (shows Last Password Change via `epoch_utc_date` filter when `password_changed_at` is set) | — |
+| POST | `/change-password` | Login | Form: `current_password`, `new_password`, `new_password_confirm` | Changes password; signs out everywhere including this browser (remember cookie cleared) → redirect `/login` | — |
 
 ### 5.3 Favorites Blueprint (`poi_broker/routes/favorites.py`, prefix `/api`) — all Login
 | Method | Path | Request | Response | Errors |
@@ -265,8 +270,8 @@ Flash messages are rendered once in `site.html` via `get_flashed_messages(with_c
 | Method | Path | Request | Response | Errors |
 |---|---|---|---|---|
 | GET | `/export` | — | HTML `export.html` (query builder + recent task) | — |
-| POST | `/export` | JSON rules (query-builder shape) | `{"success":true,"task_id"}` 202 | 400 invalid/too large; 409 if a **non-stale** active task exists; stale active row (past `EXPORT_STALE_MAX_AGE_SECONDS`) is failed for this user then enqueue proceeds |
-| GET | `/export/status/<int:task_id>` | — | JSON status (no `file_path`) | 403/404 |
+| POST | `/export` | JSON rules (query-builder shape) | `{"success":true,"task_id"}` 202 | 400 invalid/too large; 409 if a **non-stale** active task exists; stale active row (past `EXPORT_STALE_MAX_AGE_SECONDS`) is failed for this user then enqueue proceeds. A `snapshot_mjd` cutoff is computed at submit and applied to the pre-count and the export (rows with `date_alert_mjd >= snapshot_mjd` excluded) |
+| GET | `/export/status/<int:task_id>` | — | JSON status (no `file_path`; includes `snapshot_mjd` and `data_as_of`) | 403/404 |
 | GET | `/export/download/<int:task_id>` | — | CSV attachment | redirect + flash if not SUCCESS / missing file |
 
 ---
@@ -275,6 +280,8 @@ Flash messages are rendered once in `site.html` via `get_flashed_messages(with_c
 
 ### 6.1 Authentication Lifecycle
 Signup → email verification (SHA-256 token, 24h expiry) → login (Flask-Login) → authenticated browsing. Password reset via emailed token (1h expiry). Change password requires current password. Role-based access via `role_required`.
+
+Any password write (reset or change) bumps `user.password_changed_at`; the `user_loader` then rejects any session whose `login_at` marker is not newer than the watermark or absent — which ends every session and remembered login for the account (remember-cookie restores carry no `login_at`). The acting browser is logged out too and its remember-me cookie expired. Accounts with `password_changed_at IS NULL` behave exactly as before, so deployment logs nobody out. Schema for this feature is applied manually (`tools/apply_password_changed_at.sql`, before restart; runbook `docs/password_reset/deployment.md`) — the application never alters the DB (ADR: `docs/password_reset/adr_session_invalidation.md`).
 
 ### 6.2 Browse & Filter Alerts
 `GET /` builds a `Ztf` query with optional filters (date/MJD, alert_id prefix/full, object_id, passband, locus_id, RA/Dec ranges, magnitude, prob_class) and multiple sort keys. Uses `catalog_query` + `SearchService` + `FilterService`. Hybrid pagination 100/page (keyset for date-only sort; OFFSET+1 otherwise). Exact row counts when cheap; otherwise `GET /api/catalog-count` on demand.
@@ -335,7 +342,7 @@ CRUD custom observatories (auto timezone via `TimezoneFinder`); last selection p
 
 | Spec Requirement | Code (route/function) | Test |
 |---|---|---|
-| REQ-001..006 | `auth.py` (login/signup/verify/logout/forgot/reset/change) | `tests/test_auth.py` |
+| REQ-001..006 | `auth.py` (login/signup/verify/logout/forgot/reset/change) | `tests/test_auth.py`, `tests/test_security_regressions.py` (session invalidation) |
 | REQ-007 | `app.py` `start()` + `catalog_query`/`catalog_list` + `SearchService`/`FilterService` | `tests/test_catalog_list.py`, `tests/test_app.py`, `test_alert_id_filter.py`, `test_dec_filter.py`, `test_ant_passband_filter.py` |
 | REQ-008 | `app.py` `/download_alerts_csv` | `tests/test_app.py` |
 | REQ-009 | `app.py` `/query_crossmatches` | `tests/test_app.py` |
@@ -359,7 +366,7 @@ CRUD custom observatories (auto timezone via `TimezoneFinder`); last selection p
 |---|---|---|---|
 | G1 | No formal external spec | All requirements inferred from code; no authoritative external document | — |
 | G2 | No CI workflow | No GitHub Actions / pre-commit config; validation is manual | repo root |
-| G3 | No Flask-Migrate | Schema migrations are manual SQL scripts only (`tools/*.sql`) | `tools/` |
+| G3 | No Flask-Migrate | Schema migrations are manual SQL scripts only (`tools/*.sql`); the app never writes DDL — pinned by `test_boot_does_not_alter_legacy_users_db` | `tools/`, `docs/password_reset/deployment.md` |
 | G4 | `requirements2.txt` not guaranteed installable | Reference freeze only; may not install on all systems | `requirements2.txt` |
 | G5 | Coverage targets not enforced by CI | `tests/coverage.md` states targets but no gate | `tests/coverage.md` |
 | G6 | Internal service contracts undocumented | `QueryService`, `FavoritesService`, etc. excluded (per scope decision) | `services/` |

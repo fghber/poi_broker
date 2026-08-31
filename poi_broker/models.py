@@ -6,6 +6,13 @@ from flask_login import UserMixin, current_user
 
 from . import db
 
+# Imported only for the `ExportTask.snapshot_mjd` default lambda below.
+# This is a deliberate models -> services layering trade-off: avoiding it
+# would mean duplicating the astropy-backed MJD helper. Both the web app
+# and the Huey worker already load astropy via other imports, so this does
+# not change the runtime import surface. See todo.md "Layering" entry.
+from .services.filter_service import datetime_to_mjd
+
 
 class Ztf(db.Model):
     __tablename__ = 'featuretable'
@@ -372,8 +379,8 @@ class User(UserMixin, db.Model):
     email_verification_token_expires = db.Column(db.Integer, nullable=True)  # epoch seconds
     reset_token = db.Column(db.String(128), index=True, nullable=True)
     reset_token_expires = db.Column(db.Integer, nullable=True)  # epoch seconds
+    password_changed_at = db.Column(db.Integer, nullable=True)  # epoch seconds; sessions whose login_at is not newer are rejected
     # created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
-    # last_password_changed = db.Column(db.DateTime(timezone=True), nullable=True)
 
     def __repr__(self):
         return f"<User {self.email}>"
@@ -510,6 +517,9 @@ class ExportTask(db.Model):
         updated_at: Timestamp when task was last updated
         file_path: Path to exported CSV file (set when SUCCESS)
         error_message: Error message if task failed
+        snapshot_mjd: Alert-time cutoff (MJD) set at task creation; the export
+            only contains rows with date_alert_mjd below it, so re-running the
+            same rules reproduces the CSV.
     """
     __bind_key__ = 'users'
     __tablename__ = 'export_task'
@@ -521,6 +531,11 @@ class ExportTask(db.Model):
     updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     file_path = db.Column(db.String(512), nullable=True)
     error_message = db.Column(db.Text, nullable=True)
+    snapshot_mjd = db.Column(
+        db.Float,
+        nullable=False,
+        default=lambda: datetime_to_mjd(datetime.now(timezone.utc)),
+    )
 
     __table_args__ = (
         db.Index(

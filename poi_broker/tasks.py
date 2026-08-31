@@ -170,7 +170,14 @@ def create_export_file(query_params: dict, user_id: int, task_id: int):
             logger.info(f'ExportTask {task_id} set to RUNNING')
             
             # Build and execute query (Core columns, not ORM entities).
-            export_query, rules_payload = build_export_query_from_rules(query_params)
+            # The snapshot cutoff lives on the task row (set at submit time),
+            # not in the queue payload, so the CSV is reproducible regardless
+            # of queue latency. Legacy rows (pre-snapshot_mjd) have NULL and
+            # export without a cutoff, matching their original behavior.
+            snapshot_mjd = export_task.snapshot_mjd
+            export_query, rules_payload = build_export_query_from_rules(
+                query_params, max_alert_mjd=snapshot_mjd
+            )
             logger.info(f'ExportTask {task_id} query rules: {rules_payload}')
             
             # Create exports directory in instance path

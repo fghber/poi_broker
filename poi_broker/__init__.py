@@ -1,8 +1,10 @@
 import logging
+import os
 from datetime import datetime, timezone
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from flask import Flask, flash, jsonify, redirect, request, url_for
+from flask import Flask, flash, jsonify, redirect, request, session, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_login import LoginManager
@@ -11,7 +13,7 @@ from flask_wtf.csrf import CSRFError, CSRFProtect
 from sqlalchemy import event
 
 from .extensions import huey
-from .settings import build_app_config
+from .settings import _env_bool, build_app_config
 
 #from werkzeug.middleware.profiler import ProfilerMiddleware
 #import jinja2
@@ -21,24 +23,6 @@ db = SQLAlchemy()
 login_manager = LoginManager()
 csrf = CSRFProtect()
 limiter = Limiter(key_func=get_remote_address, default_limits=[])
-
-def _ensure_email_verification_expiry_column(app):
-    """Add user.email_verification_token_expires on existing users DBs."""
-    from sqlalchemy import inspect, text
-
-    engine = db.engines.get('users', db.engine)
-    inspector = inspect(engine)
-    if 'user' not in inspector.get_table_names():
-        return
-    column_names = {col['name'] for col in inspector.get_columns('user')}
-    if 'email_verification_token_expires' in column_names:
-        return
-    with engine.begin() as conn:
-        conn.execute(text(
-            'ALTER TABLE user ADD COLUMN email_verification_token_expires INTEGER'
-        ))
-    app.logger.info('Added user.email_verification_token_expires')
-
 
 def _configure_sqlite_pragmas(dbapi_conn, connection_record):
     """Configure SQLite PRAGMAs for improved concurrent read performance."""
@@ -85,6 +69,44 @@ def init_huey(app):
     # export_task before migrations/tests create it. The periodic task is the
     # single, race-free owner of this responsibility.
 
+def _configure_logging(base_dir: Path) -> None:
+    """
+    Configure root logging once, CWD-independently.
+
+    Log file resolution order:
+      1. APP_LOG_FILE env var (explicit override, e.g. /var/log/poi_broker/app.log)
+      2. <workspace root>/app.log (next to the poi_broker package, never CWD)
+
+    Falls back to stderr if the log file is not writable so a logging
+    problem can never prevent the app from booting. Skipped entirely in
+    testing mode (FLASK_TESTING) so pytest never writes to app.log.
+    """
+    if _env_bool(os.environ.get('FLASK_TESTING'), False):
+        logging.basicConfig(level=logging.INFO)
+        return
+
+    log_path = (
+        Path(os.environ.get('APP_LOG_FILE', '')).expanduser()
+        if os.environ.get('APP_LOG_FILE')
+        else base_dir.parent / 'app.log'
+    )
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        handler: logging.Handler = RotatingFileHandler(
+            filename=log_path, encoding='utf-8', mode='a',
+            maxBytes=5 * 1024 * 1024, backupCount=3,
+        )
+        logging.basicConfig(handlers=[handler],
+                            format="%(asctime)s %(name)s:%(levelname)s:%(message)s",
+                            level=logging.INFO)
+    except OSError:
+        logging.basicConfig(format="%(asctime)s %(name)s:%(levelname)s:%(message)s",
+                            level=logging.INFO)
+        logging.getLogger(__name__).warning(
+            'Log file %s not writable; falling back to stderr logging', log_path
+        )
+
+
 def create_app():
     app = Flask(__name__)
     
@@ -101,10 +123,8 @@ def create_app():
         sort_by=("cumulative",)   # Sort by cumulative time
     )
     """
-    logging.basicConfig(handlers=[logging.FileHandler(filename="app.log", 
-                                                 encoding='utf-8', mode='a+')],
-                    format="%(asctime)s %(name)s:%(levelname)s:%(message)s", 
-                    level=logging.INFO)
+    base_dir = Path(__file__).resolve().parent
+    _configure_logging(base_dir)
     # Reduce werkzeug noise
     logging.getLogger("werkzeug").setLevel(logging.ERROR)  # or logging.WARNING
     # Silence Huey's verbose debug logs (scheduler, consumer, etc.)
@@ -112,7 +132,6 @@ def create_app():
     logging.getLogger("huey.consumer").setLevel(logging.INFO)
     logging.getLogger("huey.consumer.Scheduler").setLevel(logging.INFO)
 
-    base_dir = Path(__file__).resolve().parent
     config, db_path, login_db_path = build_app_config(base_dir)
     app.config.update(config)
     app.logger.info('Configured alerts database at %s', db_path)
@@ -148,7 +167,8 @@ def create_app():
         # Also configure the users database if it's SQLite
         if 'users' in db.engines:
             event.listens_for(db.engines['users'], "connect")(_configure_sqlite_pragmas)
-        _ensure_email_verification_expiry_column(app)
+        # NOTE: schema upgrades are manual one-shot SQL scripts (tools/*.sql,
+        # see docs/password_reset/deployment.md). This app never alters the DB.
 
     init_huey(app)
 
@@ -186,7 +206,22 @@ def create_app():
     from .models import User
     @login_manager.user_loader
     def load_user(user_id):
-        return db.session.get(User, int(user_id))
+        user = db.session.get(User, int(user_id))
+        if user is None:
+            return None
+        # Reject any session that predates the user's most recent password
+        # change/reset, including remember-cookie restores into a fresh
+        # session (they carry no login timestamp). password_changed_at is NULL
+        # until the account's first credential change, so unaffected accounts
+        # behave exactly as before. The watermark second itself counts as
+        # pre-change (second-granularity boundary — see
+        # docs/password_reset/adr_session_invalidation.md).
+        changed_at = user.password_changed_at
+        if changed_at is not None:
+            login_at = session.get('login_at')
+            if not isinstance(login_at, int) or login_at <= changed_at:
+                return None
+        return user
     
     # Set login_view AFTER blueprint registration to ensure the endpoint exists
     login_manager.login_view = 'auth.login'

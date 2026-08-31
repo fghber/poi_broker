@@ -21,6 +21,9 @@
         {% if recent_task %}
             <div class="alert alert-info">
                 <strong>Last Export:</strong> {{ recent_task.created_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}
+                {% if data_as_of %}
+                <br><small>Data as of: {{ data_as_of }} (alerts observed after this time are not included)</small>
+                {% endif %}
             </div>
 
             {% if recent_task.status == 'SUCCESS' %}
@@ -90,6 +93,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const exportBtn = document.getElementById('export-btn');
     const statusMsg = document.getElementById('export-status-msg');
     const MAX_EXPORT_ROWS = {{ max_export_rows | default(1000000) }};
+    const RATE_LIMIT_MESSAGE = 'Too many requests. Please wait a few seconds and try again.';
 
     function getCsrfToken() {
         const meta = document.querySelector('meta[name="csrf-token"]');
@@ -123,7 +127,7 @@ document.addEventListener('DOMContentLoaded', function () {
             body: JSON.stringify(rules)
         })
         .then(function (response) {
-            if (!response.ok) throw new Error('count failed');
+            if (!response.ok) throw Object.assign(new Error('count failed'), { status: response.status });
             return response.json();
         })
         .then(function (countData) {
@@ -136,8 +140,11 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             startExport(rules);
         })
-        .catch(function () {
-            statusMsg.innerHTML = '<span class="text-danger">Could not check export size. Please retry.</span>';
+        .catch(function (error) {
+            const message = (error && error.status === 429)
+                ? RATE_LIMIT_MESSAGE
+                : 'Could not check export size. Please retry.';
+            statusMsg.innerHTML = '<span class="text-danger">' + message + '</span>';
             exportBtn.disabled = false;
         });
     });
@@ -154,6 +161,9 @@ document.addEventListener('DOMContentLoaded', function () {
             body: JSON.stringify(rules)
         })
         .then(function (response) {
+            if (response.status === 429) {
+                return { ok: false, status: 429, data: { error: RATE_LIMIT_MESSAGE } };
+            }
             return response.json().then(function (data) {
                 return { ok: response.ok, status: response.status, data: data };
             });

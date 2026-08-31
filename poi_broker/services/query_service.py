@@ -131,7 +131,11 @@ def build_query_from_rules(
     return filtered_query, rules_payload
 
 
-def build_export_query_from_rules(rules_payload: dict) -> tuple[Query, dict]:
+def build_export_query_from_rules(
+    rules_payload: dict,
+    *,
+    max_alert_mjd: float | None = None,
+) -> tuple[Query, dict]:
     """
     Build a column-only export query from querybuilder rules.
 
@@ -142,6 +146,14 @@ def build_export_query_from_rules(rules_payload: dict) -> tuple[Query, dict]:
 
     Args:
         rules_payload: Dict with 'rules' key containing filter rules.
+        max_alert_mjd: Snapshot cutoff. Only rows whose ``date_alert_mjd``
+            (alert time) is strictly below this MJD are exported. The cutoff is
+            computed once at submit time and shared with the pre-count, so the
+            CSV is reproducible regardless of how long the task waits in the
+            queue: rows ingested later with an older alert time can still slip
+            in (bounded by ingest lag), but the export no longer drifts with
+            queue latency. Row *updates* after the cutoff still appear with
+            their new values.
 
     Returns:
         tuple: (export_query, rules_payload)
@@ -150,8 +162,11 @@ def build_export_query_from_rules(rules_payload: dict) -> tuple[Query, dict]:
         rules_payload,
         include_classification=True,
     )
+    if max_alert_mjd is not None:
+        filtered_query = filtered_query.filter(Ztf.date_alert_mjd < max_alert_mjd)
     export_query = (
-        filtered_query.enable_eagerloads(False)
+        filtered_query
+        .enable_eagerloads(False)
         .with_entities(*EXPORT_SELECT_COLS)
         .execution_options(yield_per=EXPORT_YIELD_PER, stream_results=True)
     )
@@ -179,17 +194,29 @@ def get_preview_sql(rules_payload: dict) -> str:
     return str(compiled)
 
 
-def build_count_query_from_rules(rules_payload: dict) -> Query:
+def build_count_query_from_rules(
+    rules_payload: dict,
+    *,
+    max_alert_mjd: float | None = None,
+) -> Query:
     """
     Build the COUNT query used by :func:`get_query_match_count`.
 
     Exposed for compile-SQL tests. Classification is joined only when needed.
+    ``max_alert_mjd`` applies the same snapshot cutoff as
+    :func:`build_export_query_from_rules`.
     """
     filtered_query, _ = build_query_from_rules(rules_payload)
+    if max_alert_mjd is not None:
+        filtered_query = filtered_query.filter(Ztf.date_alert_mjd < max_alert_mjd)
     return filtered_query.order_by(None).with_entities(db.func.count())
 
 
-def get_query_match_count(rules_payload: dict) -> int:
+def get_query_match_count(
+    rules_payload: dict,
+    *,
+    max_alert_mjd: float | None = None,
+) -> int:
     """
     Get number of matching records for a query.
 
@@ -198,11 +225,15 @@ def get_query_match_count(rules_payload: dict) -> int:
 
     Args:
         rules_payload: Dict with 'rules' key containing filter rules.
+        max_alert_mjd: When given, only rows with ``date_alert_mjd`` strictly
+            below this MJD are counted, matching the export snapshot cutoff.
 
     Returns:
         int: Number of matching records.
     """
-    match_count = build_count_query_from_rules(rules_payload).scalar()
+    match_count = build_count_query_from_rules(
+        rules_payload, max_alert_mjd=max_alert_mjd
+    ).scalar()
     return int(match_count or 0)
 
 

@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any, Callable, List, Optional, Protocol
 from sqlalchemy.orm import Query
 from astropy.time import Time
@@ -15,6 +16,25 @@ def to_mjd(date_str: str) -> float:
     if "T" in date_str:
         return Time(date_str, format="isot", scale="utc").mjd
     return Time(date_str, format="iso", scale="utc").mjd
+
+
+def datetime_to_mjd(dt: datetime) -> float:
+    """Convert a datetime to Modified Julian Date (MJD).
+
+    Naive datetimes are assumed to be UTC. Astropy interprets ``datetime``
+    input as UTC when ``scale='utc'``.
+    """
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return float(Time(dt, scale="utc").mjd)
+
+
+def mjd_to_datetime(mjd: float) -> datetime:
+    """Convert MJD back to a timezone-aware UTC datetime (inverse of
+    :func:`datetime_to_mjd`)."""
+    return Time(mjd, format="mjd", scale="utc").datetime.replace(
+        tzinfo=timezone.utc
+    )
 
 class Convertible(Protocol):
     """Protocol for values that can be compared in SQLAlchemy filters."""

@@ -89,11 +89,17 @@ def test_export_submit_creates_task(auth_client, app, mock_export_task):
     assert isinstance(data["task_id"], int)
 
     with app.app_context():
+        from datetime import datetime, timezone
+
         from poi_broker import db
         from poi_broker.models import ExportTask
+        from poi_broker.services.filter_service import datetime_to_mjd
         task = db.session.get(ExportTask, data["task_id"])
         assert task is not None
         assert task.status == "PENDING"
+        # Worker takes its cutoff from this row, so submit must persist it.
+        assert task.snapshot_mjd is not None
+        assert abs(task.snapshot_mjd - datetime_to_mjd(datetime.now(timezone.utc))) < 0.01
 
 
 def test_export_submit_accepts_raw_query_builder_shape(auth_client, app, mock_export_task):
@@ -324,6 +330,32 @@ def test_export_status_ok(auth_client, app):
     data = response.get_json()
     assert data["task_id"] == task_id
     assert data["status"] == "SUCCESS"
+
+
+def test_export_sentinel_snapshot_mjd_renders_without_date(auth_client, app):
+    """Regression: rows backfilled by tools/apply_export_snapshot_mjd.sql
+    carry the "no cutoff" sentinel 1e9. MJD 1e9 is beyond datetime's year
+    range, so converting it used to 500 the export page and status endpoint;
+    both now render and simply omit the date."""
+    from poi_broker import db
+    from poi_broker.models import ExportTask, User
+
+    with app.app_context():
+        user = User.query.filter_by(email="smoketest@example.com").first()
+        task = ExportTask(user_id=user.id, status="SUCCESS", snapshot_mjd=1e9)
+        db.session.add(task)
+        db.session.commit()
+        task_id = task.id
+
+    page = auth_client.get("/export")
+    assert page.status_code == 200
+    assert b"Data as of:" not in page.data
+
+    status = auth_client.get(f"/export/status/{task_id}")
+    assert status.status_code == 200
+    data = status.get_json()
+    assert data["snapshot_mjd"] == 1e9
+    assert data["data_as_of"] is None
 
 
 def test_export_status_not_found(auth_client):

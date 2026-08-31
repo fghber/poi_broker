@@ -2,6 +2,7 @@
 
 import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import (
@@ -20,6 +21,7 @@ from sqlalchemy.exc import IntegrityError
 
 from .. import db, limiter
 from ..models import ExportTask
+from ..services.filter_service import datetime_to_mjd, mjd_to_datetime
 from ..services.query_service import get_query_match_count
 from ..tasks import create_export_file, reset_stale_export_tasks
 
@@ -37,6 +39,17 @@ def _env_int(name: str, default: int) -> int:
 # Maximum number of rows a single export may return. Larger exports are declined.
 MAX_EXPORT_ROWS = _env_int('EXPORT_MAX_ROWS', 1_000_000)
 
+# tools/apply_export_snapshot_mjd.sql backfills historical rows with the
+# "no cutoff" sentinel 1e9 (far above any real alert MJD, ~6e4). MJD 1e9 is
+# ~year 2.7M, which astropy cannot convert to a datetime, so only real
+# cutoffs are ever rendered as dates.
+_SNAPSHOT_RENDER_MAX_MJD = 1e8
+
+
+def _renderable_snapshot(snapshot_mjd) -> bool:
+    """True when snapshot_mjd is a real cutoff, not NULL or the migration sentinel."""
+    return snapshot_mjd is not None and snapshot_mjd < _SNAPSHOT_RENDER_MAX_MJD
+
 export_bp = Blueprint('export', __name__, url_prefix='/export')
 
 
@@ -52,10 +65,18 @@ def export_page():
     recent_task = ExportTask.query.filter_by(user_id=current_user.id).order_by(
         ExportTask.created_at.desc()
     ).first()
-    
+
+    # Human-readable snapshot time for the last export.
+    data_as_of = None
+    if recent_task and _renderable_snapshot(recent_task.snapshot_mjd):
+        data_as_of = mjd_to_datetime(recent_task.snapshot_mjd).strftime(
+            '%Y-%m-%d %H:%M:%S UTC'
+        )
+
     return render_template(
         'export.html',
         recent_task=recent_task,
+        data_as_of=data_as_of,
         max_export_rows=MAX_EXPORT_ROWS
     )
 
@@ -103,9 +124,15 @@ def export_submit():
             'task_id': active_task.id
         }), 409
 
+    # Snapshot cutoff, computed once here and shared by the pre-count and the
+    # background export: the CSV only contains alerts with date_alert_mjd below
+    # this MJD, so re-running the same rules reproduces it regardless of how
+    # long the task waits in the queue.
+    snapshot_mjd = datetime_to_mjd(datetime.now(timezone.utc))
+
     # Enforce the maximum export size before enqueuing.
     try:
-        match_count = get_query_match_count(query_params)
+        match_count = get_query_match_count(query_params, max_alert_mjd=snapshot_mjd)
     except Exception:
         logger.exception('Failed to count matches for export')
         return jsonify({'error': 'Could not validate the export query.'}), 400
@@ -123,7 +150,8 @@ def export_submit():
         # Create new ExportTask record
         export_task = ExportTask(
             user_id=current_user.id,
-            status='PENDING'
+            status='PENDING',
+            snapshot_mjd=snapshot_mjd,
         )
         db.session.add(export_task)
         db.session.commit()
@@ -143,7 +171,7 @@ def export_submit():
         create_export_file(
             query_params=query_params,
             user_id=current_user.id,
-            task_id=export_task.id
+            task_id=export_task.id,
         )
     except Exception:
         logger.exception(f'Failed to enqueue background task for ExportTask {export_task.id}')
@@ -230,6 +258,13 @@ def export_status(task_id: int):
         'status': export_task.status,
         'created_at': export_task.created_at.isoformat(),
         'updated_at': export_task.updated_at.isoformat(),
+        # Alert-time snapshot cutoff (MJD) the export was taken at; rows with
+        # date_alert_mjd >= snapshot_mjd are never included.
+        'snapshot_mjd': export_task.snapshot_mjd,
+        'data_as_of': (
+            mjd_to_datetime(export_task.snapshot_mjd).isoformat()
+            if _renderable_snapshot(export_task.snapshot_mjd) else None
+        ),
         # NOTE: file_path is deliberately NOT included. It is a server
         # filesystem path and would leak instance structure to the client.
         # Downloading goes through /export/download/<id> instead.

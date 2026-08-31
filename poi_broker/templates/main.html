@@ -474,11 +474,10 @@
 <script>
   const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
 
-  function showAuthRequiredToast() {
-    const toastId = 'auth-required-toast';
+  function showAlertToast(message, toastId) {
     let toast = document.getElementById(toastId);
     if (!toast) {
-      if (!showAuthRequiredToast.template) {
+      if (!showAlertToast.template) {
         const template = document.createElement('template');
         template.innerHTML = `
           <div class="alert alert-warning alert-dismissible fade show" role="alert">
@@ -488,21 +487,22 @@
             </button>
           </div>
         `;
-        showAuthRequiredToast.template = template;
+        showAlertToast.template = template;
       }
 
-      toast = showAuthRequiredToast.template.content.firstElementChild.cloneNode(true);
+      toast = showAlertToast.template.content.firstElementChild.cloneNode(true);
       toast.id = toastId;
       toast.style.position = 'fixed';
       toast.style.top = '16px';
       toast.style.right = '16px';
       toast.style.zIndex = '9999';
       toast.style.maxWidth = '360px';
-      const message = toast.querySelector('[data-cell="message"]');
-      if (message) {
-        message.textContent = 'Log-in or Sign-Up to use this feature.';
-      }
       document.body.appendChild(toast);
+    }
+
+    const messageCell = toast.querySelector('[data-cell="message"]');
+    if (messageCell) {
+      messageCell.textContent = message;
     }
 
     // Reset auto-hide timer when triggered repeatedly.
@@ -513,6 +513,10 @@
       $(toast).alert('close');
     }, 3500);
     toast.dataset.hideTimer = String(timer);
+  }
+
+  function showAuthRequiredToast() {
+    showAlertToast('Log-in or Sign-Up to use this feature.', 'auth-required-toast');
   }
 
   // Handle favorite button clicks
@@ -546,6 +550,7 @@
         if (status === 'abort' || !isModalSessionActive(sessionId)) return;
         btn.attr('aria-pressed', String(pressed)).toggleClass('active', pressed);
         if (req.status === 401) showAuthRequiredToast();
+        else if (req.status === 429) showAlertToast('Too many requests. Please wait a few seconds and try again.', 'rate-limit-toast');
         else console.error('Failed to save favorite', req.status, status);
       })
       .always(function () {
@@ -1200,7 +1205,7 @@
   function plotRequestFail(xhr, statusText, sessionId, selector, fallback) {
     if (!isModalSessionActive(sessionId) || statusText === 'abort') return;
     const err = xhr.responseJSON && xhr.responseJSON.error;
-    renderAlert(selector, 'danger', err || fallback);
+    renderAlert(selector, 'danger', apiFailureMessage(xhr, err || fallback));
   }
 
   function query_locusplot(locus_id, sessionId) {
@@ -1245,7 +1250,7 @@
         console.error('Failed to load feature data:', status, error);
 
         const response = xhr.responseJSON;
-        const message = (response && response.error) || 'Failed to load feature data.';
+        const message = apiFailureMessage(xhr, (response && response.error) || 'Failed to load feature data.');
 
         // Keep the previous successful state if refresh fails.
         const hasRenderedContent = output.childElementCount > 0 || output.textContent.trim().length > 0;
@@ -1324,7 +1329,7 @@
         if (!isModalSessionActive(sessionId) || statusText === 'abort') return;
         loadingSpinnerController.hide(); // Hide spinner on error too
         const err = xhr.responseJSON && xhr.responseJSON.error;
-        renderAlert('#observing_output', 'danger', err || 'Error loading observing data. Please try again.');
+        renderAlert('#observing_output', 'danger', apiFailureMessage(xhr, err || 'Error loading observing data. Please try again.'));
     }));
   }
 
@@ -1439,6 +1444,13 @@
       plotRequestFail(xhr, statusText, sessionId, '#classification_output', 'Error loading classification data.');
     });
   }
+  // Prefer a clear, actionable message when an API call is rate limited (HTTP 429).
+  function apiFailureMessage(xhr, fallback) {
+    return xhr && xhr.status === 429
+      ? 'Too many requests. Please wait a few seconds and try again.'
+      : fallback;
+  }
+
   // Render a Bootstrap alert into a container using textContent (XSS-safe).
   function renderAlert(targetSelector, kind, message) {
     const target = document.querySelector(targetSelector);
@@ -1481,7 +1493,7 @@
       error: function(xhr, status, error) {
         if (!isModalSessionActive(sessionId) || status === 'abort') return;
         console.error('Crossmatches query failed:', status, error);
-        renderAlert('#crossmatches_table_output', 'danger', `Failed to load crossmatches data for LocusID ${locusId}! ${error}: ${xhr.responseText}`);
+        renderAlert('#crossmatches_table_output', 'danger', apiFailureMessage(xhr, `Failed to load crossmatches data for LocusID ${locusId}! ${error}: ${xhr.responseText}`));
       }
     });
   }
@@ -1750,7 +1762,7 @@
           fetch($btn.attr('data-count-url'), { credentials: 'same-origin' })
             .then(function (response) {
               if (!response.ok) {
-                throw new Error('count failed');
+                throw Object.assign(new Error('count failed'), { status: response.status });
               }
               return response.json();
             })
@@ -1773,7 +1785,10 @@
               }
               $btn.remove();
             })
-            .catch(function () {
+            .catch(function (error) {
+              if (error && error.status === 429) {
+                showAlertToast('Too many requests. Please wait a few seconds and try again.', 'rate-limit-toast');
+              }
               $btn.prop('disabled', false).text('Count');
             });
         });

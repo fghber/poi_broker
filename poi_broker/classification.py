@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 import numpy as np
 from sqlalchemy import text
 from bokeh.plotting import figure, show
@@ -6,6 +6,7 @@ from bokeh.models import ColumnDataSource, HoverTool, PolarTransform, LabelSet, 
 from bokeh.colors import RGB
 from bokeh.embed import components
 
+from . import limiter
 from .services.plotting_service import bokeh_json_payload, bokeh_warning_payload
 
 classification_blueprint = Blueprint('classification', __name__)
@@ -15,6 +16,7 @@ _MAX_ALERT_ID_LEN = 128
 
 
 @classification_blueprint.route('/query_classification')
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
 def classification_plot():
 
     alertId = request.args.get('alertId')

@@ -235,6 +235,12 @@ document.addEventListener('DOMContentLoaded', function () {
         $toast.toast('show');
     }
 
+    const RATE_LIMIT_MESSAGE = 'Too many requests. Please wait a few seconds and try again.';
+
+    function fetchFailureMessage(err, fallbackMessage) {
+        return err && err.status === 429 ? RATE_LIMIT_MESSAGE : fallbackMessage;
+    }
+
     function escapeHtml(str) {
         if (str == null) {
             return '';
@@ -312,7 +318,7 @@ document.addEventListener('DOMContentLoaded', function () {
             body: JSON.stringify({ name: name.trim() })
         })
         .then(r => {
-            if (!r.ok) throw new Error('Failed to create group');
+            if (!r.ok) throw Object.assign(new Error('Failed to create group'), { status: r.status });
             return r.json();
         })
         .then(data => {
@@ -325,7 +331,7 @@ document.addEventListener('DOMContentLoaded', function () {
         })
         .catch(e => {
             console.error(e);
-            showToast('Failed to create group', 'error');
+            showToast(fetchFailureMessage(e, 'Failed to create group'), 'error');
         });
     });
 
@@ -578,7 +584,7 @@ document.addEventListener('DOMContentLoaded', function () {
             })
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error('Failed to remove favorite');
+                        throw Object.assign(new Error('Failed to remove favorite'), { status: response.status });
                     }
                     return response.json();
                 })
@@ -592,7 +598,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 })
                 .catch(e => {
                     console.error(e);
-                    showToast('Failed to remove favorite', 'error');
+                    showToast(fetchFailureMessage(e, 'Failed to remove favorite'), 'error');
                 });
         }
 
@@ -615,7 +621,7 @@ document.addEventListener('DOMContentLoaded', function () {
             })
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error('Failed to delete group');
+                        throw Object.assign(new Error('Failed to delete group'), { status: response.status });
                     }
                     return response.json();
                 })
@@ -629,7 +635,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 })
                 .catch(e => {
                     console.error(e);
-                    showToast('Failed to delete group', 'error');
+                    showToast(fetchFailureMessage(e, 'Failed to delete group'), 'error');
                 });
         }
 
@@ -710,7 +716,7 @@ document.addEventListener('DOMContentLoaded', function () {
             body: JSON.stringify({ groupId: groupIdInt })
         })
         .then(r => {
-            if (!r.ok) throw new Error('Failed to move favorite');
+            if (!r.ok) throw Object.assign(new Error('Failed to move favorite'), { status: r.status });
             return r.json();
         })
         .then(data => {
@@ -726,7 +732,7 @@ document.addEventListener('DOMContentLoaded', function () {
         })
         .catch(e => {
             console.error('Fetch error:', e);
-            showToast('Failed to move favorite', 'error');
+            showToast(fetchFailureMessage(e, 'Failed to move favorite'), 'error');
         })
         .finally(function () {
             confirmMoveBtn.disabled = false;

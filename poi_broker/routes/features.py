@@ -10,6 +10,8 @@ logger = logging.getLogger(__name__)
 
 features_bp = Blueprint('features', __name__)
 
+_MAX_ALERT_ID_LEN = 128
+
 
 @features_bp.route('/query_features', methods=['GET'])
 @limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
@@ -21,6 +23,8 @@ def query_features():
     alert_id = request.args.get('alert_id')
     if not alert_id:
         return jsonify({'error': 'Missing alert_id'}), 400
+    if len(alert_id) > _MAX_ALERT_ID_LEN:
+        return jsonify({'error': 'alert_id is too long'}), 400
 
     try:
         data = query_features_by_alert_id(alert_id)
@@ -43,6 +47,8 @@ def query_featureplot_data():
     locusId = request.args.get('locusId')
     if not locusId:
         return jsonify({'error': 'Missing locusId'}), 400
+    if len(locusId) > _MAX_ALERT_ID_LEN:
+        return jsonify({'error': 'locusId is too long'}), 400
 
     selected_features = request.args.get('features')
     

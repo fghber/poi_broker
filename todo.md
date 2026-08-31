@@ -13,6 +13,8 @@
   * Violating a unique constraint (email column)
   * Violating a foreign key constraint
   * Violating a NOT NULL constraint
+- [x] Logging setup in `create_app()` (poi_broker/__init__.py:86-89, NOT app.py:104-107 as flagged): `logging.basicConfig` with hardcoded CWD-relative `app.log` (mode 'a+'), no config override. Boot depends on CWD writability (systemd WorkingDirectory/ReadWritePaths currently makes it work); pytest runs append to ./app.log in repo root; lands in /opt/poi_broker while huey.log goes to /var/log via HUEY_LOGFILE; no rotation. Fix: resolve path from `base_dir`/env var (note: basicConfig runs before `base_dir` is computed at line 97 — reorder needed), consider RotatingFileHandler. Not urgent: works under documented deployment.
+  - Fixed via `_configure_logging(base_dir)` in `poi_broker/__init__.py`: path = `APP_LOG_FILE` env var, else `<workspace root>/app.log` (CWD-independent, same location as before in dev and under systemd); `RotatingFileHandler` (5 MB x 3); stderr fallback if unwritable; skipped entirely when `FLASK_TESTING` so pytest never writes `app.log`.
 
 # Considerations
 

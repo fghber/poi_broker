@@ -1,4 +1,5 @@
 import json
+from datetime import date, datetime, timezone
 
 from poi_broker import db
 from poi_broker.helpers import (
@@ -28,6 +29,22 @@ def test_serialize_fallback_handles_nested_collections():
     assert serialized['bytes'] == 'foo'
     assert serialized['nested'][0] == 'bar'
     assert serialized['nested'][1]['inner'] == 'baz'
+
+
+def test_safe_serialize_handles_datetimes():
+    payload = {
+        'dt': datetime(2026, 8, 29, 12, 0, 0, tzinfo=timezone.utc),
+        'd': date(2026, 8, 29),
+        'nested': [datetime(2026, 1, 1)],
+    }
+
+    result = safe_serialize(payload)
+
+    assert json.loads(result) == {
+        'dt': '2026-08-29T12:00:00+00:00',
+        'd': '2026-08-29',
+        'nested': ['2026-01-01T00:00:00'],
+    }
 
 
 def test_object_as_dict_and_result_to_dict_with_model_instance(app):

@@ -13,6 +13,18 @@ export ALERTS_DB_PATH=../_broker_db/ztf_alerts_stream.db
 export USERS_DB_PATH=../_broker_db/users.db
 ```
 
+**Database:** `users.db` is created from `tools/usersdb_schema.sql` — the app
+never alters the database itself. If your dev `users.db` predates a schema
+change (e.g. `export_task.snapshot_mjd`), either recreate it:
+
+```bash
+sqlite3 ../_broker_db/users.db < tools/usersdb_schema.sql
+```
+
+or, if it holds data worth keeping (accounts, watchlists), alter it in place
+with the matching one-shot script in `tools/`
+(`apply_export_snapshot_mjd.sql`).
+
 **Terminal 1 — app**
 
 ```bash
