@@ -1,8 +1,12 @@
+# Direct dependencies with version constraints
+# Compile using pip-tools with: `pip-compile requirements.in -o requirements2.txt`
+# Or: `uv pip compile requirements.in -o requirements2.txt`
 Flask==3.*
 flask-login==0.6.*
 Flask-WTF==1.*
 Flask-SQLAlchemy==3.*
 Flask-Limiter==3.*
+huey==3.*
 python-dotenv
 numpy==2.2.*
 astropy==6.*

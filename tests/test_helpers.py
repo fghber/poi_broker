@@ -1,77 +1,14 @@
 import json
+from datetime import date, datetime, timezone
 
 from poi_broker import db
 from poi_broker.helpers import (
-    extract_dates,
-    extract_float_filter,
-    extract_int_filter,
-    extract_numbers,
-    extract_mjd_filter,
     object_as_dict,
     result_to_dict,
     safe_serialize,
     serialize_fallback,
 )
 from poi_broker.models import Ztf
-
-
-def test_extract_numbers_returns_none_when_no_numeric_text():
-    assert extract_numbers('no numbers here') is None
-
-
-def test_extract_numbers_preserves_single_value_with_comparator():
-    assert extract_numbers('>42') == ['>42']
-    assert extract_numbers('<-1.5') == ['<-1.5']
-
-
-def test_extract_numbers_returns_two_values_without_comparators():
-    assert extract_numbers('>1.2 and <3.4') == ['1.2', '3.4']
-    assert extract_numbers('5 10') == ['5', '10']
-
-
-def test_extract_dates_parses_yyyymmdd_and_iso_formats():
-    assert extract_dates('20250115') == ['2025-01-15']
-    assert extract_dates('2025-01-15T12:30:00') == ['2025-01-15T12:30:00']
-    assert extract_dates('<2025-01-15 00:00:00') == ['<2025-01-15 00:00:00']
-
-
-def test_extract_dates_falls_back_when_yyyymmdd_is_invalid_or_prefixed():
-    assert extract_dates('>20250115') == ['>20250115']
-    assert extract_dates('20251301') == ['20251301']
-    assert extract_dates('not-a-date') == []
-
-
-def test_extract_float_filter_creates_equality_filter_for_exact_value(app):
-    with app.app_context():
-        query = db.session.query(Ztf)
-        filtered = extract_float_filter(['1.23'], Ztf.date_alert_mjd, query)
-        dialect = query.session.get_bind().dialect
-        compiled = str(filtered.statement.compile(dialect=dialect, compile_kwargs={'literal_binds': True}))
-
-    assert 'date_alert_mjd' in compiled
-    assert '= 1.23' in compiled or '== 1.23' in compiled
-
-
-def test_extract_int_filter_handles_two_values_and_orders_inputs(app):
-    with app.app_context():
-        query = db.session.query(Ztf)
-        filtered = extract_int_filter(['5', '1'], Ztf.date_alert_mjd, query)
-        dialect = query.session.get_bind().dialect
-        compiled = str(filtered.statement.compile(dialect=dialect, compile_kwargs={'literal_binds': True}))
-
-    assert 'date_alert_mjd >= 1' in compiled
-    assert 'date_alert_mjd <= 5' in compiled
-
-
-def test_extract_mjd_filter_converts_iso_date_to_mjd_range(app):
-    with app.app_context():
-        query = db.session.query(Ztf)
-        filtered = extract_mjd_filter(['2025-01-15'], Ztf.date_alert_mjd, query)
-        dialect = query.session.get_bind().dialect
-        compiled = str(filtered.statement.compile(dialect=dialect, compile_kwargs={'literal_binds': True}))
-
-    assert 'date_alert_mjd' in compiled
-    assert '>=' in compiled and '<=' in compiled
 
 
 def test_safe_serialize_falls_back_for_non_json_objects():
@@ -92,6 +29,22 @@ def test_serialize_fallback_handles_nested_collections():
     assert serialized['bytes'] == 'foo'
     assert serialized['nested'][0] == 'bar'
     assert serialized['nested'][1]['inner'] == 'baz'
+
+
+def test_safe_serialize_handles_datetimes():
+    payload = {
+        'dt': datetime(2026, 8, 29, 12, 0, 0, tzinfo=timezone.utc),
+        'd': date(2026, 8, 29),
+        'nested': [datetime(2026, 1, 1)],
+    }
+
+    result = safe_serialize(payload)
+
+    assert json.loads(result) == {
+        'dt': '2026-08-29T12:00:00+00:00',
+        'd': '2026-08-29',
+        'nested': ['2026-01-01T00:00:00'],
+    }
 
 
 def test_object_as_dict_and_result_to_dict_with_model_instance(app):

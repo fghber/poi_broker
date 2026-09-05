@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, make_response
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, make_response, session
 from flask_login import login_user, logout_user, login_required
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.exc import IntegrityError
@@ -7,12 +7,16 @@ from . import db
 import secrets
 from datetime import datetime, timedelta, timezone
 import os
-import smtplib
 import logging
-from email.message import EmailMessage
 from email_validator import validate_email, EmailNotValidError
-import ssl
 from . import limiter
+from .services.email_service import send_email, _format_expire_time
+import hashlib
+
+
+def hash_token(token: str) -> str:
+    """Return a SHA-256 hex digest of a token for safe at-rest storage."""
+    return hashlib.sha256(token.encode('utf-8')).hexdigest()
 
 
 def _utc_now_epoch() -> int:
@@ -30,24 +34,39 @@ def _is_reset_token_expired(expires_at) -> bool:
             return True
     return expires_epoch < _utc_now_epoch()
 
-def _format_expire_time(expire_time) -> str | None:
-    if expire_time is None:
-        return None
-    if isinstance(expire_time, datetime):
-        if expire_time.tzinfo is None:
-            expire_time = expire_time.replace(tzinfo=timezone.utc)
-        else:
-            expire_time = expire_time.astimezone(timezone.utc)
-        return expire_time.isoformat()
-    try:
-        return datetime.fromtimestamp(int(expire_time), tz=timezone.utc).isoformat()
-    except (TypeError, ValueError, OSError, OverflowError):
-        return None
-
 logger = logging.getLogger(__name__)
 auth_blueprint = Blueprint('auth', __name__)
 
+# Same copy + redirect for new signup, duplicate email, and uniqueness races
+# so the response is not an account-existence oracle.
+SIGNUP_GENERIC_NOTICE = (
+    'If this email is available, a verification message will be sent.'
+)
+FORGOT_PASSWORD_GENERIC_NOTICE = (
+    'If an account exists for that email, a password reset link will be sent.'
+)
+VERIFICATION_TOKEN_TTL_SECONDS = int(timedelta(hours=24).total_seconds())
+RESET_TOKEN_TTL_SECONDS = int(timedelta(hours=1).total_seconds())
+
+# Checked against unknown emails so login burns one password-hash comparison
+# either way; otherwise timing reveals whether the account exists (CWE-208).
+# Generated with the same defaults as real password hashes.
+DUMMY_PASSWORD_HASH = generate_password_hash(secrets.token_urlsafe(32))
+
+
+def _absolute_url(endpoint: str, **values) -> str:
+    """Absolute URL for email links; PUBLIC_BASE_URL wins over request Host."""
+    public_base = (current_app.config.get('PUBLIC_BASE_URL') or '').rstrip('/')
+    if public_base:
+        return f"{public_base}{url_for(endpoint, **values)}"
+    return url_for(endpoint, _external=True, **values)
+
 #IDEA: Improve emails (body and subject), add HTML version, perhaps use a proper email template, etc.
+
+
+def _signup_accepted_response():
+    flash(SIGNUP_GENERIC_NOTICE, 'info')
+    return redirect(url_for('auth.login'))
 
 @auth_blueprint.route('/login')
 def login():
@@ -62,29 +81,39 @@ def login_post():
     remember = True if request.form.get('remember') else False
 
     if email_input is None or password is None:
-        flash('Please provide an email and a password and try again.')
+        flash('Please provide an email and a password and try again.', 'danger')
         return redirect(url_for('auth.login')) # reload the page
 
     # Normalize email for lookup (no deliverability check on login)
     email = normalize_email(email_input, check_deliverability=False)
     if not email:
-        flash('Please provide a valid email address and try again.')
+        flash('Please provide a valid email address and try again.', 'danger')
         return redirect(url_for('auth.login'))
 
     user = User.query.filter_by(email=email).first()
 
-    # check if user actually exists & provided the right password (compared to hashed password in database)
-    if not user or not check_password_hash(user.password, password):
-        flash('Please check your login details and try again.')
+    # Exactly one password-hash comparison runs on every attempt — known
+    # emails against the stored hash, unknown ones against DUMMY_PASSWORD_HASH
+    # — so response timing does not reveal whether an account exists (CWE-208).
+    if user:
+        valid_password = check_password_hash(user.password, password)
+    else:
+        check_password_hash(DUMMY_PASSWORD_HASH, password)
+        valid_password = False
+    if not valid_password:
+        flash('Please check your login details and try again.', 'danger')
         return redirect(url_for('auth.login', forgot_password=True)) # if user doesn't exist or password is wrong, reload the page
     
     # Check if email is verified
     if not user.email_verified:
-        flash('Please verify your email before logging in. Check your inbox for the verification link.')
+        flash('Please verify your email before logging in. Check your inbox for the verification link.', 'warning')
         return redirect(url_for('auth.login'))
     
     # otherwise, we know the user has the right credentials
     login_user(user, remember=remember)
+    # A login proves the current credential, so stamp past the watermark even
+    # in the watermark second (docs/password_reset/adr_session_invalidation.md).
+    session['login_at'] = max(_utc_now_epoch(), (user.password_changed_at or 0) + 1)
     return redirect(url_for('main.profile'))
 
 @auth_blueprint.route('/signup')
@@ -113,40 +142,44 @@ def normalize_email(email: str, check_deliverability: bool = False) -> str | Non
 def signup_post():
     email_input = request.form.get('email', '').strip()
     name = request.form.get('name', '').strip()
-    password = request.form.get('password', '').strip()
+    password = request.form.get('password', '')
 
     # Validate and normalize email (check deliverability for new accounts)
     email = normalize_email(email_input, check_deliverability=True)
     if not email:
-        flash('Invalid email address.')
+        flash('Invalid email address.', 'danger')
         return redirect(url_for('auth.signup'))
-    
-    # Validate password length
-    if not password or len(password) < 8:
-        flash('Password must be at least 8 characters.')
+
+    # Validate password length. Leading/trailing spaces are part of the
+    # password (login compares the raw value), so only the trimmed copy
+    # feeds the emptiness check — otherwise 8 spaces would pass len().
+    if not password.strip() or len(password) < 8:
+        flash('Password must be at least 8 characters.', 'danger')
         return redirect(url_for('auth.signup'))
     
     if not name:
-        flash('Name is required.')
+        flash('Name is required.', 'danger')
         return redirect(url_for('auth.signup'))
 
     user = User.query.filter_by(email=email).first() # if this returns a user, then the email already exists in database
 
-    if user: # if a user is found, we want to redirect back to signup page so user can try again  
-        flash('Email address already exists')
-        return redirect(url_for('auth.signup'))
+    if user:
+        return _signup_accepted_response()
 
     # Create user but mark as unverified
+    raw_verification_token = secrets.token_urlsafe(32)
+    verification_expires = _utc_now_epoch() + VERIFICATION_TOKEN_TTL_SECONDS
     new_user = User(
         email=email,
         name=name,
         password=generate_password_hash(password),
         email_verified=False,
-        email_verification_token=secrets.token_urlsafe(32)
+        email_verification_token=hash_token(raw_verification_token),
+        email_verification_token_expires=verification_expires,
     )
 
     # Send verification email
-    verification_link = url_for('auth.verify_email', token=new_user.email_verification_token, _external=True)
+    verification_link = _absolute_url('auth.verify_email', token=raw_verification_token)
     result = send_email(
         message=f'Please verify your email by clicking here: {verification_link}',
         to_email=email,
@@ -157,12 +190,14 @@ def signup_post():
             f'<p>Please verify your email by clicking the link below:</p>'
             f'<p><a href="{verification_link}">Verify Email</a></p>'
             f'<p>Or copy and paste this link: {verification_link}</p>'
+            f'<p>This link expires in 24 hours.</p>'
             '</body></html>'
-        )
+        ),
+        expire_time=verification_expires,
     )
 
     if not result:
-        flash('Failed to send verification email. Please try signing up again later.')
+        flash('Failed to send verification email. Please try signing up again later.', 'danger')
         return redirect(url_for('auth.signup'))
     
     #only add the user to the database if the email was sent successfully to avoid creating unverified accounts with invalid emails
@@ -170,43 +205,64 @@ def signup_post():
     try:
         db.session.commit()
     except IntegrityError:
-        db.session.rollback() #'Resource already exists or constraint violated' # 409: should be rare since we already check for existing email, but could happen in a race condition
-        flash('Failed to create user. Please sign-in with existing account or try signing up again later.') 
-        return redirect(url_for('auth.signup'))
+        db.session.rollback()  # uniqueness race; same response as a duplicate signup
+        return _signup_accepted_response()
     except Exception as e:
         db.session.rollback()
         logger.error(f'Database error during commit: {str(e)}', exc_info=True)
-        flash('Failed to create user. Please try signing up again later.') 
+        flash('Failed to create user. Please try signing up again later.', 'danger')
         return redirect(url_for('auth.signup'))
 
-    flash('Welcome! A verification email has been sent to your address. Please check your inbox.')
-    return redirect(url_for('auth.login'))
+    return _signup_accepted_response()
 
+# Email links must arrive by GET (they land in browser history, proxy logs and
+# link-scanner prefetches), so like reset-password the GET only validates the
+# token and shows a confirmation page; the state change happens on POST, which
+# also keeps email scanners (e.g. Outlook SafeLinks) from burning the
+# one-time token by prefetching it before the user clicks.
 @auth_blueprint.route('/verify-email/<token>')
 def verify_email(token):
-    """Verify user email via token link."""
-    user = User.query.filter_by(email_verification_token=token).first()
-    
-    if not user:
-        flash('Invalid or expired verification link.')
+    """Validate the token from the email link and show a confirmation page."""
+    user = User.query.filter_by(email_verification_token=hash_token(token)).first()
+
+    if not user or _is_reset_token_expired(user.email_verification_token_expires):
+        flash('Invalid or expired verification link.', 'danger')
         return redirect(url_for('auth.signup'))
-    
+
     if user.email_verified:
-        flash('Email is already verified. You can now log in.')
+        flash('Email is already verified. You can now log in.', 'info')
         return redirect(url_for('auth.login'))
-    
+
+    return render_template('verify_email.html', token=token)
+
+
+@auth_blueprint.route('/verify-email/<token>', methods=['POST'])
+@limiter.limit(lambda: current_app.config.get('AUTH_RATE_LIMIT_VERIFY_EMAIL', '10 per hour'))
+def verify_email_post(token):
+    """Mark the email verified; the token stays valid until this succeeds."""
+    user = User.query.filter_by(email_verification_token=hash_token(token)).first()
+
+    if not user or _is_reset_token_expired(user.email_verification_token_expires):
+        flash('Invalid or expired verification link.', 'danger')
+        return redirect(url_for('auth.signup'))
+
+    if user.email_verified:
+        flash('Email is already verified. You can now log in.', 'info')
+        return redirect(url_for('auth.login'))
+
     # Mark email as verified and clear the token
     user.email_verified = True
     user.email_verification_token = None
+    user.email_verification_token_expires = None
     try:
         db.session.commit()
     except Exception as e:
         db.session.rollback()
         logger.error(f'Database error during commit: {str(e)}', exc_info=True)
-        flash('Failed to verify email. Please try again later.')
-        return redirect(url_for('auth.signup'))
-    
-    flash('Email verified successfully! You can now log in.')
+        flash('Failed to verify email. Please try again later.', 'danger')
+        return redirect(url_for('auth.verify_email', token=token))
+
+    flash('Email verified successfully! You can now log in.', 'success')
     return redirect(url_for('auth.login'))
 
 
@@ -242,35 +298,32 @@ def forgot_password_post():
     
     if user:
         # Generate reset token
-        user.reset_token = secrets.token_urlsafe(32)
-        user.reset_token_expires = _utc_now_epoch() + int(timedelta(hours=1).total_seconds())
+        raw_reset_token = secrets.token_urlsafe(32)
+        user.reset_token = hash_token(raw_reset_token)
+        user.reset_token_expires = _utc_now_epoch() + RESET_TOKEN_TTL_SECONDS
         try:
             db.session.commit()
         except Exception as e:
             db.session.rollback()
             logger.error(f'Database error during commit: {str(e)}', exc_info=True)
-            flash('Failed to generate password reset link. Please try again later.')
-            return redirect(url_for('auth.forgot_password'))
-        
-        # Send email with reset link and expiration time
-        result = send_email(
-            f"Reset your password using the following link: {url_for('auth.reset_password', token=user.reset_token, _external=True)}", 
-            email,
-            expire_time=user.reset_token_expires
-        )
-        if not result:
-            flash('Failed to send password reset email. Please try again later.')
         else:
-            flash('Password reset link sent to your email')
-    
+            result = send_email(
+                f"Reset your password using the following link: {_absolute_url('auth.reset_password', token=raw_reset_token)}",
+                email,
+                expire_time=user.reset_token_expires
+            )
+            if not result:
+                logger.error('Failed to send password reset email')
+
+    flash(FORGOT_PASSWORD_GENERIC_NOTICE, 'info')
     return redirect(url_for('auth.login'))
 
 @auth_blueprint.route('/reset-password/<token>')
 def reset_password(token):
-    user = User.query.filter_by(reset_token=token).first()
+    user = User.query.filter_by(reset_token=hash_token(token)).first()
     
     if not user or _is_reset_token_expired(user.reset_token_expires):
-        flash('Invalid or expired reset token')
+        flash('Invalid or expired reset token', 'danger')
         return redirect(url_for('auth.login'))
     
     return render_template('reset_password.html', token=token)
@@ -282,24 +335,27 @@ def reset_password_post(token):
     password_confirm = request.form.get('password_confirm')
 
     if not password or not password_confirm:
-        flash('Please provide and confirm your new password')
+        flash('Please provide and confirm your new password', 'danger')
         return redirect(url_for('auth.reset_password', token=token))
 
     if password != password_confirm:
-        flash('Passwords do not match')
+        flash('Passwords do not match', 'danger')
         return redirect(url_for('auth.reset_password', token=token))
 
     if len(password) < 8:
-        flash('Password must be at least 8 characters')
+        flash('Password must be at least 8 characters', 'danger')
         return redirect(url_for('auth.reset_password', token=token))
 
-    user = User.query.filter_by(reset_token=token).first()
+    user = User.query.filter_by(reset_token=hash_token(token)).first()
     if not user or _is_reset_token_expired(user.reset_token_expires):
-        flash('Invalid or expired reset token')
+        flash('Invalid or expired reset token', 'danger')
         return redirect(url_for('auth.login'))
 
-    # Hash and store new password, clear the token fields
+    # Hash and store new password, clear the token fields. Bumping
+    # password_changed_at ends every existing session and remembered login;
+    # the user logs back in with the new password below.
     user.password = generate_password_hash(password)
+    user.password_changed_at = _utc_now_epoch()
     user.reset_token = None
     user.reset_token_expires = None
     try:
@@ -307,10 +363,15 @@ def reset_password_post(token):
     except Exception as e:
         db.session.rollback()
         logger.error(f'Database error during commit: {str(e)}', exc_info=True)
-        flash('Failed to update password. Please try again later.')
+        flash('Failed to update password. Please try again later.', 'danger')
         return redirect(url_for('auth.reset_password', token=token))
 
-    flash('Password updated. Please log in.')
+    # The submitting browser may still hold a live session (e.g. the account
+    # owner clicking their own reset link); drop it along with the rest.
+    if session.get('_user_id'):
+        logout_user()
+
+    flash('Password updated. Please log in with your new password.', 'success')
     return redirect(url_for('auth.login'))
 
 
@@ -335,102 +396,49 @@ def change_password():
     
     # Validate that all fields are provided
     if not current_password or not new_password or not new_password_confirm:
-        flash('Please provide current password and new password.')
+        flash('Please provide current password and new password.', 'danger')
         return redirect(url_for('auth.security'))
     
     # Verify current password
     if not check_password_hash(current_user.password, current_password):
-        flash('Current password is incorrect.')
+        flash('Current password is incorrect.', 'danger')
         return redirect(url_for('auth.security'))
     
     # Validate new password matches confirmation
     if new_password != new_password_confirm:
-        flash('New passwords do not match.')
+        flash('New passwords do not match.', 'danger')
         return redirect(url_for('auth.security'))
     
     # Validate password length
     if len(new_password) < 8:
-        flash('New password must be at least 8 characters.')
+        flash('New password must be at least 8 characters.', 'danger')
         return redirect(url_for('auth.security'))
     
     # Check that new password is different from current
     if check_password_hash(current_user.password, new_password):
-        flash('New password must be different from current password.')
+        flash('New password must be different from current password.', 'danger')
         return redirect(url_for('auth.security'))
     
-    # Update password
+    # Update password. Bumping password_changed_at ends every session
+    # including this one — the user_loader demands login_at after
+    # the change everywhere. logout_user() also clears the remember-me cookie
+    # on this browser; tokens left on other devices become inert server-side.
+    changed_at = _utc_now_epoch()
     current_user.password = generate_password_hash(new_password)
+    current_user.password_changed_at = changed_at
+    # A reset link requested before this change is a bearer credential that
+    # must not outlive the rotation, so clear it like reset_password_post does.
+    current_user.reset_token = None
+    current_user.reset_token_expires = None
     try:
         db.session.commit()
     except Exception as e:
         db.session.rollback()
         logger.error(f'Database error during commit: {str(e)}', exc_info=True)
-        flash('Failed to change password. Please try again later.')
+        flash('Failed to change password. Please try again later.', 'danger')
         return redirect(url_for('auth.security'))
 
-    flash('Password changed successfully.')
-    return redirect(url_for('auth.security'))
-
-
-def send_email(message, to_email, subject=None, html_text=None, from_email=None, expire_time=None):
-    """
-    Send a multipart email (plain text + optional HTML).
-    Backwards-compatible: legacy calls use send_email(message, email).
-    Prefer setting SMTP env vars: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM.
-    
-    Args:
-        expire_time: Optional datetime when the link/token expires. If provided, displays 
-                     expiration time in the email body.
-    """
-    # Backwards compatibility: if called as send_email(message, email)
-    if to_email is None:
-        raise ValueError("Recipient email address required as second argument.")
-
-    plain_text = str(message)
-    if subject is None:
-        subject = os.environ.get("SMTP_SUBJECT", "Notification from POI Broker")
-
-    # If no explicit HTML provided, create a simple HTML version
-    if html_text is None:
-        expire_section = ""
-        expire_display = _format_expire_time(expire_time)
-        if expire_display:
-            expire_section = f"<p><strong>Expires:</strong> {expire_display} UTC</p>"
-        
-        html_text = (
-            "<html><body>"
-            f"<h3>{subject}</h3>"
-            f"{expire_section}"
-            f"<hr><pre style='white-space:pre-wrap'>{plain_text}</pre>"
-            "</body></html>"
-        )
-
-    SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-    SMTP_PORT = int(os.environ.get("SMTP_PORT", 465))
-    SMTP_USER = os.environ.get("SMTP_USER")  # required for authenticated SMTP
-    SMTP_PASS = os.environ.get("SMTP_APP_PASSWORD")
-    FROM = from_email or os.environ.get("SMTP_FROM") or SMTP_USER
-    LOCAL_HOST = os.environ.get("LOCAL_HOST", "localhost")
-    #logger.info("%s %s %s %s %s %s", SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS[0:1] + "***" + SMTP_PASS[-2:-1] if SMTP_PASS else "None", FROM, LOCAL_HOST)
-
-    if not FROM:
-        raise RuntimeError("No sender address configured (SMTP_FROM or SMTP_USER)")
-
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = FROM
-    msg["To"] = to_email
-    msg.set_content(plain_text)
-    msg.add_alternative(html_text, subtype="html")
-    #logging.info("Email sent:\n%s", msg.as_string())
-
-    try:
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, local_hostname=LOCAL_HOST, context=ssl.create_default_context()) as server:
-            if SMTP_USER and SMTP_PASS:
-                server.login(SMTP_USER, SMTP_PASS)
-            server.send_message(msg)
-        logger.info("Sent email to %s (subject=%s)", to_email, subject)
-        return True
-    except Exception as exc:
-        logger.exception("Failed to send email to %s: %s", to_email, exc)
-        return False
+    logout_user()
+    flash('Password changed. For your security you have been signed out on all '
+          'devices — please log in with your new password.', 'success')
+    return redirect(url_for('auth.login'))

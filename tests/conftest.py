@@ -1,11 +1,23 @@
-import os
 import pytest
+
+from poi_broker.models import Ztf
 
 """
 Set isolated temp SQLite paths for both alerts and users DBs via env vars
 Set testing mode and disable CSRF for test client runs
 Create/drop DB tables around each test app lifecycle
 """
+
+
+@pytest.fixture(autouse=True)
+def _reset_worker_app():
+    """Clear the Huey process-wide Flask app between tests (tmp_path DBs)."""
+    import poi_broker.tasks as tasks_mod
+
+    tasks_mod._worker_app = None
+    yield
+    tasks_mod._worker_app = None
+
 
 @pytest.fixture()
 def app(tmp_path, monkeypatch):
@@ -17,6 +29,8 @@ def app(tmp_path, monkeypatch):
     monkeypatch.setenv("FLASK_DEBUG", "0")
     monkeypatch.setenv("ALERTS_DB_PATH", str(alerts_db))
     monkeypatch.setenv("USERS_DB_PATH", str(users_db))
+    monkeypatch.setenv("HUEY_BACKEND", "memory")
+    monkeypatch.setenv("HUEY_IMMEDIATE", "true")
 
     from poi_broker import create_app, db
 
@@ -45,6 +59,7 @@ def client(app):
 def auth_client(app):
     """Test client pre-logged-in as a verified user."""
     from werkzeug.security import generate_password_hash
+
     from poi_broker import db
     from poi_broker.models import User
 
@@ -73,6 +88,7 @@ def auth_client(app):
 @pytest.fixture()
 def user_factory(app):
     from werkzeug.security import generate_password_hash
+
     from poi_broker import db
     from poi_broker.models import User
 
@@ -136,3 +152,22 @@ def secure_app(tmp_path, monkeypatch):
 @pytest.fixture()
 def secure_client(secure_app):
     return secure_app.test_client()
+
+
+@pytest.fixture
+def mock_my_model():
+    my_model = Ztf(
+        alert_id="Test POI",
+        date_alert_mjd=60255.1143980999,
+        locus_id = 'Ztf-2025-0001'
+    )
+    return my_model
+
+@pytest.fixture
+def mock_get_sqlalchemy(mocker, app):
+    # Mock the query property at the model level
+    mock_query = mocker.Mock()
+    # Use app context to properly mock the query property
+    with app.app_context():
+        mocker.patch.object(Ztf, 'query', mock_query)
+    return mock_query

@@ -14,10 +14,21 @@ The Point of Interest broker can be found at https://poibroker.uantof.cl/
  
 Current and especially upcoming all-sky time-domain surveys, such as LSST, will deliver a vast amount of data each night, requiring for the development of flexible, straightforward tools for the analysis, selection and forwarding of information regarding astrophysical transients and variable objects. 
  
-Our alert broker, called *Point of Interest*, is tailored towards the needs of astronomers looking for updated observations of variable stars in specific on-sky regions. Developed by a small team at Vanderbilt University, where I'm the main developer responsible for this project, this *Point of Interest*' alert broker should enable users to get updates on variable star observations from a straightforward, user-friendly web service. Data are processed in real time by big data/ machine learning algorithms and will be immediately available to the user community.
+Our alert broker, called *Point of Interest*, is tailored towards the needs of astronomers looking for updated observations of variable stars in specific on-sky regions. Developed by a small team, where I'm the main developer responsible for this project, the *Point of Interest*' alert broker enables users to get updates on variable star observations from a straightforward, user-friendly web service. Data are processed in real time by big data/ machine learning algorithms and will be immediately available to the user community.
 
 
 *Point of Interest* differs from other brokers in the focus on updates on variable stars, thus running a rather specific than the full analysis chain of streamed data. As a consequence, the broker is rather lightweight. *Point of Interest* users are encouraged to design their own on-sky regions they want receive updates for (such as for planned follow-up campaigns) or select from a list of on-sky regions which are particularly interesting for variable star observers, such as stellar streams, globular clusters and dwarf galaxies.
+
+## Features
+
+The catalog on `/` lists recent alerts. Click a `ztf_object_id` for the light curve, thumbnails, features, observing plan, cross-matches, and classification. Signed-in users also get:
+
+- **Bookmarked filters** — save the current catalog filter URL from the main table and reopen it from the profile page.
+- **Default feature-plot columns** — pick up to 10 features on `/settings`; those columns are pre-selected when a feature plot opens.
+- **Custom observatories** — add name/lat/lon on `/settings` (timezone is resolved from coordinates). The last observatory used in the observing tool is remembered for the next session.
+- **Watchlists** — build a visual query and receive a daily email digest of new matches (`tools/watchlist_digest.py`).
+- **Favorites** — star a locus and organize favorites into groups on the profile page.
+- **Bulk CSV export** — `/export` uses the same visual query builder. The count is checked first (1,000,000 row cap); the CSV is built in the background (Huey) and the page shows a download link when it is ready. Sign-in required. Local app + worker setup is in `docs/async_export/local_app_and_worker.md`.
 
 ## Installation
 This repository contains the web frontend, including a small database for testing purposes.
@@ -68,6 +79,12 @@ or
 
 In the web browser, enter `http://127.0.0.1:5000/` to view the front-ent.
 
+### Watchlist digest (cron)
+
+Daily watchlist emails are sent by `tools/watchlist_digest.py`, which uses its own `tools/.env` (see `tools/.env.example`). That file is **not** the web app `.env`.
+
+The digest rebuilds each watchlist from stored `rules_json` through `create_app()`. It does **not** execute `sql_where` (that column is a display preview only). `create_app()` requires `SECRET_KEY`. If `tools/.env` omits it, the cron job used to crash before processing any watchlists. The script now sets a local CLI placeholder and logs a warning. Prefer copying the web app `SECRET_KEY` into `tools/.env`.
+
 In case the website isn't displayed: do a
 
 `cat app.log`
@@ -79,11 +96,14 @@ Also, inspect the browser developer console (F12) to see if there are any errors
 
 ### Testing, Debugging and Profiling
 
-So far, basic `pytest` smoke test for the main route and some unit tests exist. Run all tests before commiting changes.
+Tests have become fairly comprehensive across various modules. Always run all tests before committing changes.
 
+Run `pytest` (Fast parallel execution recommended for development)
 ```
-(poi_brokerenv) λ pytest -q
+python -m pytest -n auto -q --tb=no
 ```
+
+For more detailed testing and coverage requirements, please see `/tests/coverage.md`. Every module should aim for at least 50%-75% code coverage, with a total project goal of 75%+ coverage.
 
 It is highly recommended to debug the app in a capable IDE like VS Code to leverage built-in debugging capabilities.
 

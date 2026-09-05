@@ -80,15 +80,16 @@ def toggle_favorite(locus_id, fav_flag, group_id=None):
         fav = Favorite.query.filter_by(user_id=current_user.id, locus_id=locus_id).first()
         
         if fav_flag:
+            # Validate group ownership on both insert and update
+            if group_id is not None:
+                group = FavoriteGroup.query.filter_by(id=group_id, user_id=current_user.id).first()
+                if not group:
+                    return {'error': 'group not found'}, 404
+
             if not fav:
                 fav = Favorite(user_id=current_user.id, locus_id=locus_id, group_id=group_id)
                 db.session.add(fav)
             else:
-                # Update group if specified, Validate group_id before updating
-                if group_id is not None:
-                    group = FavoriteGroup.query.filter_by(id=group_id, user_id=current_user.id).first()
-                    if not group:
-                        return {'error': 'group not found'}, 404
                 fav.group_id = group_id
             db.session.commit()
         else:
@@ -185,7 +186,7 @@ def get_favorite_groups():
         return result
     except Exception as e:
         logger.error(f'Error getting favorite groups: {str(e)}', exc_info=True)
-        return []
+        raise
 
 
 def create_favorite_group(name):
@@ -206,7 +207,9 @@ def create_favorite_group(name):
     
     try:
         name = name.strip()
-        
+        if len(name) > 128:
+            return {'error': 'name must be 128 characters or fewer'}, 400
+
         # Check if group already exists
         existing = FavoriteGroup.query.filter_by(user_id=current_user.id, name=name).first()
         if existing:
@@ -245,7 +248,7 @@ def delete_favorite_group(group_id):
             return {'error': 'group not found'}, 404
         
         # Orphan favorites (set group_id to None instead of deleting)
-        Favorite.query.filter_by(group_id=group_id).update({'group_id': None})
+        Favorite.query.filter_by(group_id=group_id, user_id=current_user.id).update({'group_id': None})
         db.session.delete(group)
         db.session.commit()
 

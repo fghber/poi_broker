@@ -1,19 +1,22 @@
-from pathlib import Path
-from datetime import datetime, timezone
 import logging
-from flask import (Flask, app, render_template, abort, jsonify, request, Response,
-                   redirect, url_for, make_response, Blueprint, flash)
-from flask_login import LoginManager, login_required, current_user
-from flask_wtf.csrf import CSRFProtect, CSRFError
+import os
+from datetime import datetime, timezone
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
+from flask import Flask, flash, jsonify, redirect, request, session, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_login import LoginManager
+from flask_sqlalchemy import SQLAlchemy
+from flask_wtf.csrf import CSRFError, CSRFProtect
 from sqlalchemy import event
+
+from .extensions import huey
+from .settings import _env_bool, build_app_config
 
 #from werkzeug.middleware.profiler import ProfilerMiddleware
 #import jinja2
-from flask_sqlalchemy import SQLAlchemy
-from astropy.time import Time
-from .settings import build_app_config
 
 # Initialize SQLAlchemy instance (outside create_app for import access)
 db = SQLAlchemy()
@@ -31,6 +34,79 @@ def _configure_sqlite_pragmas(dbapi_conn, connection_record):
     cursor.execute("PRAGMA temp_store = MEMORY")    # Temporary tables in RAM
     cursor.close()
 
+
+def init_huey(app):
+    """
+    Initialize Huey task queue configuration for the app.
+    
+    The actual Huey backend is configured via environment variables:
+    - HUEY_BACKEND: 'memory' (default) or 'sqlite' for production
+    - HUEY_SQLITE_PATH: Path to huey.db (defaults to instance/huey.db)
+    - HUEY_IMMEDIATE: 'true' (default) or 'false' to run tasks async
+    
+    For production with background worker:
+        1. Set HUEY_BACKEND=sqlite
+        2. Run the Huey consumer: python -m huey.bin.huey_consumer poi_broker.worker.huey
+    """
+    from pathlib import Path
+    
+    # Ensure instance path exists (used for SQLite backend)
+    Path(app.instance_path).mkdir(parents=True, exist_ok=True)
+    
+    # Log the active backend
+    backend_name = 'SQLite' if hasattr(huey, 'filename') else 'Memory'
+    if hasattr(huey, 'immediate'):
+        immediate_str = ' (immediate/synchronous)' if huey.immediate else ' (async, requires worker)'
+    else:
+        immediate_str = ' (queue-based)'
+    
+    app.logger.info(f'Huey task queue initialized with {backend_name} backend{immediate_str}')
+
+    # NOTE: stale-export cleanup is intentionally NOT run at startup. It is the
+    # Huey consumer's periodic task (cleanup_stale_export_tasks, every 5 min)
+    # that fails PENDING/RUNNING exports stuck past EXPORT_STALE_MAX_AGE_SECONDS.
+    # Running it here would race across Gunicorn workers at boot and would hit
+    # export_task before migrations/tests create it. The periodic task is the
+    # single, race-free owner of this responsibility.
+
+def _configure_logging(base_dir: Path) -> None:
+    """
+    Configure root logging once, CWD-independently.
+
+    Log file resolution order:
+      1. APP_LOG_FILE env var (explicit override, e.g. /var/log/poi_broker/app.log)
+      2. <workspace root>/app.log (next to the poi_broker package, never CWD)
+
+    Falls back to stderr if the log file is not writable so a logging
+    problem can never prevent the app from booting. Skipped entirely in
+    testing mode (FLASK_TESTING) so pytest never writes to app.log.
+    """
+    if _env_bool(os.environ.get('FLASK_TESTING'), False):
+        logging.basicConfig(level=logging.INFO)
+        return
+
+    log_path = (
+        Path(os.environ.get('APP_LOG_FILE', '')).expanduser()
+        if os.environ.get('APP_LOG_FILE')
+        else base_dir.parent / 'app.log'
+    )
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        handler: logging.Handler = RotatingFileHandler(
+            filename=log_path, encoding='utf-8', mode='a',
+            maxBytes=5 * 1024 * 1024, backupCount=3,
+        )
+        logging.basicConfig(handlers=[handler],
+                            format="%(asctime)s %(name)s:%(levelname)s:%(message)s",
+                            level=logging.INFO)
+    except OSError:
+        logging.basicConfig(format="%(asctime)s %(name)s:%(levelname)s:%(message)s",
+                            level=logging.INFO)
+        logging.getLogger(__name__).warning(
+            'Log file %s not writable; falling back to stderr logging', log_path
+        )
+
+
 def create_app():
     app = Flask(__name__)
     
@@ -47,14 +123,15 @@ def create_app():
         sort_by=("cumulative",)   # Sort by cumulative time
     )
     """
-    logging.basicConfig(handlers=[logging.FileHandler(filename="app.log", 
-                                                 encoding='utf-8', mode='a+')],
-                    format="%(asctime)s %(name)s:%(levelname)s:%(message)s", 
-                    level=logging.INFO)
+    base_dir = Path(__file__).resolve().parent
+    _configure_logging(base_dir)
     # Reduce werkzeug noise
     logging.getLogger("werkzeug").setLevel(logging.ERROR)  # or logging.WARNING
+    # Silence Huey's verbose debug logs (scheduler, consumer, etc.)
+    logging.getLogger("huey").setLevel(logging.INFO)
+    logging.getLogger("huey.consumer").setLevel(logging.INFO)
+    logging.getLogger("huey.consumer.Scheduler").setLevel(logging.INFO)
 
-    base_dir = Path(__file__).resolve().parent
     config, db_path, login_db_path = build_app_config(base_dir)
     app.config.update(config)
     app.logger.info('Configured alerts database at %s', db_path)
@@ -63,9 +140,11 @@ def create_app():
     if app.debug is True:
         app.jinja_env.auto_reload = True
     else:
-        # Enable ProxyFix to trust headers from NGINX reverse proxy in production
+        # Trust one hop of X-Forwarded-For/Proto/Host. x_host=1 is safe only when
+        # nginx sets X-Forwarded-Host to $server_name (not the client Host).
+        # Emailed links should still use PUBLIC_BASE_URL so a direct Gunicorn
+        # request cannot poison verification/reset URLs.
         from werkzeug.middleware.proxy_fix import ProxyFix
-        # This ensures url_for(..., _external=True) uses the correct X-Forwarded-* headers
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
         """
         NOTE: Make sure the NGINX site config passes the correct headers:
@@ -88,18 +167,37 @@ def create_app():
         # Also configure the users database if it's SQLite
         if 'users' in db.engines:
             event.listens_for(db.engines['users'], "connect")(_configure_sqlite_pragmas)
+        # NOTE: schema upgrades are manual one-shot SQL scripts (tools/*.sql,
+        # see docs/password_reset/deployment.md). This app never alters the DB.
+
+    init_huey(app)
+
+    if not app.debug and not app.config.get('TESTING'):
+        storage_uri = app.config.get('RATELIMIT_STORAGE_URI', 'memory://')
+        if storage_uri.startswith('memory:'):
+            app.logger.warning(
+                'RATELIMIT_STORAGE_URI is memory://; counters are per-process. '
+                'Under multi-worker Gunicorn set a shared backend URI.'
+            )
+        if not app.config.get('PUBLIC_BASE_URL'):
+            app.logger.warning(
+                'PUBLIC_BASE_URL is unset; verification and reset emails will '
+                'use the request Host / X-Forwarded-Host. Set PUBLIC_BASE_URL '
+                'to the canonical public origin.'
+            )
     
     csrf.init_app(app)
     limiter.init_app(app)
     login_manager.init_app(app)
 
     # import and register blueprints here to avoid circular imports
-    from .app import register_blueprints
-    from .observing_tool import observing_tool_blueprint
-    from .classification import classification_blueprint
+    # Alias avoids shadowing the local Flask `app` variable (Pylance).
+    from .app import register_blueprints as _register_blueprints
     from .auth import auth_blueprint
+    from .classification import classification_blueprint
+    from .observing_tool import observing_tool_blueprint
 
-    register_blueprints(app)
+    _register_blueprints(app)
     app.register_blueprint(auth_blueprint)
     app.register_blueprint(observing_tool_blueprint)
     app.register_blueprint(classification_blueprint)
@@ -108,7 +206,22 @@ def create_app():
     from .models import User
     @login_manager.user_loader
     def load_user(user_id):
-        return db.session.get(User, int(user_id))
+        user = db.session.get(User, int(user_id))
+        if user is None:
+            return None
+        # Reject any session that predates the user's most recent password
+        # change/reset, including remember-cookie restores into a fresh
+        # session (they carry no login timestamp). password_changed_at is NULL
+        # until the account's first credential change, so unaffected accounts
+        # behave exactly as before. The watermark second itself counts as
+        # pre-change (second-granularity boundary — see
+        # docs/password_reset/adr_session_invalidation.md).
+        changed_at = user.password_changed_at
+        if changed_at is not None:
+            login_at = session.get('login_at')
+            if not isinstance(login_at, int) or login_at <= changed_at:
+                return None
+        return user
     
     # Set login_view AFTER blueprint registration to ensure the endpoint exists
     login_manager.login_view = 'auth.login'
@@ -144,7 +257,7 @@ def create_app():
         resp.headers.setdefault(
             'Content-Security-Policy',
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.bokeh.org https://code.jquery.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://code.jquery.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
             "style-src 'self' 'unsafe-inline' https://code.jquery.com https://fonts.googleapis.com https://cdn.jsdelivr.net; "
             "font-src 'self' https://fonts.gstatic.com data:; "
             "connect-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://storage.googleapis.com "
@@ -160,8 +273,9 @@ def create_app():
         if request.path.startswith('/api/'):
             return jsonify({'error': 'csrf validation failed', 'message': str(error)}), 400
         flash('Your form session expired or is invalid. Please reload this page and submit again. If this is a reset link, request a new one.', 'danger')
-        if request.referrer:
-            return redirect(request.referrer)
-        return redirect(url_for('auth.login'))
-    
+        return redirect(request.path)
+
+    from .cli import register_cli
+    register_cli(app)
+
     return app

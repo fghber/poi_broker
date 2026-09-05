@@ -11,6 +11,50 @@ class TableNotFoundError(Exception):
     pass
 
 
+def escape_like(value: str) -> str:
+    """Escape LIKE metacharacters so user input cannot widen the pattern."""
+    return (
+        str(value)
+        .replace('\\', '\\\\')
+        .replace('%', '\\%')
+        .replace('_', '\\_')
+    )
+
+
+def _like(field, pattern: str):
+    return field.like(pattern, escape='\\')
+
+
+def _notlike(field, pattern: str):
+    return field.notlike(pattern, escape='\\')
+
+
+# Indexed ID columns: contains/ends_with cannot use B-tree indexes (LIKE '%x%').
+# Keep in sync with ID_OPERATORS in templates/_query_builder_js.html.
+INDEXED_ID_FIELDS = frozenset(
+    {
+        'featuretable.alert_id',
+        'featuretable.locus_id',
+        'featuretable.ztf_object_id',
+        'featuretable.brightest_alert_id_ztf',
+        'classification.alert_id',
+    }
+)
+INDEXED_ID_OPERATORS = frozenset(
+    {
+        'equal',
+        'not_equal',
+        'in',
+        'not_in',
+        'begins_with',
+        'not_begins_with',
+        'is_empty',
+        'is_not_empty',
+        'is_null',
+        'is_not_null',
+    }
+)
+
 OPERATORS = {
     'equal': lambda f, a: f.__eq__(a),
     'not_equal': lambda f, a: f.__ne__(a),
@@ -20,12 +64,12 @@ OPERATORS = {
     'greater_or_equal': lambda f, a: f.__ge__(a),
     'in': lambda f, a: f.in_(a),
     'not_in': lambda f, a: f.notin_(a),
-    'ends_with': lambda f, a: f.like('%' + a),
-    'begins_with': lambda f, a: f.like(a + '%'),
-    'contains': lambda f, a: f.like('%' + a + '%'),
-    'not_contains': lambda f, a: f.notlike('%' + a + '%'),
-    'not_begins_with': lambda f, a: f.notlike(a + '%'),
-    'not_ends_with': lambda f, a: f.notlike('%' + a),
+    'ends_with': lambda f, a: _like(f, '%' + escape_like(a)),
+    'begins_with': lambda f, a: _like(f, escape_like(a) + '%'),
+    'contains': lambda f, a: _like(f, '%' + escape_like(a) + '%'),
+    'not_contains': lambda f, a: _notlike(f, '%' + escape_like(a) + '%'),
+    'not_begins_with': lambda f, a: _notlike(f, escape_like(a) + '%'),
+    'not_ends_with': lambda f, a: _notlike(f, '%' + escape_like(a)),
     'is_empty': lambda f: f.__eq__(''),
     'is_not_empty': lambda f: f.__ne__(''),
     'is_null': lambda f: f.is_(None),
@@ -78,6 +122,15 @@ class Filter(object):
                 if len(parts) != 2:
                     raise ValueError(f'Invalid field format: {field_name}')
 
+                if (
+                    field_name in INDEXED_ID_FIELDS
+                    and operator_name not in INDEXED_ID_OPERATORS
+                ):
+                    raise ValueError(
+                        f'Operator "{operator_name}" is not allowed on indexed ID '
+                        f'field {field_name}; use equal, in, or begins_with'
+                    )
+
                 table_name, column_name = parts
                 try:
                     model = self.models[table_name]
@@ -88,7 +141,10 @@ class Filter(object):
                     if table.get('entity') == model:
                         break
                 else:
-                    query = query.add_entity(model)
+                    raise ValueError(
+                        f'Table {table_name} is not in the query; outerjoin it '
+                        f'before filtering on {field_name}'
+                    )
 
                 try:
                     field = getattr(model, column_name)

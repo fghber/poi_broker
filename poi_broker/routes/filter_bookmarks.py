@@ -40,7 +40,6 @@ ALLOWED_KEYS = frozenset(
         'sort__locus_dec',
         'sort__ant_mag_corrected',
         'sort__locus_id',
-        'sort__date_alert_mjd',
     }
 )
 
@@ -83,6 +82,12 @@ def _row_to_api_dict(row: FilterBookmark) -> dict:
     except json.JSONDecodeError:
         logger.warning('Invalid query_json for filter_bookmark id=%s', row.id)
         params = {}
+
+    # Legacy bookmarks may store sort__date_alert_mjd; catalog uses sort__date.
+    if 'sort__date_alert_mjd' in params:
+        params = dict(params)
+        legacy_sort = params.pop('sort__date_alert_mjd')
+        params.setdefault('sort__date', legacy_sort)
 
     created = row.created_at
     if created.tzinfo is None:

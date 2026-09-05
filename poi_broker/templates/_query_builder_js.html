@@ -1,19 +1,28 @@
-<script src="https://cdn.jsdelivr.net/npm/jQuery-QueryBuilder/dist/js/query-builder.standalone.min.js"></script>
+{# Local QueryBuilder 3.0.0 JS. Do not add a jsDelivr CDN/SRI fallback: jsDelivr may re-minify and break integrity. #}
+<script src="{{ url_for('static', filename='js/query-builder.standalone.min.js') }}"></script>
 <script>
 (function (window, document, $) {
   if (!$) {
     return;
   }
 
-  if (window.PoiWatchlistQueryBuilder) {
+  if (window.PoiQueryBuilder) {
     return;
   }
 
+  // Indexed ID fields: avoid contains/ends_with (LIKE '%x%'). Keep in sync
+  // with INDEXED_ID_FIELDS / INDEXED_ID_OPERATORS in querybuilder_translator.py.
+  const ID_OPERATORS = [
+    'equal', 'not_equal', 'in', 'not_in',
+    'begins_with', 'not_begins_with',
+    'is_empty', 'is_not_empty', 'is_null', 'is_not_null'
+  ];
+
   const filters = [
-    { id: 'featuretable.alert_id', label: 'Alert ID', type: 'string' },
-    { id: 'featuretable.locus_id', label: 'Locus ID', type: 'string' },
-    { id: 'featuretable.ztf_object_id', label: 'ZTF Object ID', type: 'string' },
-    { id: 'featuretable.brightest_alert_id_ztf', label: 'Brightest Alert ID (ZTF)', type: 'string' },
+    { id: 'featuretable.alert_id', label: 'Alert ID', type: 'string', operators: ID_OPERATORS },
+    { id: 'featuretable.locus_id', label: 'Locus ID', type: 'string', operators: ID_OPERATORS },
+    { id: 'featuretable.ztf_object_id', label: 'ZTF Object ID', type: 'string', operators: ID_OPERATORS },
+    { id: 'featuretable.brightest_alert_id_ztf', label: 'Brightest Alert ID (ZTF)', type: 'string', operators: ID_OPERATORS },
     { id: 'featuretable.anomaly_mask', label: 'Anomaly Mask', type: 'string' },
     { id: 'featuretable.anomaly_type', label: 'Anomaly Type', type: 'string' },
     { id: 'featuretable.is_corrected', label: 'Is Corrected', type: 'boolean' },
@@ -285,7 +294,7 @@
     { id: 'featuretable.harmonics_chi_per_degree_g', label: 'Harmonics Chi Per Degree (g)', type: 'double' },
     { id: 'featuretable.harmonics_chi_per_degree_R', label: 'Harmonics Chi Per Degree (R)', type: 'double' },
     { id: 'featuretable.harmonics_chi_per_degree_i', label: 'Harmonics Chi Per Degree (i)', type: 'double' },
-    { id: 'classification.alert_id', label: 'Alert ID', type: 'string' },
+    { id: 'classification.alert_id', label: 'Alert ID', type: 'string', operators: ID_OPERATORS },
     { id: 'classification.p_cvnova', label: 'CV Nova Probability', type: 'double' },
     { id: 'classification.p_e', label: 'E Probability', type: 'double' },
     { id: 'classification.p_lpv', label: 'LPV Probability', type: 'double' },
@@ -327,7 +336,12 @@
   function createApi(root, options) {
     const settings = Object.assign({
       onSave: null,
-      onPreview: null
+      onPreview: null,
+      saveLabel: 'Save Query',
+      saveTitle: 'Save this query as a watchlist',
+      noNameMessage: 'Please enter a name before saving.',
+      countUrl: null,          // optional endpoint returning { count }
+      previewUrl: '/api/preview-query'
     }, options || {});
 
     const $root = $(root);
@@ -338,13 +352,52 @@
     const $nameInput = $root.find('[data-role="name-input"]');
     const $results = $root.find('[data-role="results"]');
     let previewSuccess = false;
+    let previewSeq = 0;
+    let previewXhr = null;
+    let countXhr = null;
+
+    function abortPreviewRequests() {
+      if (previewXhr) previewXhr.abort();
+      if (countXhr) countXhr.abort();
+      previewXhr = countXhr = null;
+    }
 
     function resetPreview(message) {
+      previewSeq += 1;
+      abortPreviewRequests();
       previewSuccess = false;
+      $previewButton.prop('disabled', false);
       $saveButton.prop('disabled', true).attr('title', 'Run Generate SQL first');
       if (typeof message === 'string') {
         $results.text(message);
       }
+    }
+
+    function onBuilderChange() {
+      resetPreview();
+    }
+
+    function initBuilderPlugin() {
+      $builder.queryBuilder({
+        plugins: ['bt-tooltip-errors'],
+        filters: filters
+      });
+      $builder.on(builderChangeEvents.join(' '), onBuilderChange);
+    }
+
+    function destroyBuilderPlugin() {
+      try {
+        $builder.find('[data-toggle="tooltip"]').tooltip('dispose');
+      } catch (error) {
+      }
+      try {
+        $builder.off(builderChangeEvents.join(' '));
+        $builder.queryBuilder('destroy');
+      } catch (error) {
+      }
+      $builder.empty();
+      // bt-tooltip-errors appends tips to body; strip leftovers after trigger dispose.
+      $('body > .tooltip').remove();
     }
 
     function resetState() {
@@ -352,29 +405,15 @@
       $nameInput.val('');
       $results.text('');
       resetPreview();
-      try {
-        $builder.queryBuilder('destroy');
-      } catch (error) {
-      }
-      $builder.empty();
-      $builder.queryBuilder({
-        plugins: ['bt-tooltip-errors'],
-        filters: filters
-      });
+      destroyBuilderPlugin();
+      initBuilderPlugin();
     }
 
     function getRules() {
       return $builder.queryBuilder('getRules');
     }
 
-    $builder.queryBuilder({
-      plugins: ['bt-tooltip-errors'],
-      filters: filters
-    });
-
-    $builder.on(builderChangeEvents.join(' '), function () {
-      resetPreview();
-    });
+    initBuilderPlugin();
 
     $previewButton.on('click', function () {
       try {
@@ -388,33 +427,68 @@
           return;
         }
 
-        $.ajax({
-          url: '/api/preview-query',
+        const seq = ++previewSeq;
+        abortPreviewRequests();
+        $previewButton.prop('disabled', true);
+
+        previewXhr = $.ajax({
+          url: settings.previewUrl,
           type: 'POST',
+          timeout: 15000,
           data: JSON.stringify({ rules: rules }),
           headers: {
             'Content-Type': 'application/json',
             'X-CSRFToken': getCsrfToken()
           },
           contentType: 'application/json; charset=utf-8',
-          dataType: 'json',
-          success: function (response) {
-            if (response.sql) {
-              $results.text('Query is valid. Filter: ' + response.sql);
-              previewSuccess = true;
-              $saveButton.prop('disabled', false).attr('title', 'Save this query as a watchlist');
-              if (typeof settings.onPreview === 'function') {
-                settings.onPreview(response, rules);
-              }
-              return;
-            }
+          dataType: 'json'
+        })
+        .done(function (response) {
+          if (seq !== previewSeq) return;
+          if (!response.sql) return resetPreview('Could not validate query.');
 
-            resetPreview('Could not validate query.');
-          },
-          error: function (xhr, status, error) {
-            const resp = xhr.responseJSON;
-            resetPreview('Query error: ' + ((resp && resp.error) || error));
+          $results.text('Query is valid. Filter: ' + response.sql);
+          previewSuccess = true;
+          $saveButton.prop('disabled', false).attr('title', settings.saveTitle);
+          if (typeof settings.onPreview === 'function') {
+            settings.onPreview(response, rules);
           }
+
+          if (!settings.countUrl) return;
+
+          countXhr = $.ajax({
+            url: settings.countUrl,
+            type: 'POST',
+            timeout: 15000,
+            data: JSON.stringify({ rules: rules }),
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': getCsrfToken()
+            },
+            contentType: 'application/json; charset=utf-8',
+            dataType: 'json'
+          })
+          .done(function (countResp) {
+            if (seq !== previewSeq) return;
+            if (typeof countResp.count === 'number') {
+              $results.text('Query matches ' + countResp.count.toLocaleString() + ' row(s). Filter: ' + response.sql);
+              if (typeof settings.onCount === 'function') {
+                settings.onCount(countResp.count);
+              }
+            }
+          })
+          .fail(function (_, status) {
+            if (status === 'abort' || seq !== previewSeq) return;
+            $results.text('Query is valid, but row count failed. Filter: ' + response.sql);
+          });
+        })
+        .fail(function (xhr, status, error) {
+          if (status === 'abort' || seq !== previewSeq) return;
+          const resp = xhr.responseJSON;
+          resetPreview('Query error: ' + ((resp && resp.error) || error || status));
+        })
+        .always(function () {
+          if (seq === previewSeq) $previewButton.prop('disabled', false);
         });
       } catch (error) {
         $output.text('Error: ' + error.message);
@@ -428,7 +502,7 @@
 
       const name = ($nameInput.val() || '').trim();
       if (!name) {
-        $results.text('Please enter a watchlist name before saving.');
+        $results.text(settings.noNameMessage);
         $nameInput.trigger('focus');
         return;
       }
@@ -453,7 +527,7 @@
           dataType: 'json',
           success: function (response) {
             $results.text('Watchlist "' + response.name + '" saved (id=' + response.id + ').');
-            $saveButton.prop('disabled', false).attr('title', 'Save this query as a watchlist');
+            $saveButton.prop('disabled', false).attr('title', settings.saveTitle);
             if (typeof settings.onSave === 'function') {
               settings.onSave(response, { reset: resetState, root: root });
               return;
@@ -463,12 +537,12 @@
           error: function (xhr, status, error) {
             const resp = xhr.responseJSON;
             $results.text('Save error: ' + ((resp && resp.error) || error));
-            $saveButton.prop('disabled', false).attr('title', 'Save this query as a watchlist');
+            $saveButton.prop('disabled', false).attr('title', settings.saveTitle);
           }
         });
       } catch (error) {
         $results.text('Error: ' + error.message);
-        $saveButton.prop('disabled', false).attr('title', 'Save this query as a watchlist');
+        $saveButton.prop('disabled', false).attr('title', settings.saveTitle);
       }
     });
 
@@ -476,15 +550,15 @@
       root: root,
       reset: resetState,
       destroy: function () {
+        previewSeq += 1;
+        abortPreviewRequests();
         try {
-          $builder.off(builderChangeEvents.join(' '));
           $previewButton.off('click');
           $saveButton.off('click');
-          $builder.queryBuilder('destroy');
         } catch (error) {
         }
-        $builder.empty();
-        root.__watchlistQueryBuilder = null;
+        destroyBuilderPlugin();
+        root.__queryBuilder = null;
       },
       getRules: getRules,
       setMessage: function (message) {
@@ -493,16 +567,16 @@
     };
   }
 
-  window.PoiWatchlistQueryBuilder = {
+  window.PoiQueryBuilder = {
     init: function (root, options) {
       if (!root) {
         return null;
       }
-      if (root.__watchlistQueryBuilder) {
-        return root.__watchlistQueryBuilder;
+      if (root.__queryBuilder) {
+        return root.__queryBuilder;
       }
       const api = createApi(root, options);
-      root.__watchlistQueryBuilder = api;
+      root.__queryBuilder = api;
       return api;
     }
   };

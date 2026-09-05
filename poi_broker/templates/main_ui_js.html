@@ -1,4 +1,6 @@
 {% block main_ui_js %}
 <script src="/static/js/jquery.multiselect.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@eonasdan/tempus-dominus@6.9.4/dist/js/tempus-dominus.min.js" crossorigin="anonymous"></script>
+{# Popper v2 for Tempus Dominus 6 only. BS4 already has Popper v1 via bootstrap.bundle. #}
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js" integrity="sha256-whL0tQWoY1Ku1iskqPFvmZ+CHsvmRWx/PIoEvIeWh4I=" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@eonasdan/tempus-dominus@6.10.4/dist/js/tempus-dominus.min.js" integrity="sha256-IqcDz+NpC38R9u/Ld4e0rVSyJY3O68by1jL0oUmFPXE=" crossorigin="anonymous"></script>
 {% endblock %}

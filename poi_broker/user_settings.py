@@ -31,6 +31,15 @@ def _load_user_settings(user_id):
     return UserSettings.query.filter_by(user_id=user_id).first()
 
 
+def get_user_settings(user_id) -> UserSettings | None:
+    """Load the user's settings row (or None if not present).
+
+    Exposed so callers can load the row once and reuse it across multiple
+    settings lookups (e.g. the main page), avoiding redundant DB queries.
+    """
+    return _load_user_settings(user_id)
+
+
 def _normalize_last_selected_observatory(raw):
     if not isinstance(raw, dict):
         return None
@@ -51,8 +60,9 @@ def _normalize_last_selected_observatory(raw):
     return None
 
 
-def get_saved_feature_plot_columns(user_id):
-    settings = _load_user_settings(user_id)
+def get_saved_feature_plot_columns(user_id, settings: UserSettings | None = None):
+    if settings is None:
+        settings = _load_user_settings(user_id)
     if not settings or not settings.default_feature_plot_columns:
         return default_feature_plot_columns()
 
@@ -64,8 +74,9 @@ def get_saved_feature_plot_columns(user_id):
     return _normalize_feature_columns(columns)
 
 
-def get_saved_last_selected_observatory(user_id):
-    settings = _load_user_settings(user_id)
+def get_saved_last_selected_observatory(user_id, settings: UserSettings | None = None):
+    if settings is None:
+        settings = _load_user_settings(user_id)
     if not settings or not settings.last_selected_observatory_json:
         return None
 
@@ -132,7 +143,7 @@ def save_settings():
         selected_features = request.form.getlist('default_feature_plot_columns[]')
 
     if not selected_features:
-        flash('No features selected. Please select at least one feature.', 'error')
+        flash('No features selected. Please select at least one feature.', 'danger')
         return redirect(url_for('user_settings.settings'))
 
     settings = UserSettings.query.filter_by(user_id=current_user.id).first()

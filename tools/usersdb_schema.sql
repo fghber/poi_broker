@@ -10,6 +10,8 @@ CREATE TABLE
         reset_token_expires INTEGER,
         email_verified INTEGER DEFAULT 0,
         email_verification_token VARCHAR(128),
+        email_verification_token_expires INTEGER,
+        password_changed_at INTEGER,
         PRIMARY KEY (id),
         UNIQUE (email)
     );
@@ -63,6 +65,8 @@ CREATE TABLE
         FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
 	);
 CREATE INDEX ix_filter_bookmark_user_id ON filter_bookmark (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uix_filter_bookmark_user_name
+    ON filter_bookmark (user_id, name);
 
 CREATE TABLE 
     user_settings (
@@ -74,8 +78,6 @@ CREATE TABLE
         UNIQUE (user_id)
 	);
 
----
---ALTER TABLE user_settings ADD COLUMN last_selected_observatory_json TEXT;
 
 CREATE TABLE
     user_observatory (
@@ -90,3 +92,25 @@ CREATE TABLE
         UNIQUE (user_id, name)
     );
 CREATE INDEX ix_user_observatory_user_id ON user_observatory (user_id);
+
+CREATE TABLE
+    export_task (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        file_path VARCHAR(512),
+        error_message TEXT,
+        snapshot_mjd REAL NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+    );
+CREATE INDEX ix_export_task_user_id ON export_task (user_id);
+CREATE INDEX ix_export_task_status ON export_task (status);
+CREATE INDEX IF NOT EXISTS idx_export_task_status_updated_at
+    ON export_task (status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_export_task_status_created_at
+    ON export_task (status, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS uix_export_task_one_active_per_user
+    ON export_task (user_id)
+    WHERE status IN ('PENDING', 'RUNNING');

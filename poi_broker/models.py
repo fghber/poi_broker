@@ -1,12 +1,35 @@
-from . import db
-from flask_login import UserMixin, current_user
-from functools import wraps
-from flask import flash, redirect, url_for
 from datetime import datetime, timezone
+from functools import wraps
+
+from flask import flash, redirect, url_for
+from flask_login import UserMixin, current_user
+
+from . import db
+
+# Imported only for the `ExportTask.snapshot_mjd` default lambda below.
+# This is a deliberate models -> services layering trade-off: avoiding it
+# would mean duplicating the astropy-backed MJD helper. Both the web app
+# and the Huey worker already load astropy via other imports, so this does
+# not change the runtime import surface. See todo.md "Layering" entry.
+from .services.filter_service import datetime_to_mjd
 
 
 class Ztf(db.Model):
     __tablename__ = 'featuretable'
+    # Composite PK leftmost prefix is date_alert_mjd; equality on alert_id /
+    # locus_id (and homepage filters/sorts) cannot use it. Names match
+    # tools/alertsdb_schema.sql so CREATE INDEX IF NOT EXISTS is a no-op on
+    # DBs that already have the out-of-band indexes from db_perf_check.py.
+    __table_args__ = (
+        db.Index('idx_featuretable_alert_id', 'alert_id'),
+        db.Index('idx_featuretable_locus_id', 'locus_id'),
+        db.Index('idx_featuretable_ztf_object_id', 'ztf_object_id'),
+        db.Index('idx_featuretable_ant_passband', 'ant_passband'),
+        db.Index('idx_featuretable_locus_ra', 'locus_ra'),
+        db.Index('idx_featuretable_locus_dec', 'locus_dec'),
+        db.Index('idx_featuretable_ant_mag_corrected', 'ant_mag_corrected'),
+        db.Index('idx_featuretable_date_alert_mjd', 'date_alert_mjd'),
+    )
     #id = db.Column(db.Integer, primary_key=True)
     date_log = db.Column(db.String)
     date_alert_mjd = db.Column(db.Float, primary_key=True)
@@ -297,14 +320,24 @@ class Ztf(db.Model):
     # def dec(self):
     #     return shape.to_shape(self.location).y
 
-    # Relationship to Classification table
-    classification = db.relationship("Classification", foreign_keys="[Classification.alert_id]", primaryjoin="Ztf.alert_id==Classification.alert_id", uselist=False, viewonly=True)
+    # Relationship to Classification table. lazy="raise" fails fast instead of N+1.
+    classification = db.relationship(
+        "Classification",
+        foreign_keys="[Classification.alert_id]",
+        primaryjoin="Ztf.alert_id==Classification.alert_id",
+        uselist=False,
+        viewonly=True,
+        lazy="raise",
+    )
 
     def __str__(self):
         return self.ztf_object_id
 
 class Crossmatches(db.Model):
     __tablename__ = 'crossmatches'
+    __table_args__ = (
+        db.Index('idx_crossmatches_locus_id', 'locus_id'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     locus_id = db.Column(db.String)
     catalog = db.Column(db.String)
@@ -316,6 +349,9 @@ class Crossmatches(db.Model):
 
 class Classification(db.Model):
     __tablename__ = 'classification'
+    __table_args__ = (
+        db.Index('idx_classification_prob_class', 'prob_class'),
+    )
 
     alert_id = db.Column(db.String, primary_key=True)
     p_cvnova = db.Column(db.Float)
@@ -339,11 +375,12 @@ class User(UserMixin, db.Model):
     name = db.Column(db.String(1000))
     role = db.Column(db.String(20), default='user')    # Email verification
     email_verified = db.Column(db.Boolean, default=False, nullable=False)
-    email_verification_token = db.Column(db.String(128), index=True, nullable=True)    # Used by the reset-password flow
+    email_verification_token = db.Column(db.String(128), index=True, nullable=True)
+    email_verification_token_expires = db.Column(db.Integer, nullable=True)  # epoch seconds
     reset_token = db.Column(db.String(128), index=True, nullable=True)
-    reset_token_expires = db.Column(db.Integer, nullable=True) # epoch seconds
+    reset_token_expires = db.Column(db.Integer, nullable=True)  # epoch seconds
+    password_changed_at = db.Column(db.Integer, nullable=True)  # epoch seconds; sessions whose login_at is not newer are rejected
     # created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
-    # last_password_changed = db.Column(db.DateTime(timezone=True), nullable=True)
 
     def __repr__(self):
         return f"<User {self.email}>"
@@ -360,7 +397,7 @@ def role_required(role):
         @wraps(f)
         def decorated_function(*args, **kwargs):
             if not current_user.is_authenticated or not current_user.has_role(role):
-                flash('Access denied. Insufficient permissions.')
+                flash('Access denied. Insufficient permissions.', 'danger')
                 return redirect(url_for('main.start'))
             return f(*args, **kwargs)
         return decorated_function
@@ -425,6 +462,10 @@ class FilterBookmark(db.Model):
     query_json = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
+    __table_args__ = (
+        db.Index('uix_filter_bookmark_user_name', 'user_id', 'name', unique=True),
+    )
+
     def __repr__(self):
         return f"<FilterBookmark {self.name!r}>"
 
@@ -462,3 +503,50 @@ class UserSettings(db.Model):
 
     def __repr__(self):
         return f"<UserSettings user_id={self.user_id}>"
+
+
+class ExportTask(db.Model):
+    """
+    Tracks data export tasks for users.
+    
+    Attributes:
+        id: Integer primary key for the task
+        user_id: Foreign key to User
+        status: Task status (PENDING, RUNNING, SUCCESS, FAILED)
+        created_at: Timestamp when task was created
+        updated_at: Timestamp when task was last updated
+        file_path: Path to exported CSV file (set when SUCCESS)
+        error_message: Error message if task failed
+        snapshot_mjd: Alert-time cutoff (MJD) set at task creation; the export
+            only contains rows with date_alert_mjd below it, so re-running the
+            same rules reproduces the CSV.
+    """
+    __bind_key__ = 'users'
+    __tablename__ = 'export_task'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True)
+    status = db.Column(db.String(20), nullable=False, default='PENDING', index=True)  # PENDING, RUNNING, SUCCESS, FAILED
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    file_path = db.Column(db.String(512), nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+    snapshot_mjd = db.Column(
+        db.Float,
+        nullable=False,
+        default=lambda: datetime_to_mjd(datetime.now(timezone.utc)),
+    )
+
+    __table_args__ = (
+        db.Index(
+            'uix_export_task_one_active_per_user',
+            'user_id',
+            unique=True,
+            sqlite_where=db.text("status IN ('PENDING', 'RUNNING')"),
+        ),
+        db.Index('idx_export_task_status_updated_at', 'status', 'updated_at'),
+        db.Index('idx_export_task_status_created_at', 'status', 'created_at'),
+    )
+
+    def __repr__(self):
+        return f"<ExportTask {self.id} user_id={self.user_id} status={self.status}>"

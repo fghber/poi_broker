@@ -28,6 +28,7 @@
                 <li>Automated object classification based on light curve features.</li>
                 <li>Personal watchlists with daily email digests (sign-in required).</li>
                 <li>Favorites and object collections (sign-in required).</li>
+                <li>Bulk CSV export from a visual query (sign-in required).</li>
             </ul>
             
             <p>
@@ -98,6 +99,7 @@
                         <li><strong>Search:</strong> Use the filter inputs at the top of each column.</li>
                         <li><strong>Sort:</strong> Click column headers to toggle ascending/descending order.</li>
                         <li><strong>Coordinates:</strong> Filter by <code>ra</code> and <code>dec</code> to find specific regions.</li>
+                        <li><strong>Rows:</strong> The match count is shown when it is cheap to compute. Broad filters may show <code>100+</code> instead; click <strong>Count</strong> for the exact total.</li>
                     </ul>
                 </div>
             </div>
@@ -208,6 +210,15 @@
         </div>
     </div>
 
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body">
+            <h2 class="h4 accent-heading mb-3">Bulk Data Export</h2>
+            <p>Use <strong>Export</strong> in the navigation bar to download a CSV of alerts that match a visual query. Build one or more filter rules (the same query builder used for watchlists), preview the generated SQL, then start the export. The match count is checked first; queries larger than 1,000,000 rows are rejected so you can narrow the filter.</p>
+            <p>The CSV is created in the background. The Export page shows queued, in-progress, completed, and failed status, and a download link when the file is ready. You can leave and return later — the most recent export for your account is shown there.</p>
+            <p>This is separate from downloading a single locus light curve as CSV from the alert detail view.</p>
+        </div>
+    </div>
+
         <div class="card mb-4 shadow-sm">
         <div class="card-body">
             <h2 class="h4 accent-heading mb-3">Saved Filter Bookmark</h2>
@@ -220,7 +231,7 @@
             <h2 class="h4 accent-heading mb-3">Additional User Features</h2>
             <ul>
                 <li><strong>Personal Profile:</strong> Manage your account settings, view your watchlists, and access your favorite objects.</li>
-                <li><strong>Data Export:</strong> Download light curve data, features, and individual alerts including their classification information for further analysis.</li>
+                <li><strong>Locus CSV:</strong> Download a single object's light curve from the alert detail view. For multi-object dumps, use <strong>Bulk Data Export</strong> above.</li>
             </ul>
         </div>
     </div>

@@ -1,0 +1,106 @@
+---
+alwaysApply: true
+---
+
+You are an expert in Python, Flask, and SqlAlchemy development.
+
+  Key Principles
+  - Write concise, technical responses with accurate Python examples.
+  - Use functional, declarative programming; avoid classes where possible except for Flask views.
+  - Prefer iteration and modularization over code duplication.
+  - Use descriptive variable names with auxiliary verbs (e.g., is_active, has_permission).
+  - Use lowercase with underscores for directories and files (e.g., blueprints/user_routes.py).
+  - Favor named exports for routes and utility functions.
+  - Use the Receive an Object, Return an Object (RORO) pattern where applicable.
+
+  Python/Flask
+  - Use def for function definitions.
+  - Use type hints for all function signatures where possible.
+  - File structure: Flask app initialization, blueprints, models, utilities, config.
+  - Avoid unnecessary curly braces in conditional statements.
+  - For single-line statements in conditionals, omit curly braces.
+  - Use concise, one-line syntax for simple conditional statements (e.g., if condition: do_something()).
+
+  Error Handling and Validation
+  - Prioritize error handling and edge cases:
+    - Handle errors and edge cases at the beginning of functions.
+    - Use early returns for error conditions to avoid deeply nested if statements.
+    - Place the happy path last in the function for improved readability.
+    - Avoid unnecessary else statements; use the if-return pattern instead.
+    - Use guard clauses to handle preconditions and invalid states early.
+    - Implement proper error logging and user-friendly error messages.
+    - Use custom error types or error factories for consistent error handling.
+
+  Dependencies
+  - Flask
+  - Flask-SQLAlchemy (for ORM)
+  - Flask-Login (for user authentication)
+  - Flask-WTF (for CSRF Form protection)
+  - Flask-Limiter (for rate-limiting)
+  - Huey with SQLite backend (async CSV export; not Celery/Redis — see docs/async_export/adr_huey_sqlite.md)
+
+  Async export (Huey)
+  - Consumer entrypoint is poi_broker.worker.huey, never poi_broker.extensions.huey.
+  - Start the consumer with python -m huey.bin.huey_consumer (not the huey_consumer console script as an import).
+  - App and worker must share the same absolute HUEY_SQLITE_PATH. Default HUEY_BACKEND is memory (in-process); production is sqlite.
+  - Do not add Redis, Celery, supervisord, or extra consumer processes for this feature.
+
+  Catalog list (GET /)
+  - Do not use Flask-SQLAlchemy paginate() on the catalog; it runs a joined COUNT(*) on every request.
+  - Use poi_broker.services.catalog_list (keyset for date-only sort, OFFSET+1 otherwise) and catalog_query for shared filters.
+  - Exact Rows only when cheap or via GET /api/catalog-count; do not COUNT unselective filters on the list request.
+
+  Plot empty states (do not 404)
+  - Missing plot data is a successful empty result, not an HTTP error. Lightcurve, feature-plot, and classification return HTTP 200 JSON `{div, script}` with a static warning `div` and empty `script` via `bokeh_warning_payload()`.
+  - Do not return 404/400 `{error}` for “no row” / “nothing to plot”. The catalog modal `.fail` handler paints a red hard error; empty tabs must stay yellow warnings through `.done` + `insertBokehFromPayload`.
+  - Never echo `alertId` / `locusId` into that warning. 400 is only for missing/invalid request params; 5xx for real failures.
+
+  Flask-Specific Guidelines
+  - Use Flask application factories for better modularity and testing.
+  - Organize routes using Flask Blueprints for better code organization.
+  - Implement custom error handlers for different types of exceptions.
+  - Use Flask's before_request, after_request, and teardown_request decorators for request lifecycle management.
+  - Utilize Flask extensions for common functionalities (e.g., Flask-SQLAlchemy, Flask-Migrate).
+  - Use Flask's config object for managing different configurations (development, testing, production).
+  - Use Flask-Login for handling authentication and authorization.
+
+  Performance Optimization
+  - Use Flask-Caching for caching frequently accessed data.
+  - Implement database query optimization techniques (e.g., eager loading, indexing).
+  - Use connection pooling for database connections.
+  - Implement proper database session management.
+  - Use background tasks for time-consuming operations (e.g., Celery with Flask).
+
+  Key Conventions
+  1. Use Flask's application context and request context appropriately.
+  2. Prioritize stability and fault tolerance
+  3. Structure the application:
+    - Use blueprints for modularizing the application.
+    - Implement a clear separation of concerns (routes, business logic, data access).
+    - Use environment variables for configuration management (create .env.example accordingly)
+
+  Database Interaction
+  - Use Flask-SQLAlchemy for ORM operations (models)
+  - Implement database migrations using Flask-Migrate.
+  - Use SQLAlchemy's session management properly, ensuring sessions are closed after use.
+
+  Authentication and Authorization
+  - Implement user authentication using Flask-Login.
+  - Use decorators for protecting routes that require authentication.
+
+  Testing
+  - Write unit tests using pytest.
+  - Use Flask's test client for integration testing.
+  - Implement test fixtures for database and application setup.
+
+  Documentation
+  - Ensure all functions are properly documented.
+  - Living docs: docs/spec.md, docs/sec.md, docs/async_export/. Do not add closed audit write-ups to the repo.
+
+  Deployment
+  - Use Gunicorn as WSGI HTTP Server.
+  - Implement proper logging and monitoring in production.
+  - Use environment variables for sensitive information and configuration.
+  - Don't read my .env files
+
+  Refer to Flask documentation for detailed information on Views, Blueprints, and Extensions for best practices.

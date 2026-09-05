@@ -1,0 +1,42 @@
+# systemd service unit for the POI Broker Huey worker.
+#
+# This is the only new process for the async export feature. Edit User,
+# Group, WorkingDirectory, EnvironmentFile, ExecStart, and ReadWritePaths
+# to match the existing web app (same user, same venv, same data dirs).
+#
+# Install: see docs/async_export/ubuntu_add_worker.md
+#   1. Copy to /etc/systemd/system/poi-broker-huey.service
+#   2. Create the EnvironmentFile
+#   3. sudo systemctl daemon-reload
+#   4. sudo systemctl enable --now poi-broker-huey
+#
+# Restart=always is the stall protection: if the consumer exits, systemd
+# starts it again.
+#
+# NOTE: point the consumer at poi_broker.worker.huey (not
+# poi_broker.extensions.huey) so tasks are registered on the shared Huey instance.
+# Leave periodic scheduling enabled (do not pass --no-periodic):
+# cleanup_stale_export_tasks is the sole stale-export guard.
+
+[Unit]
+Description=POI Broker Huey task consumer
+After=network.target
+
+[Service]
+Type=simple
+User=poi-broker
+Group=poi-broker
+WorkingDirectory=/opt/poi_broker
+EnvironmentFile=/etc/poi-broker/huey.env
+ExecStart=/opt/poi_broker/.venv/bin/python -m huey.bin.huey_consumer poi_broker.worker.huey --workers=${HUEY_THREADS} --worker-type=thread --logfile=${HUEY_LOGFILE} --verbose
+Restart=always
+RestartSec=5
+
+# Harden
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/poi_broker /var/log/poi_broker /opt/poi_broker
+
+[Install]
+WantedBy=multi-user.target

@@ -3,6 +3,15 @@ import re
 
 from poi_broker.constants.features import FEATURE_COLUMNS
 from werkzeug.security import generate_password_hash
+from unittest.mock import patch
+
+from poi_broker import db
+from poi_broker.models import User, UserSettings
+from poi_broker.user_settings import (
+    get_user_settings,
+    get_saved_feature_plot_columns,
+    get_saved_last_selected_observatory,
+)
 
 
 def _extract_csrf_token(page_html):
@@ -87,3 +96,96 @@ def test_save_truncates_to_ten_feature_columns(auth_client):
     for k in keys[:10]:
         assert f'{k}" selected' in page_text
     assert f'{keys[10]}" selected' not in page_text
+
+
+class TestSingleLoadUserSettings:
+    """Tests for the single-load UserSettings optimization.
+
+    The main page (start()) loads the user's settings row once and reuses it
+    across lookups to avoid redundant DB queries. These tests verify that:
+    - get_user_settings() returns the raw row (or None).
+    - the getters accept an optional pre-loaded settings row and skip the DB
+      query when one is provided.
+    """
+
+    def test_get_user_settings_returns_none_when_absent(self, auth_client, app):
+        with app.app_context():
+            current_user = db.session.query(User).filter_by(email='smoketest@example.com').first()
+            assert get_user_settings(current_user.id) is None
+
+    def test_get_user_settings_returns_row_when_present(self, auth_client, app):
+        with app.app_context():
+            current_user = db.session.query(User).filter_by(email='smoketest@example.com').first()
+            settings = UserSettings(user_id=current_user.id)
+            settings.default_feature_plot_columns = json.dumps(['feature_amplitude_magn_r'])
+            db.session.add(settings)
+            db.session.commit()
+
+            loaded = get_user_settings(current_user.id)
+            assert loaded is not None
+            assert loaded.user_id == current_user.id
+
+    def test_get_saved_feature_plot_columns_uses_provided_settings(self, auth_client, app):
+        """When a settings row is provided, no DB query should be issued."""
+        with app.app_context():
+            current_user = db.session.query(User).filter_by(email='smoketest@example.com').first()
+            settings = UserSettings(user_id=current_user.id)
+            settings.default_feature_plot_columns = json.dumps(['feature_amplitude_magn_r'])
+            db.session.add(settings)
+            db.session.commit()
+
+            with patch('poi_broker.user_settings._load_user_settings') as mock_load:
+                result = get_saved_feature_plot_columns(current_user.id, settings)
+                mock_load.assert_not_called()
+                assert result == ['feature_amplitude_magn_r']
+
+    def test_get_saved_last_selected_observatory_uses_provided_settings(self, auth_client, app):
+        """When a settings row is provided, no DB query should be issued."""
+        with app.app_context():
+            current_user = db.session.query(User).filter_by(email='smoketest@example.com').first()
+            settings = UserSettings(user_id=current_user.id)
+            settings.last_selected_observatory_json = json.dumps({'source': 'builtin', 'name': 'Palomar'})
+            db.session.add(settings)
+            db.session.commit()
+
+            with patch('poi_broker.user_settings._load_user_settings') as mock_load:
+                result = get_saved_last_selected_observatory(current_user.id, settings)
+                mock_load.assert_not_called()
+                assert result == {'source': 'builtin', 'name': 'Palomar'}
+
+    def test_getters_fall_back_to_db_when_no_settings_provided(self, auth_client, app):
+        """Without a provided row, the getters still load from the DB (backward compat)."""
+        with app.app_context():
+            current_user = db.session.query(User).filter_by(email='smoketest@example.com').first()
+            settings = UserSettings(user_id=current_user.id)
+            settings.default_feature_plot_columns = json.dumps(['feature_amplitude_magn_r'])
+            db.session.add(settings)
+            db.session.commit()
+
+            with patch('poi_broker.user_settings._load_user_settings', return_value=settings) as mock_load:
+                result = get_saved_feature_plot_columns(current_user.id)
+                mock_load.assert_called_once_with(current_user.id)
+                assert result == ['feature_amplitude_magn_r']
+
+    def test_start_loads_settings_once_for_authenticated_user(self, auth_client, app):
+        """The main page should issue exactly one UserSettings load for an authenticated user."""
+        with app.app_context():
+            current_user = db.session.query(User).filter_by(email='smoketest@example.com').first()
+            user_id = current_user.id
+            settings = UserSettings(user_id=user_id)
+            settings.default_feature_plot_columns = json.dumps(['feature_amplitude_magn_r'])
+            settings.last_selected_observatory_json = json.dumps({'source': 'builtin', 'name': 'Palomar'})
+            db.session.add(settings)
+            db.session.commit()
+
+        with patch('poi_broker.app.get_user_settings', wraps=get_user_settings) as mock_get:
+            r = auth_client.get('/')
+            assert r.status_code == 200
+            mock_get.assert_called_once_with(user_id)
+
+    def test_start_does_not_load_settings_for_anonymous_user(self, app, client):
+        """Anonymous users should not trigger a UserSettings load."""
+        with patch('poi_broker.app.get_user_settings') as mock_get:
+            r = client.get('/')
+            assert r.status_code == 200
+            mock_get.assert_not_called()

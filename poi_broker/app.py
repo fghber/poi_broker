@@ -1,27 +1,79 @@
-from flask import (render_template, abort, jsonify, request, Response,
-                   redirect, url_for, make_response, Blueprint, current_app)
-from flask_login import login_required, current_user
-import logging
-from functools import lru_cache
 import csv
 import io
-from datetime import datetime, timezone
-from astropy.time import Time
-from astropy.coordinates import EarthLocation
-import re
 import json
-
-from .helpers import extract_numbers, extract_dates, extract_float_filter, extract_mjd_filter, safe_serialize, result_to_dict, object_as_dict
-from . import db, limiter
-from .models import Ztf, Crossmatches, User, Favorite, FavoriteGroup, Watchlist, Classification, UserObservatory
-from .routes import favorites_bp, filter_bookmarks_bp, visual_query_bp, lightcurve_bp, features_bp, user_observatories_bp
-from .constants.features import FEATURE_COLUMNS, default_feature_plot_columns
-from .user_settings import user_settings_bp, get_saved_feature_plot_columns, get_saved_last_selected_observatory, UserSettings  # noqa: F401 - imported to register model
+import logging
+from datetime import datetime, timezone
+from functools import lru_cache
 from importlib.metadata import version
+from pathlib import Path
+
+import bokeh as bokeh_pkg
+from astropy.coordinates import EarthLocation
+from astropy.time import Time
+from flask import (
+    Blueprint,
+    Flask,
+    Response,
+    abort,
+    current_app,
+    jsonify,
+    make_response,
+    render_template,
+    request,
+    send_from_directory,
+)
+from flask_login import current_user, login_required
+
+from . import db, limiter
+from .constants.features import FEATURE_COLUMNS, default_feature_plot_columns
+from .helpers import object_as_dict, result_to_dict, safe_serialize
+from .models import Classification, Crossmatches, UserObservatory, Ztf
+from .routes import (
+    export_bp,
+    favorites_bp,
+    features_bp,
+    filter_bookmarks_bp,
+    lightcurve_bp,
+    user_observatories_bp,
+    visual_query_bp,
+)
+from .services.catalog_list import (
+    PAGE_SIZE,
+    count_matches,
+    cursor_from_row,
+    fetch_keyset,
+    fetch_page,
+    last_page_from_total,
+    parse_keyset_request,
+    resolve_catalog_total,
+    should_use_keyset,
+)
+from .services.catalog_query import (
+    build_catalog_query,
+    catalog_filter_query_string,
+    catalog_href,
+    catalog_query_string,
+    project_catalog_columns,
+)
+from .user_settings import (
+    UserSettings,
+    get_saved_feature_plot_columns,
+    get_saved_last_selected_observatory,
+    get_user_settings,
+    user_settings_bp,
+)
+
 bokeh_version = version("bokeh")
+_BOKEH_JS_DIR = Path(bokeh_pkg.__file__).resolve().parent / "server" / "static" / "js"
 
 logger = logging.getLogger(__name__)
 main_blueprint = Blueprint('main', __name__)
+
+
+@main_blueprint.route("/bokeh.min.js")
+def bokeh_js() -> Response:
+    """Serve the Bokeh JS that ships with the installed Python package."""
+    return send_from_directory(_BOKEH_JS_DIR, "bokeh.min.js", max_age=86400)
 
 @lru_cache(maxsize=8192)
 def _format_mjd_cached(mjd_value: float) -> str:
@@ -74,12 +126,16 @@ def _resolve_selected_observatory(
     return None
 
 
-def _build_observatory_context() -> dict[str, list | str | None]:
+def _build_observatory_context(settings_row: UserSettings | None = None) -> dict[str, list | str | None]:
     """Build observatory context for the main page.
     
     Constructs builtin and custom observatory options, restores the user's last
     selected observatory (if authenticated), and provides a fallback to the first
     available option if the saved selection is invalid or deleted.
+    
+    Args:
+        settings_row: Optional pre-loaded UserSettings row to avoid a redundant
+                      DB query when the caller already has it (e.g. start()).
     
     Returns:
         dict with keys:
@@ -105,7 +161,7 @@ def _build_observatory_context() -> dict[str, list | str | None]:
 
     # Attempt to restore saved selection; gracefully falls back if invalid/deleted
     selected_value = _resolve_selected_observatory(
-        get_saved_last_selected_observatory(current_user.id) if current_user.is_authenticated else None,
+        get_saved_last_selected_observatory(current_user.id, settings_row) if current_user.is_authenticated else None,
         builtin_values,
         custom_values
     )
@@ -126,199 +182,126 @@ def _build_observatory_context() -> dict[str, list | str | None]:
 
 @main_blueprint.route('/', methods=['GET'])
 @limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
-def start():
-    logger.info('Request with request_args: %s', json.dumps(request.args))
-    
+def start() -> str:
+    logger.debug('Request with request_args: %s', json.dumps(request.args.to_dict(flat=False)))
+
     page = request.args.get('page', 1, type=int)
-    filter_warning_message = ''
+    if page is None or page < 1:
+        abort(404)
 
-    query = db.session.query(Ztf).outerjoin(Classification, Ztf.alert_id == Classification.alert_id)
+    build = build_catalog_query(request.args)
+    list_query = project_catalog_columns(build.list_query)
+    use_keyset = should_use_keyset(build.is_date_only_sort, request.args)
+    keyset_direction = 'first'
 
-    if request.args.get('date'):
-        date_input = extract_dates(request.args.get('date'))
-        if date_input:
-            query = extract_mjd_filter(date_input, Ztf.date_alert_mjd, query)
-        else:
-            filter_warning_message += 'Date filter cannot be applied - Enter a valid ISO-date or 8-digit integer date of the form yyyymmdd, e.g. "20201207", or a range, e.g., "20201207 20201209".'
-    
-    if request.args.get('date_alert_mjd'):
-        date_input = extract_numbers(request.args.get('date_alert_mjd'))
-        if date_input != None:
-            query = extract_float_filter(date_input, Ztf.date_alert_mjd, query)
-        else:
-            filter_warning_message += 'MJD filter cannot be applied - Enter a valid Modified Julian Date as a number, e.g. "59190.12", a range, e.g. "59190 59191", or a bound with > or <, e.g. ">59190".'
-
-    if request.args.get('alert_id'):
-        alertId = request.args.get('alert_id', '').strip()
-        if re.match(r'^(?:ztf_candidate|lsst):\d{18,}$', alertId): # if it contains 18+ digits, we got a complete alert_id and can query it directly.
-            query = query.filter(Ztf.alert_id == alertId)
-        elif re.match(r'^(?:ztf|lsst)\D*$', alertId): # otherwise, we allow for partial matching of alert_id to find alerts with a specific prefix, e.g. ztf / lsst
-            search = "{}%".format(alertId)
-            query = query.filter(Ztf.alert_id.like(search))
-        elif alertId != '':
-            filter_warning_message += 'Alert ID cannot be filter by partial IDs - Enter a full alert ID, e.g. "ztf_candidate:335155568501", or "lsst:170094456539709554", or just the catalog prefix, e.g. "ztf" or "lsst".'
-
-    if request.args.get('ztf_object_id'):
-        query = query.filter(Ztf.ztf_object_id == request.args.get('ztf_object_id'))
-
-    #if request.args.get('filter'):
-        #query = query.filter(Ztf.filter == int(request.args.get('filter'))) # 1:g, 2:r, 3:i
-    if request.args.get('ant_passband'):
-        ant_passband = request.args.get('ant_passband')
-        query = query.filter(Ztf.ant_passband == ant_passband) # g, R, i
-
-    if request.args.get('locus_id'):
-        query = query.filter(Ztf.locus_id == request.args.get('locus_id'))
-
-    if request.args.get('locus_ra'):
-        ra_input = extract_numbers(request.args.get('locus_ra'))
-        if ra_input != None:
-            query = extract_float_filter(ra_input, Ztf.locus_ra, query, decimals=5)
-        else:
-            filter_warning_message += 'Ra filter cannot be applied - Enter a valid number, e.g., "118.61421", or range, e.g., "80 90".'
-
-    if request.args.get('locus_dec'):
-        dec_input = extract_numbers(request.args.get('locus_dec'))
-        if dec_input != None:
-            query = extract_float_filter(dec_input, Ztf.locus_dec, query, decimals=5)
-        else:
-            filter_warning_message += 'Dec filter cannot be applied - Enter a valid number, e.g., "-20.02131", or range, e.g., "18.8 19.4".'
-
-    if request.args.get('magpsf'):
-        magpsf_input = extract_numbers(request.args.get('magpsf'))
-        if magpsf_input != None:
-            query = extract_float_filter(magpsf_input, Ztf.ant_mag_corrected, query, decimals=3)
-        else:
-            filter_warning_message += 'ant_mag_corrected filter cannot be applied - Enter a valid number, e.g., "18.84", or range, e.g., "18.8 19.4".'
-
-    if request.args.get('prob_class'):
-        prob_class_value = request.args.get('prob_class', '').strip()
-        if prob_class_value:
-            query = query.filter(Classification.prob_class == prob_class_value)
-
-    #Sort order by date (still sorts by mjd column)
-    if request.args.get('sort__date'):
-        sort__date_order = request.args.get('sort__date')
-        if sort__date_order == 'desc':
-            query = query.order_by(Ztf.date_alert_mjd.desc())
-        if sort__date_order == 'asc':
-            query = query.order_by(Ztf.date_alert_mjd.asc())
+    if use_keyset:
+        keyset_direction, cursor = parse_keyset_request(request.args)
+        items, has_next, has_prev = fetch_keyset(
+            list_query,
+            cursor=cursor,
+            direction=keyset_direction,
+            sort_desc=build.date_sort_desc,
+            page_size=PAGE_SIZE,
+        )
     else:
-        query = query.order_by(Ztf.date_alert_mjd.desc()) #default sort order
+        items, has_next = fetch_page(list_query, page, page_size=PAGE_SIZE)
+        if page > 1 and not items:
+            abort(404)
+        has_prev = page > 1
 
-    # Sort order by alert_id
-    sort__alert_order = request.args.get('sort__alert_id')
-    if sort__alert_order:
-        if sort__alert_order == 'desc':
-            query = query.order_by(Ztf.alert_id.desc())
-        if sort__alert_order == 'asc':
-            query = query.order_by(Ztf.alert_id.asc())
-    
-    # Sort order by ztf_object_id
-    sort__object_order = request.args.get('sort__ztf_object_id')
-    if sort__object_order:
-        if sort__object_order == 'desc':
-            query = query.order_by(Ztf.ztf_object_id.desc())
-        if sort__object_order == 'asc':
-            query = query.order_by(Ztf.ztf_object_id.asc())
-
-    # Sort order by locus_ra
-    sort__ra_order = request.args.get('sort__locus_ra')
-    if sort__ra_order:
-        if sort__ra_order == 'desc':
-            query = query.order_by(Ztf.locus_ra.desc())
-        if sort__ra_order == 'asc':
-            query = query.order_by(Ztf.locus_ra.asc())
-
-    # Sort order by locus_dec
-    sort__dec_order = request.args.get('sort__locus_dec')
-    if sort__dec_order:
-        if sort__dec_order == 'desc':
-            query = query.order_by(Ztf.locus_dec.desc())
-        if sort__dec_order == 'asc':
-            query = query.order_by(Ztf.locus_dec.asc())
-
-    # Sort order by ant_mag_corrected
-    sort__mag_order = request.args.get('sort__ant_mag_corrected')
-    if sort__mag_order:
-        if sort__mag_order == 'desc':
-            query = query.order_by(Ztf.ant_mag_corrected.desc())
-        if sort__mag_order == 'asc':
-            query = query.order_by(Ztf.ant_mag_corrected.asc())
-
-    # Project the classification label directly to avoid per-row lazy loads.
-    query = query.with_entities(
-        Ztf.date_alert_mjd,
-        Ztf.alert_id,
-        Ztf.ztf_object_id,
-        Ztf.ant_passband,
-        Ztf.locus_id,
-        Ztf.locus_ra,
-        Ztf.locus_dec,
-        Ztf.ant_mag_corrected,
-        Classification.prob_class.label('prob_class'),
+    total_queries, count_deferred = resolve_catalog_total(
+        build,
+        items=items,
+        has_next=has_next,
+        page=page,
+        use_keyset=use_keyset,
+        keyset_direction=keyset_direction,
     )
+    last_page = last_page_from_total(total_queries) if total_queries is not None else None
 
-    #latest = db.session.query(Ztf).order_by(Ztf.date_alert_mjd.desc()).first() # ? IDEA: show latest update date
-    #print(f'Latest alert in DB has date_log={latest.date_log} (UTC {Time(latest.date_alert_mjd, format="mjd").iso})') #DEBUG: print latest alert date in MJD and UTC for debugging
-    #print(query.statement.compile(compile_kwargs={"literal_binds": True})) #DEBUG: print the resulting SQL query
-    paginator = query.paginate(page=page, per_page=100, error_out=True)
+    query_string = catalog_query_string(request.args)
+    filter_query_string = catalog_filter_query_string(request.args)
+    first_href = catalog_href(query_string)
+    if use_keyset:
+        prev_href = catalog_href(query_string, cursor_from_row(items[0]).as_after_params()) if items and has_prev else None
+        next_href = catalog_href(query_string, cursor_from_row(items[-1]).as_before_params()) if items and has_next else None
+        last_href = catalog_href(query_string, {'last': '1'}) if has_next else None
+    else:
+        prev_href = catalog_href(query_string, {'page': str(page - 1)}) if has_prev else None
+        next_href = catalog_href(query_string, {'page': str(page + 1)}) if has_next else None
+        last_href = catalog_href(query_string, {'page': str(last_page)}) if last_page and has_next else None
 
-    observatory_context = _build_observatory_context()
+    hide_last = bool(has_next and last_href is None)
+
+    # Load the user's settings row once and reuse it across lookups to avoid
+    # redundant DB queries on every authenticated main-page request.
+    settings_row = get_user_settings(current_user.id) if current_user.is_authenticated else None
+    observatory_context = _build_observatory_context(settings_row)
 
     return render_template(
         "main.html",
-        total_queries=paginator.total,
-        table=paginator.items,
-        page=paginator.page,
-        has_next=paginator.has_next,
-        last_page=paginator.pages,
-        # ? TODO Pagination query-string re.sub may leave a trailing & in edge cases. TEST
-        query_string=re.sub('[&?]?page=\\d+|&$', '', request.query_string.decode('ascii')), # ? b'' binary string 
-        filter_warning = filter_warning_message,
+        total_queries=total_queries,
+        count_deferred=count_deferred,
+        table=items,
+        page=page,
+        has_next=has_next,
+        has_prev=has_prev,
+        last_page=last_page,
+        query_string=query_string,
+        filter_query_string=filter_query_string,
+        first_href=first_href,
+        prev_href=prev_href,
+        next_href=next_href,
+        last_href=last_href,
+        hide_last=hide_last,
+        page_size=PAGE_SIZE,
+        filter_warning=build.filter_warning,
         custom_observatory_options=observatory_context['custom_options'],
         builtin_observatory_options=observatory_context['builtin_options'],
         selected_observatory_value=observatory_context['selected_value'],
-        today_utc = datetime.now(timezone.utc).date(),
-        bokeh_version = bokeh_version,
-        available_feature_columns = FEATURE_COLUMNS,
-        default_feature_plot_columns=(get_saved_feature_plot_columns(current_user.id)
+        today_utc=datetime.now(timezone.utc).date(),
+        bokeh_version=bokeh_version,
+        available_feature_columns=FEATURE_COLUMNS,
+        default_feature_plot_columns=(get_saved_feature_plot_columns(current_user.id, settings_row)
                                       if current_user.is_authenticated
                                       else default_feature_plot_columns()),
     )
 
+
+@main_blueprint.route('/api/catalog-count', methods=['GET'])
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
+def catalog_count() -> Response:
+    """Exact match count for the current main-page filters (on demand)."""
+    build = build_catalog_query(request.args, include_sort=False)
+    return jsonify({'count': count_matches(build.count_query)})
+
 @main_blueprint.route('/help', methods=['GET'])
-def help():
+def help() -> str:
     return render_template(
         "help.html"
     )
 
 @main_blueprint.route('/contact', methods=['GET'])
-def contact():
+def contact() -> str:
     return render_template(
         "contact.html"
     )
 
 @main_blueprint.route('/profile')
 @login_required
-def profile():
-    """Show user profile and their favorites."""
-    try:
-        favs = [f.locus_id for f in Favorite.query.filter_by(user_id=current_user.id).order_by(Favorite.created_at.desc()).all()]
-    except Exception:
-        logger.exception('Failed to load favorites for profile (user_id=%s)', current_user.id)
-        favs = []
-    return render_template(
-        'profile.html', name=current_user.name, favorites=favs
-    )
+def profile() -> str:
+    """Show user profile; favorites/groups load via AJAX from /api/*."""
+    return render_template('profile.html', name=current_user.name)
 
 @main_blueprint.route('/download_alerts_csv', methods=['GET'])
 @limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_MEDIUM', '15 per minute'))
-def download_alerts_csv():
+def download_alerts_csv() -> Response:
     """Download featuretable + classification fields for multiple alert_ids as CSV."""
     alert_ids = [x.strip() for x in request.args.getlist('alert_id') if x and x.strip()]
     if not alert_ids:
         return Response('Missing alert_id', status=400)
+    if len(alert_ids) > PAGE_SIZE:
+        return Response(f'Too many alert_id parameters (maximum {PAGE_SIZE})', status=400)
 
     try:
         csv_text, row_count = _build_alerts_csv(alert_ids)
@@ -330,11 +313,11 @@ def download_alerts_csv():
         response.mimetype = 'text/csv'
         return response
     except Exception as e:
-        logger.error('Error downloading CSV for alert_ids %s: %s', alert_ids, e, exc_info=True)
+        logger.exception(f'Error downloading CSV for alert_ids {alert_ids}: {type(e).__name__}')
         return Response('Error downloading CSV for selected alert ids!', status=500)
 
 
-def _build_alerts_csv(alert_ids):
+def _build_alerts_csv(alert_ids: list[str]) -> tuple[str, int]:
     """Build CSV text for alert IDs and return (csv_text, row_count)."""
     unique_alert_ids = list(dict.fromkeys(alert_ids))
 
@@ -349,10 +332,10 @@ def _build_alerts_csv(alert_ids):
     ordered_feature_rows = [feature_by_alert_id[aid] for aid in unique_alert_ids if aid in feature_by_alert_id]
 
     first_feature_data = object_as_dict(ordered_feature_rows[0])
-    classification_template = object_as_dict(Classification())
+    classification_columns = Classification.__table__.columns.keys()
 
     fieldnames = list(first_feature_data.keys()) + [
-        col_name for col_name in classification_template.keys() if col_name != 'alert_id'
+        col_name for col_name in classification_columns if col_name != 'alert_id'
     ]
 
     csv_buffer = io.StringIO()
@@ -365,9 +348,9 @@ def _build_alerts_csv(alert_ids):
         if classification_row is not None:
             classification_data = object_as_dict(classification_row)
         else:
-            classification_data = classification_template
+            classification_data = {col_name: None for col_name in classification_columns}
 
-        for col_name in classification_template.keys():
+        for col_name in classification_columns:
             if col_name == 'alert_id':
                 continue
             merged_row[col_name] = classification_data.get(col_name)
@@ -379,16 +362,16 @@ def _build_alerts_csv(alert_ids):
 
 @main_blueprint.route('/query_crossmatches', methods=['GET'])
 @limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
-def query_crossmatches():
+def query_crossmatches() -> Response:
     """Query crossmatches for a given locus id."""
-    locusId = request.args.get('locusId') # ex: locusname="ANT2018fywy2"
-    if not locusId:
+    locus_id = request.args.get('locusId') # ex: locusname="ANT2018fywy2"
+    if not locus_id:
         return Response('Missing locusId', status=400)
 
     try:
         #query all Crossmatches records from DB where locus id equals given id
         crossmatches_query = db.session.query(Crossmatches)
-        crossmatches_query = crossmatches_query.filter(Crossmatches.locus_id == locusId)
+        crossmatches_query = crossmatches_query.filter(Crossmatches.locus_id == locus_id)
         crossmatches_list = result_to_dict(crossmatches_query.all())
 
         response = current_app.response_class(
@@ -398,12 +381,13 @@ def query_crossmatches():
         )
         return response
     except Exception as e:
-        logger.error('Error querying crossmatches: %s', e, exc_info=True)
-        return Response('Error querying crossmatches for selected locus id!', status=500) # Internal Server Error: TODO:Return JSON error message instead of string?
+        logger.exception(f'Error querying crossmatches for locusId {locus_id}: {type(e).__name__}')
+        # Text error body is intentional: front-end error handler displays xhr.responseText verbatim
+        return Response('Error querying crossmatches for selected locus id!', status=500)
 
 # Register Jinja filters
 @main_blueprint.app_template_filter('astro_filter')
-def astro_filter(passband):
+def astro_filter(passband: str) -> str:
     if passband == "g":
         return "g"
     elif passband == "R":
@@ -414,25 +398,34 @@ def astro_filter(passband):
         return ""
 
 @main_blueprint.app_template_filter('mag_filter')
-def mag_filter(num):
-    if num: 
-        return round(num,3)
-    # else:
-    #     return ''
+def mag_filter(num: float | None) -> float | None:
+    if num is not None:
+        return round(num, 3)
+    return None
 
 @main_blueprint.app_template_filter('format_mjd_readable')
-def format_mjd_readable(value):
+def format_mjd_readable(value: float | None) -> str:
     if value is None:
         return ''
-    
+
     try:
         mjd_value = float(value)
         return _format_mjd_cached(mjd_value) # Use Astropy for accurate conversion
     except (TypeError, ValueError, OverflowError):
         return ''
 
+@main_blueprint.app_template_filter('epoch_utc_date')
+def epoch_utc_date(value: int | None) -> str:
+    """Render an epoch-seconds column (e.g. User.password_changed_at) as a UTC date."""
+    if value is None:
+        return ''
+    try:
+        return datetime.fromtimestamp(int(value), tz=timezone.utc).strftime('%Y-%m-%d')
+    except (TypeError, ValueError, OSError, OverflowError):
+        return ''
 
-def register_blueprints(app):
+
+def register_blueprints(app: Flask) -> None:
     """Register all blueprints with the Flask app."""
     app.register_blueprint(main_blueprint)
     app.register_blueprint(favorites_bp)
@@ -442,3 +435,4 @@ def register_blueprints(app):
     app.register_blueprint(features_bp)
     app.register_blueprint(user_observatories_bp)
     app.register_blueprint(user_settings_bp)
+    app.register_blueprint(export_bp)

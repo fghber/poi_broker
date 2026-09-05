@@ -1,16 +1,16 @@
 """Feature query routes blueprint."""
 
 import logging
-import json
-from flask import Blueprint, Response, request, jsonify, current_app
-from ..services.feature_service import query_features_by_alert_id, query_feature_plot_data, get_available_features
-from ..services.plotting_service import create_bokeh_feature_plot
-from ..helpers import safe_serialize
+from flask import Blueprint, request, jsonify, current_app
+from ..services.feature_service import query_features_by_alert_id, query_feature_plot_data
+from ..services.plotting_service import bokeh_json_payload, create_bokeh_feature_plot
 from .. import limiter
 
 logger = logging.getLogger(__name__)
 
 features_bp = Blueprint('features', __name__)
+
+_MAX_ALERT_ID_LEN = 128
 
 
 @features_bp.route('/query_features', methods=['GET'])
@@ -23,6 +23,8 @@ def query_features():
     alert_id = request.args.get('alert_id')
     if not alert_id:
         return jsonify({'error': 'Missing alert_id'}), 400
+    if len(alert_id) > _MAX_ALERT_ID_LEN:
+        return jsonify({'error': 'alert_id is too long'}), 400
 
     try:
         data = query_features_by_alert_id(alert_id)
@@ -36,14 +38,17 @@ def query_features():
 
 
 @features_bp.route('/query_featureplot_data', methods=['GET'])
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
 def query_featureplot_data():
     """
     Get feature plot data for a locus ID.
-    Returns Bokeh HTML/script components with selected features plotted.
+    Returns JSON ``{div, script}`` Bokeh components with selected features plotted.
     """
     locusId = request.args.get('locusId')
     if not locusId:
-        return Response('Missing locusId', status=400)
+        return jsonify({'error': 'Missing locusId'}), 400
+    if len(locusId) > _MAX_ALERT_ID_LEN:
+        return jsonify({'error': 'locusId is too long'}), 400
 
     selected_features = request.args.get('features')
     
@@ -60,9 +65,7 @@ def query_featureplot_data():
 
         # Create Bokeh plot
         div, script = create_bokeh_feature_plot(data, used_features)
-        
-        # Return the components to the HTML template
-        return f'{div}{script}'
+        return jsonify(bokeh_json_payload(div, script))
     except Exception as e:
         logger.error(f'Error querying feature plot data: {str(e)}', exc_info=True)
-        return Response('Error querying feature plot data', status=500)
+        return jsonify({'error': 'Error querying feature plot data'}), 500

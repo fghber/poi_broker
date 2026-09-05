@@ -1,30 +1,54 @@
 from poi_broker import db
-from poi_broker.classification import classification_plot
 from poi_broker.models import Classification
 
 
-def test_classification_plot_requires_alert_id(app):
-    with app.test_request_context('/query_classification'):
-        response = classification_plot()
+def test_classification_plot_requires_alert_id(client):
+    response = client.get('/query_classification')
 
-    assert isinstance(response, tuple)
-    assert "Missing alertId" in response[0]
-    assert response[1] == ""
-
-
-def test_classification_plot_returns_no_data_for_unknown_alert_id(app):
-    alert_id = "missing-alert"
-
-    with app.test_request_context(f'/query_classification?alertId={alert_id}'):
-        response = classification_plot()
-
-    assert isinstance(response, tuple)
-    assert f"No classification data found for alert_id={alert_id}" in response[0]
-    assert response[1] == ""
+    assert response.status_code == 400
+    assert response.is_json
+    assert response.get_json()['error'] == 'Missing alertId'
 
 
-def test_classification_plot_renders_bokeh_components_for_existing_record(app):
-    alert_id = "alert-123"
+def test_classification_plot_rejects_oversized_alert_id(client):
+    response = client.get('/query_classification', query_string={'alertId': 'x' * 129})
+
+    assert response.status_code == 400
+    assert response.is_json
+    assert response.get_json()['error'] == 'alertId is too long'
+
+
+def test_classification_plot_does_not_reflect_alert_id(client):
+    xss = '"><script>alert(1)</script>'
+    response = client.get('/query_classification', query_string={'alertId': xss})
+
+    assert response.status_code == 200
+    assert response.is_json
+    payload = response.get_json()
+    assert payload['script'] == ''
+    assert 'No classification data found' in payload['div']
+    assert 'alert-warning' in payload['div']
+    body = response.get_data(as_text=True)
+    assert '<script>' not in body
+    assert xss not in body
+    assert 'alert_id=' not in body
+
+
+def test_classification_plot_returns_no_data_for_unknown_alert_id(client):
+    response = client.get('/query_classification', query_string={'alertId': 'missing-alert'})
+
+    assert response.status_code == 200
+    assert response.is_json
+    payload = response.get_json()
+    assert payload['script'] == ''
+    assert payload['div'].startswith('<div')
+    assert 'alert-warning' in payload['div']
+    assert 'No classification data found' in payload['div']
+    assert 'missing-alert' not in payload['div']
+
+
+def test_classification_plot_renders_bokeh_components_for_existing_record(client, app):
+    alert_id = 'alert-123'
     classification_row = Classification(
         alert_id=alert_id,
         p_cvnova=None,
@@ -41,10 +65,12 @@ def test_classification_plot_renders_bokeh_components_for_existing_record(app):
         db.session.add(classification_row)
         db.session.commit()
 
-    with app.test_request_context(f'/query_classification?alertId={alert_id}'):
-        response = classification_plot()
+    response = client.get('/query_classification', query_string={'alertId': alert_id})
 
-    assert isinstance(response, str)
-    assert response.startswith('<div')
-    assert '<script' in response
-    assert 'Classified as SN(0.87)' in response
+    assert response.status_code == 200
+    assert response.is_json
+    payload = response.get_json()
+    assert payload['div'].startswith('<div')
+    assert '<script' not in payload['script']
+    assert 'Bokeh' in payload['script']
+    assert 'Classified as SN(0.87)' in payload['script'] or 'Classified as SN(0.87)' in payload['div']

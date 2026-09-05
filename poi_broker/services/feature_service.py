@@ -1,11 +1,9 @@
 """Feature query service for handling ZTF feature data."""
 
 import logging
-import json
-from flask import current_app
+from sqlalchemy.orm import Query
 from .. import db
 from ..models import Ztf
-from ..helpers import object_as_dict, safe_serialize
 from ..constants.features import FEATURE_COLUMN_LIST, default_feature_plot_columns
 
 logger = logging.getLogger(__name__)
@@ -48,6 +46,34 @@ def query_features_by_alert_id(alert_id):
         raise
 
 
+def _resolve_feature_plot_columns(selected_features: list[str] | None) -> list[str]:
+    """Return up to 10 known feature names, or the plot defaults."""
+    if not selected_features:
+        return default_feature_plot_columns()
+    feature_list = [f for f in selected_features[:10] if f in FEATURE_COLUMN_LIST]
+    if not feature_list:
+        return default_feature_plot_columns()
+    return feature_list
+
+
+def build_feature_plot_query(
+    locus_id: str, selected_features: list[str] | None = None
+) -> tuple[Query, list[str]]:
+    """
+    Build a column-projected feature-plot query for a locus.
+
+    Returns:
+        tuple: (query, feature_list) — query selects date_alert_mjd,
+            ant_mag_corrected, and the resolved feature columns.
+    """
+    feature_list = _resolve_feature_plot_columns(selected_features)
+    columns_to_load = [Ztf.date_alert_mjd, Ztf.ant_mag_corrected] + [
+        getattr(Ztf, col) for col in feature_list
+    ]
+    query = db.session.query(*columns_to_load).filter(Ztf.locus_id == locus_id)
+    return query, feature_list
+
+
 def query_feature_plot_data(locus_id, selected_features=None):
     """
     Query feature plot data for a given locus_id.
@@ -57,28 +83,12 @@ def query_feature_plot_data(locus_id, selected_features=None):
         selected_features: List of feature column names to load (optional, defaults via default_feature_plot_columns)
     
     Returns:
-        list: Ztf rows with requested feature columns loaded
+        tuple: (rows, feature_list) where rows are column-projected SQLAlchemy Rows
+            with date_alert_mjd, ant_mag_corrected, and the selected feature columns.
     """
     try:
-        if not selected_features:
-            feature_list = default_feature_plot_columns()
-        else:
-            # Limit to 10 features for plotting
-            feature_list = selected_features[:10]
-            # Validate against known features
-            feature_list = [f for f in feature_list if f in FEATURE_COLUMN_LIST]
-            if not feature_list:
-                feature_list = default_feature_plot_columns()
-        
-        # Build column list: always include date and mag, plus selected features
-        columns_to_load = [Ztf.date_alert_mjd, Ztf.ant_mag_corrected] + [getattr(Ztf, col) for col in feature_list]
-        
-        featureplot_query = db.session.query(Ztf)
-        featureplot_query = featureplot_query.filter(Ztf.locus_id == locus_id)
-        featureplot_query = featureplot_query.options(db.load_only(*columns_to_load))
-        
-        data = featureplot_query.all()
-        return data, feature_list
+        query, feature_list = build_feature_plot_query(locus_id, selected_features)
+        return query.all(), feature_list
     except Exception as e:
         logger.error(f'Error querying feature plot data for locus_id {locus_id}: {str(e)}', exc_info=True)
         raise

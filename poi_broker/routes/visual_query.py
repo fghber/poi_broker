@@ -3,12 +3,12 @@
 import logging
 import json
 import time
-from flask import Blueprint, jsonify, request, render_template
+from flask import Blueprint, current_app, jsonify, request, render_template
 from flask_login import login_required, current_user
 from sqlalchemy.exc import IntegrityError
-from .. import db
+from .. import db, limiter
 from ..models import Watchlist
-from ..services.query_service import get_preview_sql, get_query_match_count, build_query_from_rules
+from ..services.query_service import get_preview_sql, get_query_match_count
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,7 @@ def preview_query():
 
 @visual_query_bp.route('/api/export-query', methods=['POST'])
 @login_required
+@limiter.limit(lambda: current_app.config.get('READ_RATE_LIMIT_LAX', '30 per minute'))
 def export_query():
     """Get match count for a query builder payload."""
     try:
@@ -92,8 +93,9 @@ def save_watchlist():
         else:
             return jsonify({'error': 'Invalid querybuilder rules payload'}), 400
 
-        # Build query and get SQL
-        _, sql_where = build_query_from_rules(rules_payload)
+        # Persist rules_json as the executable source of truth. sql_where is
+        # a display preview only and must never be concatenated into SQL.
+        sql_where = get_preview_sql(rules_payload)
 
         now_epoch = int(time.time())
 
@@ -112,9 +114,11 @@ def save_watchlist():
         db.session.rollback()
         return jsonify({'error': f"A watchlist named '{name}' already exists!"}), 409
     except ValueError as e:
+        db.session.rollback()
         logger.error(f"ValueError in save_watchlist: {str(e)}", exc_info=True)
         return jsonify({'error': 'Unable to to save invalid querybuilder rules!'}), 406
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error in save_watchlist: {str(e)}", exc_info=True)
         return jsonify({'error': 'An error occurred while saving the watchlist.'}), 500
 
@@ -150,5 +154,6 @@ def delete_watchlist(wid):
         db.session.rollback()
         return jsonify({'error': 'Cannot delete watchlist because it is in use.'}), 409
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Error in delete_watchlist: {str(e)}", exc_info=True)
         return jsonify({'error': 'An error occurred while deleting the watchlist.'}), 500

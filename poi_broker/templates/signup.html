@@ -8,15 +8,6 @@
         <div class="card">
             <div class="card-body">
 
-                {% with messages = get_flashed_messages() %}
-                {% if messages %}
-                <div class="alert alert-danger">
-                    {{ messages[0] }}.
-                    Go to <a href="{{ url_for('auth.login') }}" class="alert-link">login page</a>.
-                </div>
-                {% endif %}
-                {% endwith %}
-
                 <form method="POST" action="/signup">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="form-group">

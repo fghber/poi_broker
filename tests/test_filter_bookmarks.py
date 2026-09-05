@@ -70,11 +70,66 @@ def test_filter_bookmarks_validation(auth_client):
     assert r.status_code == 400
     assert "unknown" in r.get_json().get("error", "").lower()
 
+    r = auth_client.post(
+        "/api/filter-bookmarks",
+        json={"name": "legacy sort", "params": {"sort__date_alert_mjd": "desc"}},
+    )
+    assert r.status_code == 400
+    assert "unknown" in r.get_json().get("error", "").lower()
+
+
+def test_filter_bookmarks_allows_sort_locus_id(auth_client):
+    r = auth_client.post(
+        "/api/filter-bookmarks",
+        json={"name": "Locus sort", "params": {"sort__locus_id": "asc"}},
+    )
+    assert r.status_code == 201, r.get_data(as_text=True)
+    body = r.get_json()
+    assert body["params"]["sort__locus_id"] == "asc"
+    assert "sort__locus_id=asc" in body["path"]
+
+
+def test_filter_bookmarks_aliases_legacy_date_alert_mjd_sort(auth_client, app):
+    from poi_broker import db
+    from poi_broker.models import FilterBookmark, User
+
+    with app.app_context():
+        user = User.query.filter_by(email="smoketest@example.com").first()
+        assert user is not None
+        row = FilterBookmark(
+            user_id=user.id,
+            name="Legacy MJD sort",
+            query_json=json.dumps({"sort__date_alert_mjd": "desc", "locus_id": "ANT99"}),
+        )
+        db.session.add(row)
+        db.session.commit()
+        bookmark_id = row.id
+
+    r = auth_client.get("/api/filter-bookmarks")
+    assert r.status_code == 200
+    match = next((x for x in r.get_json()["filterBookmarks"] if x["id"] == bookmark_id), None)
+    assert match is not None
+    assert "sort__date_alert_mjd" not in match["params"]
+    assert match["params"]["sort__date"] == "desc"
+    assert "sort__date=desc" in match["path"]
+    assert match["params"]["locus_id"] == "ANT99"
+
 
 def test_filter_bookmarks_omitted_params_empty(auth_client):
     r = auth_client.post("/api/filter-bookmarks", json={"name": "Empty filters"})
     assert r.status_code == 201
     assert r.get_json()["path"] == "/"
+
+
+def test_filter_bookmarks_duplicate_name_returns_409(auth_client):
+    """O5: UniqueConstraint(user_id, name) maps to 409."""
+    payload = {"name": "Same name", "params": {"locus_id": "ANT1"}}
+    r1 = auth_client.post("/api/filter-bookmarks", json=payload)
+    assert r1.status_code == 201
+
+    r2 = auth_client.post("/api/filter-bookmarks", json=payload)
+    assert r2.status_code == 409
+    assert "already exists" in r2.get_json().get("error", "").lower()
 
 
 def test_filter_bookmarks_cross_user_delete(app, auth_client):

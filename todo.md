@@ -1,29 +1,20 @@
 # Fixes
+
 - [x] change order of Summary: Watchlist <-> Bookmarks
 - [x] Rename "Saved Filters" to Bookmarked Filters
 
 # Cleanup
-- align jQuery/Bootstrap versions and integrity tags
+
+- [x] align jQuery/Bootstrap versions and integrity tags
 - JSON responses differs on error types and escaping: Some endpoints use jsonify, others build Response/current_app.response_class with json.dumps or safe_serialize (query_features, query_crossmatches).
-- request.query_string.decode('ascii'): Non-ASCII query strings can raise; utf-8 with errors policy is safer.
-- implement `get_flashed_messages(with_categories=True)` globally for all categoires used: 'danger', 'success', 'info',  'warning'
-- apply db.session.commit() pattern when
-  - Violating a unique constraint (email column)
-  - Violating a foreign key constraint
-  - Violating a NOT NULL constraint
-  ```
-    try:
-        db.session.commit()
-    except IntegrityError:
-        db.session.rollback()
-        flash('Failed to generate password reset link. Please try again later.')
-        return redirect(url_for('auth.forgot_password'))
-    except Exception as e:
-        db.session.rollback()
-        logger.error('Database error during commit', exc_info=True)
-        flash('Failed to generate password reset link. Please try again later.')
-        return redirect(url_for('auth.forgot_password'))
-  ```
+- [x] request.query_string.decode('ascii'): Non-ASCII query strings can raise; utf-8 with errors policy is safer.
+- [x] implement `get_flashed_messages(with_categories=True)` globally for all categoires used: 'danger', 'success', 'info',  'warning'
+- [x] apply db.session.commit() pattern when
+  * Violating a unique constraint (email column)
+  * Violating a foreign key constraint
+  * Violating a NOT NULL constraint
+- [x] Logging setup in `create_app()` (poi_broker/__init__.py:86-89, NOT app.py:104-107 as flagged): `logging.basicConfig` with hardcoded CWD-relative `app.log` (mode 'a+'), no config override. Boot depends on CWD writability (systemd WorkingDirectory/ReadWritePaths currently makes it work); pytest runs append to ./app.log in repo root; lands in /opt/poi_broker while huey.log goes to /var/log via HUEY_LOGFILE; no rotation. Fix: resolve path from `base_dir`/env var (note: basicConfig runs before `base_dir` is computed at line 97 — reorder needed), consider RotatingFileHandler. Not urgent: works under documented deployment.
+  - Fixed via `_configure_logging(base_dir)` in `poi_broker/__init__.py`: path = `APP_LOG_FILE` env var, else `<workspace root>/app.log` (CWD-independent, same location as before in dev and under systemd); `RotatingFileHandler` (5 MB x 3); stderr fallback if unwritable; skipped entirely when `FLASK_TESTING` so pytest never writes `app.log`.
 
 # Considerations
 
@@ -33,16 +24,17 @@
 - Update main table data via AJAX/API calls instead of page loads/GET
 
 # New Features
+
 - [x] Save table filters (URL) as bookmark (My Search/Filter)
 - [x] Allow users selecting (up to 10) default features to plot
 - [x] Allow users to create custom observatory coordinates for the observing planning tool
 - [x] Add Default Observatory Coordinates -> Last-used becomes the default for the next session
-- [ ] Document new features in the README.md and add a "Changelog" section for future updates
-- [ ] Add Bulk Export based on Visual Query (Top 1000/Preview or All)
-  - Create CSV fully async, inform user when ready
+- [x] Document new features in the README.md
+- [x] Add Bulk Export based on Visual Query (Top 1M/Preview or All)
+  - [x] Create CSV fully async, inform user when ready
 
 # Future
-- Indepentent Python Client API Export Package 
+
 - Migrate to more capable DB (PostgreSQL)
 - Change column type: ant_magband REAL -> TEXT
   ```

@@ -3,9 +3,9 @@
 {% block extra_head %}
   {{ super() }}
   <link href="static/css/jquery.multiselect.css" rel="stylesheet" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@eonasdan/tempus-dominus@6.9.4/dist/css/tempus-dominus.min.css" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@eonasdan/tempus-dominus@6.10.4/dist/css/tempus-dominus.min.css" integrity="sha256-lD7ev3j/Q57xkY6BcJsAHuFP/lhMMu72Mo7/C2X1wYk=" crossorigin="anonymous">
   {% if bokeh_version is defined %}
-  <script src="https://cdn.bokeh.org/bokeh/release/bokeh-{{ bokeh_version }}.min.js"></script>
+  <script src="{{ url_for('main.bokeh_js', v=bokeh_version) }}"></script>
   {% endif %}
   <!--"https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8"-->
   <script type="text/javascript" src="/static/js/aladin.js" charset="utf-8"></script>
@@ -28,7 +28,7 @@
 {% block content %}
 <div class="row">
   <div class="col-md-12">
-    <button class="btn btn-outline-primary btn-sm mb-3 mt-1" type="button" data-toggle="collapse" data-target="#poiWelcomeContent" aria-expanded="true" aria-controls="poiWelcomeContent">
+    <button class="btn btn-outline-primary btn-sm mb-3 mt-1" type="button" data-toggle="collapse" data-target="#poiWelcomeContent" aria-expanded="false" aria-controls="poiWelcomeContent">
       Toggle Introduction
     </button>
     <div class="collapse" id="poiWelcomeContent">
@@ -59,21 +59,25 @@
       <div class="responsive">
         <div class="row">
         <div class="col-md-4 mt-2">
-          <div class="justify-content-start">&nbsp;<b>Rows:</b> {{total_queries}}</div> 
+          <div class="justify-content-start" id="catalog-rows-label">&nbsp;<b>Rows:</b>
+            {% if total_queries is not none %}
+            <span id="catalog-rows-value">{{ total_queries }}</span>
+            {% else %}
+            <span id="catalog-rows-value">{{ page_size }}+</span>
+            <button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="btn-catalog-count"
+                    data-count-url="/api/catalog-count{% if filter_query_string %}?{{ filter_query_string }}{% endif %}"
+                    data-query-string="{{ query_string }}"
+                    data-page-size="{{ page_size }}">Count</button>
+            {% endif %}
+          </div>
         </div> 
         <div class="col-md-4">
         <div class="justify-content-center">
           <p>
-          <!-- ? TODO: Pagination: arg_str not implemented {{ arg_str }}& -->
-          <!-- e.g. ?sort_value=date_alert_mjd&sort_order=desc&ztf_object_id=&alert_id=&time__gt=2021-02-28&time__lt=&time__since=&jd__gt=&jd__lt=&filter=&cone=&objectcone=&objectidps=&ra__gt=&ra__lt=&dec__gt=&dec__lt=&l__gt=&l__lt=&b__gt=&b__lt=&magpsf__gte=&magpsf__lte=&sigmapsf__lte=&magap__gte=&magap__lte=&distnr__gte=&distnr__lte=&deltamaglatest__gte=&deltamaglatest__lte=&deltamagref__gte=&deltamagref__lte=&elong__lte=&nbad__lte=&rb__gte=&drb__gte=&classtar__gte=&classtar__lte=&fwhm__lte= -->
-          <!-- <div class="col"> -->
-          <!-- Buttons are disabled via CSS based on page no. and has_next -->
-          <a href="/?{{ query_string }}&page=1" class="btn btn-primary {% if page == 1 %}disabled{% endif %}"><i class="fa fa-step-backward" aria-hidden="true"></i> First</a>
-          <a href="/?{{ query_string }}&page={{ page - 1 }}" class="btn btn-primary {% if page == 1 %}disabled{% endif %}"><i class="fa fa-caret-left fa-lg" title="Filter" aria-label="Previous"></i> Prev</a>
-          <a href="/?{{ query_string }}&page={{ page + 1 }}" class="btn btn-primary {% if has_next == False %}disabled{% endif %}">Next <i class="fa fa-caret-right fa-lg" title="Next" aria-label="Next"></i></a>  
-          <a href="/?{{ query_string }}&page={{ last_page }}" class="btn btn-primary {% if has_next == False %}disabled{% endif %}">Last <i class="fa fa-step-forward" aria-hidden="true"></i></a>
-          <!-- </div>
-          <div class="col-md-4">&nbsp;xxxxxx</div> -->
+          <a href="{{ first_href }}" class="btn btn-primary {% if not has_prev %}disabled{% endif %}"><i class="fa fa-step-backward" aria-hidden="true"></i> First</a>
+          <a href="{{ prev_href or '#' }}" class="btn btn-primary {% if not has_prev %}disabled{% endif %}"><i class="fa fa-caret-left fa-lg" title="Previous" aria-label="Previous"></i> Prev</a>
+          <a href="{{ next_href or '#' }}" class="btn btn-primary {% if not has_next %}disabled{% endif %}">Next <i class="fa fa-caret-right fa-lg" title="Next" aria-label="Next"></i></a>
+          <a href="{{ last_href or '#' }}" id="catalog-last-btn" class="btn btn-primary {% if not has_next %}disabled{% endif %} {% if hide_last %}d-none{% endif %}">Last <i class="fa fa-step-forward" aria-hidden="true"></i></a>
           </p>
         </div>
         </div>
@@ -434,7 +438,7 @@
                         </div>
                         <div class="col-md-3">
                           <label for="">&nbsp;</label><br>
-                          <button type="button" class="btn btn-primary" onclick="query_observing_plot()">Retrieve</button>
+                          <button type="button" class="btn btn-primary" data-role="observing-retrieve">Retrieve</button>
                       </div>
                   </div>
 
@@ -468,11 +472,12 @@
 {% include 'main_ui_js.html' %}
 <script type="text/javascript" src="/static/js/loading_spinner.js"></script>
 <script>
-  function showAuthRequiredToast() {
-    const toastId = 'auth-required-toast';
+  const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+
+  function showAlertToast(message, toastId) {
     let toast = document.getElementById(toastId);
     if (!toast) {
-      if (!showAuthRequiredToast.template) {
+      if (!showAlertToast.template) {
         const template = document.createElement('template');
         template.innerHTML = `
           <div class="alert alert-warning alert-dismissible fade show" role="alert">
@@ -482,21 +487,22 @@
             </button>
           </div>
         `;
-        showAuthRequiredToast.template = template;
+        showAlertToast.template = template;
       }
 
-      toast = showAuthRequiredToast.template.content.firstElementChild.cloneNode(true);
+      toast = showAlertToast.template.content.firstElementChild.cloneNode(true);
       toast.id = toastId;
       toast.style.position = 'fixed';
       toast.style.top = '16px';
       toast.style.right = '16px';
       toast.style.zIndex = '9999';
       toast.style.maxWidth = '360px';
-      const message = toast.querySelector('[data-cell="message"]');
-      if (message) {
-        message.textContent = 'Log-in or Sign-Up to use this feature.';
-      }
       document.body.appendChild(toast);
+    }
+
+    const messageCell = toast.querySelector('[data-cell="message"]');
+    if (messageCell) {
+      messageCell.textContent = message;
     }
 
     // Reset auto-hide timer when triggered repeatedly.
@@ -509,45 +515,49 @@
     toast.dataset.hideTimer = String(timer);
   }
 
+  function showAuthRequiredToast() {
+    showAlertToast('Log-in or Sign-Up to use this feature.', 'auth-required-toast');
+  }
+
   // Handle favorite button clicks
-  $(document).on('click', '.fav', function (e) {
+  $(document).on('click', '.fav', function () {
     const btn = $(this);
-    const pressed = btn.attr('aria-pressed') === 'true';
-    btn.attr('aria-pressed', (!pressed).toString());
-    btn.toggleClass('active', !pressed);
-    // If not authenticated, revert the UI and show a friendly toast instead of making a network request
+    if (btn.data('favXhr')) return;
+
     if (!window.isAuthenticated) {
-      btn.attr('aria-pressed', pressed.toString());
-      btn.toggleClass('active', pressed);
       showAuthRequiredToast();
       return;
     }
 
-    // Send AJAX to persist state for logged in user
-    $.ajax({
+    const pressed = btn.attr('aria-pressed') === 'true';
+    const sessionId = modalSessionId;
+    btn.attr('aria-pressed', String(!pressed)).toggleClass('active', !pressed);
+
+    const xhr = $.ajax({
       type: 'POST',
       url: '/api/favorite',
+      timeout: 10000,
       contentType: 'application/json',
       headers: {
-        'X-CSRFToken': $('meta[name="csrf-token"]').attr('content')
+        'X-CSRFToken': csrfToken
       },
       data: JSON.stringify({
-        "locusId": $('#locus-id-label').text().replace('Locus ID: ', ''),
+        "locusId": ((modalEls.locusId && modalEls.locusId.textContent) || '').replace('Locus ID: ', ''),
         "fav": !pressed
-      }),
-      success: function(response) {
-        console.log('Favorite saved:', response);
-      },
-      error: function(xhr, status, error) {
-        console.error('Failed to save favorite:', xhr.status, error);
-        if (xhr.status === 401) {
-          // Revert optimistic UI state on auth failure.
-          btn.attr('aria-pressed', pressed.toString());
-          btn.toggleClass('active', pressed);
-          showAuthRequiredToast();
-        }
-      }
-    });
+      })
+    })
+      .fail(function (req, status) {
+        if (status === 'abort' || !isModalSessionActive(sessionId)) return;
+        btn.attr('aria-pressed', String(pressed)).toggleClass('active', pressed);
+        if (req.status === 401) showAuthRequiredToast();
+        else if (req.status === 429) showAlertToast('Too many requests. Please wait a few seconds and try again.', 'rate-limit-toast');
+        else console.error('Failed to save favorite', req.status, status);
+      })
+      .always(function () {
+        if (btn.data('favXhr') === xhr) btn.removeData('favXhr');
+      });
+    btn.data('favXhr', xhr);
+    trackModalRequest(xhr);
   });
 
   {% if current_user.is_authenticated %}
@@ -576,7 +586,7 @@
       url: '/api/filter-bookmarks',
       contentType: 'application/json',
       headers: {
-        'X-CSRFToken': $('meta[name="csrf-token"]').attr('content')
+        'X-CSRFToken': csrfToken
       },
       data: JSON.stringify({ name: trimmed, params: params }),
       success: function () {
@@ -644,6 +654,33 @@
     classification: false
   };
   let activeFeatureplotXhr = null;
+
+  const $objectIdModal = $('#objectIdModal');
+  const $featureSelect = $('select[multiple].active.3col');
+  const modalEls = {
+    title: document.getElementById('objectIdModalLabel'),
+    locusId: document.getElementById('locus-id-label'),
+    locusRa: document.getElementById('locus-ra-label'),
+    locusDec: document.getElementById('locus-dec-label'),
+    obsRa: document.getElementById('obs_ra'),
+    obsDec: document.getElementById('obs_dec'),
+    thumb1: document.getElementById('thumbnail-1'),
+    thumb2: document.getElementById('thumbnail-2'),
+    thumb3: document.getElementById('thumbnail-3'),
+    fav: $objectIdModal[0] ? $objectIdModal[0].querySelector('.fav') : null
+  };
+
+  function setFavoriteButtonState(isPressed) {
+    if (!modalEls.fav) return;
+    modalEls.fav.setAttribute('aria-pressed', String(isPressed));
+    modalEls.fav.classList.toggle('active', Boolean(isPressed));
+  }
+
+  function clearModalThumbnails() {
+    if (modalEls.thumb1) modalEls.thumb1.removeAttribute('src');
+    if (modalEls.thumb2) modalEls.thumb2.removeAttribute('src');
+    if (modalEls.thumb3) modalEls.thumb3.removeAttribute('src');
+  }
 
   function trackModalRequest(request) {
     if (request && typeof request.abort === 'function') {
@@ -881,14 +918,13 @@
     $('#crossmatches_footer_output').html('');
     $('#observing_output').html('');
     $('#classification_output').html('');
-    $('#locus-id-label').html('Locus ID:&nbsp; ');
-    $('#locus-ra-label').html('Locus RA:&nbsp; ');
-    $('#locus-dec-label').html('Locus Dec: ');
-    $('#obs_ra').html('');
-    $('#obs_dec').html('');
-    $('#thumbnail-1').attr('src', '');
-    $('#thumbnail-2').attr('src', '');
-    $('#thumbnail-3').attr('src', '');
+    $objectIdModal.find('[data-role="observing-retrieve"]').prop('disabled', false);
+    if (modalEls.locusId) modalEls.locusId.textContent = 'Locus ID: ';
+    if (modalEls.locusRa) modalEls.locusRa.textContent = 'Locus RA: ';
+    if (modalEls.locusDec) modalEls.locusDec.textContent = 'Locus Dec: ';
+    if (modalEls.obsRa) modalEls.obsRa.textContent = '';
+    if (modalEls.obsDec) modalEls.obsDec.textContent = '';
+    clearModalThumbnails();
     if (favoriteRequestController) {
       favoriteRequestController.abort();
       favoriteRequestController = null;
@@ -913,9 +949,9 @@
   function ensureThumbnailsFromContext() {
     if (!currentModalContext || !currentModalContext.stampUrls) return;
     const u = currentModalContext.stampUrls;
-    $('#thumbnail-1').attr('src', u.t1);
-    $('#thumbnail-2').attr('src', u.t2);
-    $('#thumbnail-3').attr('src', u.t3);
+    if (modalEls.thumb1) modalEls.thumb1.src = u.t1;
+    if (modalEls.thumb2) modalEls.thumb2.src = u.t2;
+    if (modalEls.thumb3) modalEls.thumb3.src = u.t3;
   }
 
   function ensureObservingAladinFromContext() {
@@ -966,8 +1002,8 @@
       if (!modalTabsLoaded.features) {
         modalTabsLoaded.features = true;
         trackModalRequest(query_features_table(ctx.alertId, sid));
-        $('select[multiple].active.3col').val(ctx.default_features);
-        $('select[multiple].active.3col').multiselect('reload');
+        $featureSelect.val(ctx.default_features);
+        $featureSelect.multiselect('reload');
         trackModalRequest(query_featureplot(ctx.locus_id, ctx.default_features.join(','), sid));
       }
       return;
@@ -983,7 +1019,12 @@
       if (!modalTabsLoaded.crossmatches) {
         modalTabsLoaded.crossmatches = true;
         trackModalRequest(query_crossmatches_table(ctx.locus_id, sid));
-        query_crossmatches_footer(ctx.locus_id, ctx.ztf_object_id, ctx.locus_ra, ctx.locus_dec);
+        renderCrossmatchesFooter('#crossmatches_footer_output', {
+          locus_id: ctx.locus_id,
+          ztf_object_id: ctx.ztf_object_id,
+          locus_ra: ctx.locus_ra,
+          locus_dec: ctx.locus_dec
+        });
       }
       return;
     }
@@ -996,7 +1037,7 @@
   }
 
   //triggered when modal is about to be shown
-  $('#objectIdModal').on('show.bs.modal', function(e) {
+  $objectIdModal.on('show.bs.modal', function(e) {
     modalSessionId += 1;
     const currentSessionId = modalSessionId;
     // remember the element that opened the modal so we can restore focus on close
@@ -1035,24 +1076,22 @@
       }
     };
     // $(e.currentTarget).find('#object-id-label').html(objectId);
-    $('body').find('#objectIdModalLabel').html(ztf_object_id); // modal title {# ! TODO: de-mess! #}
-    $('#locus-id-label').html('Locus ID: '+ locus_id);
-    $('#locus-ra-label').html('Locus RA: '+ locus_ra);
-    $('#locus-dec-label').html('Locus Dec: '+ locus_dec);
-    $('#obs_ra').html(locus_ra);
-    $('#obs_dec').html(locus_dec);
+    if (modalEls.title) modalEls.title.textContent = ztf_object_id;
+    if (modalEls.locusId) modalEls.locusId.textContent = 'Locus ID: ' + locus_id;
+    if (modalEls.locusRa) modalEls.locusRa.textContent = 'Locus RA: ' + locus_ra;
+    if (modalEls.locusDec) modalEls.locusDec.textContent = 'Locus Dec: ' + locus_dec;
+    if (modalEls.obsRa) modalEls.obsRa.textContent = locus_ra;
+    if (modalEls.obsDec) modalEls.obsDec.textContent = locus_dec;
     //$('body').find('span[name="date-label"]').html("Date: " + date); //{# ! TODO: de-mess! #}
     // Thumbnails: defer setting img src until Thumbnails tab is shown
-    $('#thumbnail-1').attr('src', '');
-    $('#thumbnail-2').attr('src', '');
-    $('#thumbnail-3').attr('src', '');
+    clearModalThumbnails();
     //$('body').find('img[name="object-id-image"]').attr("src", "/static/img/_ZTF_lc_plots/"+ztf_object_id+".png");
     //var csvUrl = "CsvExists('/static/_ZTF_lightcurves_concat/"+ztf_object_id+".csv')";
     //$('body').find('img[name="object-id-image"]').attr("onerror", csvUrl);
     //$('body').find('img[name="object-id-plot"]').attr("src", "/static/img/_ZTF_cutouts/"+date+"/"+ztf_object_id+"_"+alert_id+".png");
     //$('body').find('img[name="object-id-plot"]').attr("onerror", "this.src='/static/img/_ZTF_lc_plots/missing_file.png';");
     //update URL Of download button
-    $('#btn_locus_csv').attr('href', '/locus_plot_csv?locusId='+locus_id);
+    $('#btn_locus_csv').attr('href', '/locus_plot_csv?locusId=' + encodeURIComponent(locus_id));
     
     //clear observing output
     $("#observing_output").html('');
@@ -1061,8 +1100,7 @@
     //retrieve current fav state on load
     if (!window.isAuthenticated) {
       // Ensure UI is not shown as favorited for unauthenticated users and skip API call
-      $('.fav[aria-pressed]').attr('aria-pressed', 'false');
-      $('.fav[aria-pressed]').removeClass('active');
+      setFavoriteButtonState(false);
       return;
     }
 
@@ -1070,7 +1108,7 @@
       favoriteRequestController.abort();
     }
     favoriteRequestController = new AbortController();
-    fetch(`/api/favorite?locusId=${locus_id}`, { signal: favoriteRequestController.signal })
+    fetch(`/api/favorite?locusId=${encodeURIComponent(locus_id)}`, { signal: favoriteRequestController.signal })
       .then(response => {
         if (!isModalSessionActive(currentSessionId)) {
           return null;
@@ -1086,8 +1124,7 @@
           return;
         }
         if (data.fav !== undefined) {
-          $('.fav[aria-pressed]').attr('aria-pressed', data.fav);
-          $('.fav[aria-pressed]').toggleClass('active', data.fav);
+          setFavoriteButtonState(data.fav);
         }
       })
       .catch((err) => {
@@ -1100,15 +1137,15 @@
 
   });
 
-  $('#objectIdModal').on('shown.bs.modal', function () {
+  $objectIdModal.on('shown.bs.modal', function () {
     if (!currentModalContext) return;
-    const activeHref = $('#objectIdModal .nav-link.active').attr('href') || '#overview';
+    const activeHref = $objectIdModal.find('.nav-link.active').attr('href') || '#overview';
     ensureModalTabContentForHref(activeHref);
   });
 
   // before the modal hides, restore focus to the element that opened it (prevents focused elements
   // from being hidden with aria-hidden=true which triggers accessibility warnings)
-  $('#objectIdModal').on('hide.bs.modal', function () {
+  $objectIdModal.on('hide.bs.modal', function () {
     try {
       const opener = $(this).data('opener');
       if (opener) {
@@ -1130,12 +1167,12 @@
     }
   });
 
-  $('#objectIdModal').on('shown.bs.tab', 'a[data-toggle="tab"]', function (e) {
+  $objectIdModal.on('shown.bs.tab', 'a[data-toggle="tab"]', function (e) {
     const href = $(e.target).attr('href');
     ensureModalTabContentForHref(href);
   });
 
-  $("#objectIdModal").on("hidden.bs.modal", function () {
+  $objectIdModal.on("hidden.bs.modal", function () {
     modalSessionId += 1;
     const sessionAtClose = modalSessionId;
     abortModalRequests();
@@ -1148,54 +1185,51 @@
     }, 250);
   });
 
+  function insertBokehFromPayload(container, payload) {
+    if (!container || !payload) return;
+    container.replaceChildren();
+    const wrap = document.createElement('div');
+    wrap.innerHTML = payload.div || '';
+    const plotDiv = wrap.querySelector('div');
+    if (plotDiv) container.appendChild(plotDiv);
+    if (payload.script) {
+      try {
+        const fn = new Function(payload.script);
+        fn();
+      } catch (err) {
+        console.error('Failed to execute Bokeh component script safely:', err);
+      }
+    }
+  }
+
+  function plotRequestFail(xhr, statusText, sessionId, selector, fallback) {
+    if (!isModalSessionActive(sessionId) || statusText === 'abort') return;
+    const err = xhr.responseJSON && xhr.responseJSON.error;
+    renderAlert(selector, 'danger', apiFailureMessage(xhr, err || fallback));
+  }
+
   function query_locusplot(locus_id, sessionId) {
     loadingSpinnerController.show(1000); // Show after 1 second for lightcurve loading
-    let lightcurve_data_url = '/query_lightcurve_data?locusId=' + locus_id;
+    let lightcurve_data_url = '/query_lightcurve_data?locusId=' + encodeURIComponent(locus_id);
     return $.ajax({
           url: lightcurve_data_url,
-          cache: false
-    }).done(function(data) {
+          cache: false,
+          dataType: 'json'
+    }).done(function(payload) {
         if (!isModalSessionActive(sessionId)) return;
         teardownBokehInContainer('#locus-plot');
-
-        // Safely insert the returned components HTML (div + script) without leaving raw
-        // script tags in the DOM. Extract div and script, append the div and evaluate the
-        // script in a local scope so the browser can GC its compiled function after teardown.
-        try {
-          const container = document.getElementById('locus-plot');
-          if (container) {
-            const tmp = document.createElement('div');
-            tmp.innerHTML = data;
-            const newDiv = tmp.querySelector('div');
-            const scriptElem = tmp.querySelector('script');
-            container.innerHTML = '';
-            if (newDiv) container.appendChild(newDiv);
-            if (scriptElem) {
-              const rawJs = scriptElem.textContent || scriptElem.innerText || '';
-              try {
-                const fn = new Function(rawJs);
-                fn();
-              } catch (err) {
-                console.error('Failed to execute Bokeh component script safely:', err);
-              }
-            }
-          }
-        } catch (err) {
-          console.error('Error inserting Bokeh components into #locus-plot:', err);
-          document.getElementById('locus-plot').innerHTML = data;
-        }
+        insertBokehFromPayload(document.getElementById('locus-plot'), payload);
         loadingSpinnerController.hide();
-    }).fail(function() {
-        if (!isModalSessionActive(sessionId)) return;
+    }).fail(function(xhr, statusText) {
         loadingSpinnerController.hide();
-        $("#locus-plot").html('<div class="alert alert-danger">Error loading lightcurve data.</div>');
+        plotRequestFail(xhr, statusText, sessionId, '#locus-plot', 'Error loading lightcurve data.');
     });
   }
 
   // Backwards-compat shim marker for tests expecting the older one-arg signature
   // function query_features_table(alert_id) {
   function query_features_table(alert_id, sessionId) {
-    let backend_url = `/query_features?alert_id=${alert_id}`;
+    let backend_url = `/query_features?alert_id=${encodeURIComponent(alert_id)}`;
     const output = document.getElementById('features_table_output');
 
     if (!output || !alert_id) {
@@ -1216,7 +1250,7 @@
         console.error('Failed to load feature data:', status, error);
 
         const response = xhr.responseJSON;
-        const message = (response && response.error) || 'Failed to load feature data.';
+        const message = apiFailureMessage(xhr, (response && response.error) || 'Failed to load feature data.');
 
         // Keep the previous successful state if refresh fails.
         const hasRenderedContent = output.childElementCount > 0 || output.textContent.trim().length > 0;
@@ -1235,47 +1269,26 @@
     activeFeatureplotXhr = null;
     loadingSpinnerController.show(1000); // Show after 1 second for feature plot loading
 
-    let featureplot_data_url = '/query_featureplot_data?locusId=' + locus_id + '&features=' + selected_features;
+    let featureplot_data_url = '/query_featureplot_data?locusId=' + encodeURIComponent(locus_id) + '&features=' + encodeURIComponent(selected_features);
     activeFeatureplotXhr = trackModalRequest($.ajax({
           url: featureplot_data_url,
-          cache: false
-    }).done(function(data) {
+          cache: false,
+          dataType: 'json'
+    }).done(function(payload) {
         if (!isModalSessionActive(sessionId)) return;
         teardownBokehInContainer('#feature-plot');
-
-        try {
-          const container = document.getElementById('feature-plot');
-          if (container) {
-            const tmp = document.createElement('div');
-            tmp.innerHTML = data;
-            const newDiv = tmp.querySelector('div');
-            const scriptElem = tmp.querySelector('script');
-            container.innerHTML = '';
-            if (newDiv) container.appendChild(newDiv);
-            if (scriptElem) {
-              const rawJs = scriptElem.textContent || scriptElem.innerText || '';
-              try {
-                const fn = new Function(rawJs);
-                fn();
-              } catch (err) {
-                console.error('Failed to execute Bokeh component script safely:', err);
-              }
-            }
-          }
-        } catch (err) {
-          console.error('Error inserting Bokeh components into #feature-plot:', err);
-          document.getElementById('feature-plot').innerHTML = data;
+        insertBokehFromPayload(document.getElementById('feature-plot'), payload);
+        loadingSpinnerController.hide();
+    }).fail(function(xhr, statusText) {
+        if (statusText !== 'abort') {
+            loadingSpinnerController.hide();
         }
-        loadingSpinnerController.hide();
-    }).fail(function(_, statusText) {
-        if (!isModalSessionActive(sessionId) || statusText === 'abort') return;
-        loadingSpinnerController.hide();
-        $("#feature-plot").html('<div class="alert alert-danger">Error loading feature plot data.</div>');
+        plotRequestFail(xhr, statusText, sessionId, '#feature-plot', 'Error loading feature plot data.');
     }));
     return activeFeatureplotXhr;
   }
 
-  function query_observing_plot() {
+  const queryObservingPlot = function () {
     const sessionId = modalSessionId;
     const obs_loc = document.querySelector('#obs_dropdown option:checked').value;
     console.log(obs_loc);
@@ -1283,11 +1296,11 @@
     console.log(obs_date);
     const obs_tz = document.querySelector('#time_radios input[name="options"]:checked').id;
     console.log(obs_tz);
-    const ra = $('#obs_ra').text();
+    const ra = modalEls.obsRa ? modalEls.obsRa.textContent : '';
     console.log(ra);
-    const dec = $('#obs_dec').text();
+    const dec = modalEls.obsDec ? modalEls.obsDec.textContent : '';
     console.log(dec);
-    const ztfObjectId = $('body').find('#objectIdModalLabel').text();
+    const ztfObjectId = modalEls.title ? modalEls.title.textContent : '';
     console.log(ztfObjectId);
     //clear output first
     $("#observing_output").html('');
@@ -1305,23 +1318,95 @@
     console.log(observing_plot_data_url);
     return trackModalRequest($.ajax({
           url: observing_plot_data_url,
-          cache: false
-    }).done(function(data) {
+          cache: false,
+          dataType: 'json'
+    }).done(function(payload) {
         if (!isModalSessionActive(sessionId)) return;
-        // const divPosition = data.search("</div>");
-        // document.getElementById("locus-plot").innerHTML = data.substring(0,divPosition);//
-        // const scriptPosition = data.search("(?<=<script type=\"text/javascript\">)");
-        // var script = document.createElement('script');
-        // script.innerHTML = data.substring(scriptPosition, data.length-10);
-        // document.body.appendChild(script);
-        $("#observing_output").html(data);
+        renderObservingOutput(payload);
+        if (payload && payload.image) persistLastObservatory(obs_loc);
         loadingSpinnerController.hide(); // Hide spinner when done
-    }).fail(function(_, statusText) {
+    }).fail(function(xhr, statusText) {
         if (!isModalSessionActive(sessionId) || statusText === 'abort') return;
         loadingSpinnerController.hide(); // Hide spinner on error too
-        $("#observing_output").html('<div class="alert alert-danger">Error loading observing data. Please try again.</div>');
+        const err = xhr.responseJSON && xhr.responseJSON.error;
+        renderAlert('#observing_output', 'danger', apiFailureMessage(xhr, err || 'Error loading observing data. Please try again.'));
     }));
   }
+
+  function renderObservingOutput(payload) {
+    const container = document.getElementById('observing_output');
+    if (!container) return;
+    container.replaceChildren();
+    if (!payload) return;
+    if (payload.message) {
+      renderAlert('#observing_output', 'warning', payload.message);
+      return;
+    }
+    const hr = document.createElement('hr');
+    const row = document.createElement('div');
+    row.className = 'row';
+    const plotCol = document.createElement('div');
+    plotCol.className = 'col-md-7';
+    if (payload.image && payload.image.indexOf('data:image/png;base64,') === 0) {
+      const img = document.createElement('img');
+      img.src = payload.image;
+      plotCol.appendChild(img);
+    }
+    const moonCol = document.createElement('div');
+    moonCol.className = 'col-md-5';
+    if (payload.moonMessage) {
+      const moonAlert = document.createElement('div');
+      moonAlert.className = 'alert alert-info';
+      moonAlert.textContent = payload.moonMessage;
+      moonCol.appendChild(moonAlert);
+    } else if (payload.moonHtml) {
+      moonCol.innerHTML = payload.moonHtml;
+    }
+    row.appendChild(plotCol);
+    row.appendChild(moonCol);
+    container.appendChild(hr);
+    container.appendChild(row);
+  }
+
+  function persistLastObservatory(obsLoc) {
+    if (!window.isAuthenticated || !obsLoc) return;
+    let body = null;
+    if (obsLoc.indexOf('custom:') === 0) {
+      const id = Number(obsLoc.slice(7));
+      if (!Number.isInteger(id)) return;
+      body = { source: 'custom', id: id };
+    } else {
+      const name = obsLoc.indexOf('builtin:') === 0 ? obsLoc.slice(8).trim() : String(obsLoc);
+      if (!name) return;
+      body = { source: 'builtin', name: name };
+    }
+    fetch('/api/last-observatory', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken
+      },
+      body: JSON.stringify(body)
+    }).catch(function () { /* preference write is best-effort */ });
+  }
+
+  $objectIdModal.on('click', '[data-role="observing-retrieve"]', function () {
+    const $btn = $(this);
+    if ($btn.prop('disabled')) return;
+    $btn.prop('disabled', true);
+    let req;
+    try {
+      req = queryObservingPlot();
+    } catch (err) {
+      $btn.prop('disabled', false);
+      throw err;
+    }
+    if (req && req.always) {
+      req.always(function () { $btn.prop('disabled', false); });
+    } else {
+      $btn.prop('disabled', false);
+    }
+  });
 
   // Keep a local adapter so existing call sites stay unchanged.
   const loadingSpinnerController = window.createLoadingSpinnerController({
@@ -1338,10 +1423,8 @@
   });
 
   // Intercept pagination link clicks
-  document.querySelectorAll('a[href*="page="]').forEach(link => {
-    link.addEventListener('click', function(e) {
-      loadingSpinnerController.show(1000); // Show after 1 second for pagination
-    });
+  $(document).on('click', 'a[href*="page="]', function () {
+    loadingSpinnerController.show(1000);
   });
 
   // Hide spinner on page load (for filtering/pagination)
@@ -1350,38 +1433,37 @@
   });
 
   function query_classification(alertId, sessionId) {
-    let classification_data_url = '/query_classification?alertId=' + alertId;
-    return $.ajax({
-          url: classification_data_url,
-          cache: false
-    }).done(function(data) {
-        if (!isModalSessionActive(sessionId)) return;
-        teardownBokehInContainer('#classification_output');
-        try {
-          const container = document.getElementById('classification_output');
-          if (container) {
-            const tmp = document.createElement('div');
-            tmp.innerHTML = data;
-            const newDiv = tmp.querySelector('div');
-            const scriptElem = tmp.querySelector('script');
-            container.innerHTML = '';
-            if (newDiv) container.appendChild(newDiv);
-            if (scriptElem) {
-              const rawJs = scriptElem.textContent || scriptElem.innerText || '';
-              try {
-                const fn = new Function(rawJs);
-                fn();
-              } catch (err) {
-                console.error('Failed to execute Bokeh component script safely:', err);
-              }
-            }
-          }
-        } catch (err) {
-          console.error('Error inserting Bokeh components into #classification_output:', err);
-          document.getElementById('classification_output').innerHTML = data;
-        }
+    const url = '/query_classification?alertId=' + encodeURIComponent(alertId);
+    return $.ajax({ url: url, cache: false, timeout: 15000, dataType: 'json' })
+    .done(function (payload) {
+      if (!isModalSessionActive(sessionId)) return;
+      teardownBokehInContainer('#classification_output');
+      insertBokehFromPayload(document.getElementById('classification_output'), payload);
+    })
+    .fail(function (xhr, statusText) {
+      plotRequestFail(xhr, statusText, sessionId, '#classification_output', 'Error loading classification data.');
     });
   }
+  // Prefer a clear, actionable message when an API call is rate limited (HTTP 429).
+  function apiFailureMessage(xhr, fallback) {
+    return xhr && xhr.status === 429
+      ? 'Too many requests. Please wait a few seconds and try again.'
+      : fallback;
+  }
+
+  // Render a Bootstrap alert into a container using textContent (XSS-safe).
+  function renderAlert(targetSelector, kind, message) {
+    const target = document.querySelector(targetSelector);
+    if (!target) {
+      return;
+    }
+    target.textContent = '';
+    const alert = document.createElement('div');
+    alert.className = `alert alert-${kind}`;
+    alert.textContent = message;
+    target.appendChild(alert);
+  }
+
   function query_crossmatches_table(locusId, sessionId) {
     // Validate input
     if (!locusId) {
@@ -1389,7 +1471,7 @@
       return;
     }
 
-    let backend_url = `/query_crossmatches?locusId=${locusId}`;
+    let backend_url = `/query_crossmatches?locusId=${encodeURIComponent(locusId)}`;
     console.log('Querying crossmatches:', backend_url);
     
     return $.ajax({
@@ -1405,32 +1487,15 @@
           }
         } catch (err) {
           console.error('Error processing crossmatches response:', err);
-          $('#crossmatches_table_output').html(`<div class="alert alert-danger">Error processing crossmatches data! ${err}</div>`);
+          renderAlert('#crossmatches_table_output', 'danger', `Error processing crossmatches data! ${err}`);
         }
       },
       error: function(xhr, status, error) {
         if (!isModalSessionActive(sessionId) || status === 'abort') return;
         console.error('Crossmatches query failed:', status, error);
-        $('#crossmatches_table_output').html(
-          `<div class="alert alert-danger">Failed to load crossmatches data for LocusID ${locusId}! ${error}: ${xhr.responseText}</div>`
-        );
+        renderAlert('#crossmatches_table_output', 'danger', apiFailureMessage(xhr, `Failed to load crossmatches data for LocusID ${locusId}! ${error}: ${xhr.responseText}`));
       }
     });
-  }
-
-  function query_crossmatches_footer(locus_id, ztf_object_id, locus_ra, locus_dec) {
-    var footer = `<p>This object can also be found in:</p>
-                  Alert brokers:
-                  <ul><li>ALeRCE <a href="https://alerce.online/object/${ztf_object_id}" target="_blank">https://alerce.online/object/${ztf_object_id}</a></li>
-                  <li>ANTARES <a href="https://antares.noirlab.edu/loci/${locus_id}" target="_blank">https://antares.noirlab.edu/loci/${locus_id}</a></li></ul>
-                  External Services:
-                  <ul><li><a href="https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query?objstr=${locus_ra}${locus_dec > 0 ? '+' : ''}${locus_dec}+&catalog=ztf_objects_dr5&mission=irsa&radius=1" target="_blank">IPAC</a></li>
-                  <li><a href="http://simbad.u-strasbg.fr/simbad/sim-coo?Coord=${locus_ra}%2C${locus_dec}&CooFrame=FK5&CooEpoch=2000&CooEqui=2000&CooDefinedFrames=none&Radius=2&Radius.unit=arcsec&submit=submit+query&CoordList=" target="_blank">SIMBAD</a></li>
-                  <li><a href="https://ztf.snad.space/search/${locus_ra}%20${locus_dec}/1" target="_blank">SNAD</a></li>
-                  <li><a href="https://www.wis-tns.org/search?&ra=${locus_ra}&decl=${locus_dec}&radius=1&coords_unit=arcsec" target="_blank">TNS</a></li>
-                  <li><a href="https://vizier.cds.unistra.fr/viz-bin/VizieR-4?-ref=VIZ600f5483a73e&-to=-4c%3DGo%21b&-from=-1&-this=-4c%3DGo%21&%2F%2Fc=${locus_ra}${locus_dec > 0 ? '+' : ''}${locus_dec}-out.max=50&%2F%2FCDSportal=http%3A%2F%2Fcdsportal.u-strasbg.fr%2FStoreVizierData.html&-out.form=HTML+Table&-out.add=_r&-out.add=_RAJ%2C_DEJ&%2F%2Foutaddvalue=default&-sort=_r&-order=I&-oc.form=sexa&-nav=key%3Ac%3D184.4669870191518+30.116833377497727%26pos%3A184.4669870191518+30.116833377497727%28+++2+arcsec+J2000%29%26HTTPPRM%3A&-c=184.4669870191518+30.116833377497727&-c.eq=J2000&-c.r=++2&-c.u=arcsec&-c.geom=r&-source=&-meta.ucd=2&-meta=1&-meta.foot=1&-usenav=1&-bmark=GET" target="_blank">VizieR</a></li></ul>
-                  `;
-    $('body').find('#crossmatches_footer_output').html(footer);
   }
 
   const templateHtmlById = {
@@ -1505,6 +1570,7 @@
   }
 
   function appendTemplateRows(tbody, rowTemplateId, rows, mapRow) {
+    const frag = document.createDocumentFragment();
     rows.forEach(rowData => {
       const rowFragment = cloneTemplate(rowTemplateId);
       if (!rowFragment) {
@@ -1517,8 +1583,9 @@
       }
 
       setCells(row, mapRow(rowData));
-      tbody.appendChild(row);
+      frag.appendChild(row);
     });
+    tbody.appendChild(frag);
   }
 
   // feature_table specific as of now
@@ -1590,6 +1657,59 @@
 
     target.appendChild(tableFragment);
   }
+
+  function renderCrossmatchesFooter(targetSelector, values) {
+    const target = document.querySelector(targetSelector);
+    if (!target) {
+      return;
+    }
+
+    const ra = String(values?.locus_ra ?? '');
+    const dec = String(values?.locus_dec ?? '');
+    const sign = Number(values?.locus_dec) > 0 ? '+' : '';
+    const coord = `${ra}${sign}${dec}`;
+
+    const fragment = document.createDocumentFragment();
+
+    const intro = document.createElement('p');
+    intro.textContent = 'This object can also be found in:';
+    fragment.appendChild(intro);
+
+    appendLinkList(fragment, 'Alert brokers:', [
+      { label: 'ALeRCE', href: `https://alerce.online/object/${encodeURIComponent(String(values?.ztf_object_id ?? ''))}` },
+      { label: 'ANTARES', href: `https://antares.noirlab.edu/loci/${encodeURIComponent(String(values?.locus_id ?? ''))}` }
+    ]);
+
+    appendLinkList(fragment, 'External Services:', [
+      { label: 'IPAC', href: `https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query?objstr=${encodeURIComponent(coord)}&catalog=ztf_objects_dr5&mission=irsa&radius=1` },
+      { label: 'SIMBAD', href: `http://simbad.u-strasbg.fr/simbad/sim-coo?Coord=${encodeURIComponent(`${ra},${dec}`)}&CooFrame=FK5&CooEpoch=2000&CooEqui=2000&CooDefinedFrames=none&Radius=2&Radius.unit=arcsec&submit=submit+query&CoordList=` },
+      { label: 'SNAD', href: `https://ztf.snad.space/search/${encodeURIComponent(`${ra} ${dec}`)}/1` },
+      { label: 'TNS', href: `https://www.wis-tns.org/search?&ra=${encodeURIComponent(ra)}&decl=${encodeURIComponent(dec)}&radius=1&coords_unit=arcsec` },
+      { label: 'VizieR', href: `https://vizier.cds.unistra.fr/viz-bin/VizieR-4?-ref=VIZ600f5483a73e&-to=-4c%3DGo%21b&-from=-1&-this=-4c%3DGo%21&%2F%2Fc=${encodeURIComponent(coord)}-out.max=50&%2F%2FCDSportal=http%3A%2F%2Fcdsportal.u-strasbg.fr%2FStoreVizierData.html&-out.form=HTML+Table&-out.add=_r&-out.add=_RAJ%2C_DEJ&%2F%2Foutaddvalue=default&-sort=_r&-order=I&-oc.form=sexa&-nav=key%3Ac%3D184.4669870191518+30.116833377497727%26pos%3A184.4669870191518+30.116833377497727%28+++2+arcsec+J2000%29%26HTTPPRM%3A&-c=184.4669870191518+30.116833377497727&-c.eq=J2000&-c.r=++2&-c.u=arcsec&-c.geom=r&-source=&-meta.ucd=2&-meta.foot=1&-usenav=1&-bmark=GET` }
+    ]);
+
+    target.textContent = '';
+    target.appendChild(fragment);
+  }
+
+  function appendLinkList(fragment, labelText, items) {
+    const label = document.createElement('div');
+    label.textContent = labelText;
+    fragment.appendChild(label);
+
+    const list = document.createElement('ul');
+    items.forEach(({ label: linkLabel, href }) => {
+      const item = document.createElement('li');
+      const link = document.createElement('a');
+      link.href = href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = linkLabel;
+      item.appendChild(link);
+      list.appendChild(item);
+    });
+    fragment.appendChild(list);
+  }
 </script>
 
 <script>
@@ -1607,13 +1727,15 @@
 
         if ('URLSearchParams' in window) {
             var searchParams = new URLSearchParams(window.location.search);
-            //first, clear all sort__ URL params
+            //first, clear all sort__ URL params and pagination cursors
+            var keysToDelete = [];
             searchParams.forEach(function(value, key) {
-              console.log(key, value);
-              if(key.startsWith("sort__")) {
-                searchParams.delete(key);
+              if (key.startsWith("sort__") || key === "page" || key === "last"
+                  || key.startsWith("before_") || key.startsWith("after_")) {
+                keysToDelete.push(key);
               }
             });
+            keysToDelete.forEach(function(key) { searchParams.delete(key); });
 
           if (desc || (!asc && !desc)) {
             $this.addClass('asc');
@@ -1629,70 +1751,67 @@
         }
       });
 
+      var $countBtn = $('#btn-catalog-count');
+      if ($countBtn.length) {
+        $countBtn.on('click', function () {
+          var $btn = $(this);
+          if ($btn.prop('disabled')) {
+            return;
+          }
+          $btn.prop('disabled', true).text('Counting…');
+          fetch($btn.attr('data-count-url'), { credentials: 'same-origin' })
+            .then(function (response) {
+              if (!response.ok) {
+                throw Object.assign(new Error('count failed'), { status: response.status });
+              }
+              return response.json();
+            })
+            .then(function (data) {
+              var count = Number(data.count);
+              if (!Number.isFinite(count)) {
+                throw new Error('invalid count');
+              }
+              var valueEl = document.getElementById('catalog-rows-value');
+              if (valueEl) {
+                valueEl.textContent = String(count);
+              }
+              var lastBtn = document.getElementById('catalog-last-btn');
+              if (lastBtn && lastBtn.classList.contains('d-none')) {
+                var pageSize = Number($btn.attr('data-page-size')) || 100;
+                var lastPage = Math.max(1, Math.ceil(count / pageSize));
+                var queryString = $btn.attr('data-query-string') || '';
+                lastBtn.href = queryString ? ('/?' + queryString + '&page=' + lastPage) : ('/?page=' + lastPage);
+                lastBtn.classList.remove('d-none', 'disabled');
+              }
+              $btn.remove();
+            })
+            .catch(function (error) {
+              if (error && error.status === 429) {
+                showAlertToast('Too many requests. Please wait a few seconds and try again.', 'rate-limit-toast');
+              }
+              $btn.prop('disabled', false).text('Count');
+            });
+        });
+      }
+
       //adhere to sort order provided in URL params
       if ('URLSearchParams' in window) {
             var searchParams = new URLSearchParams(window.location.search);
             searchParams.forEach(function(value, key) {
               console.log(value, key);
               if(key.startsWith('sort__')) {
-                //extract target #id
-                $id = $('#'+key.substring(6)); //search target th
-                var asc = $id.hasClass('asc');
-                var desc = $id.hasClass('desc');
+                var $th = $('#' + key.substring(6));
                 $sortable.removeClass('asc').removeClass('desc');
-                $id.addClass(value);
+                $th.addClass(value);
               }
             });
           }
     });
-
-    function UrlExists(url, cb) {
-      jQuery.ajax({
-          url: url,
-          dataType: 'text',
-          type: 'GET',
-          complete: function (xhr) {
-              if (typeof cb === 'function')
-                  cb.apply(this, [xhr.status]);
-          }
-      });
-  }
-
-  function CsvExists(csv_url) {
-    UrlExists(csv_url, function (status) {
-      if (status === 200) {
-          // if the corresponding csv is available generate plot
-          generate_lightcurveJS();
-      } else if (status === 404) {
-          //alert('No CSV')
-          $('body').find('img[name="object-id-image"]').attr("src", "/static/img/_ZTF_lc_plots/missing_file.png")
-      } else {
-          // Execute code if status doesn't match above
-          alert('Something did not work..');
-      }
-    });
-  }
-
- function generate_lightcurveJS() {
-    var objectId = $('body').find('#objectIdModalLabel').text();
-    var backend_url = '/generate_lightcurve?objectId='+ objectId;
-    //alert(backend_url);
-
-    $.ajax({
-      type: 'GET',
-      url: backend_url,
-      dataType: 'text',
-      complete: function(r){
-        //alert(r.responseText);
-        $('body').find('img[name="object-id-image"]').attr("src", r.responseText);//or trigger loading image again since the url should be the same but image was simply missing
-      }
-    });
-  }
 </script>
 
 <script>
   $(function () {
-      $('select[multiple].active.3col').multiselect({
+      $featureSelect.multiselect({
           columns: 2,
           placeholder: 'Select Features to Plot',
           search: true,
@@ -1702,10 +1821,10 @@
           },
           selectAll: false, 
           onControlClose: function (element) {
-              console.log($('select[multiple].active.3col').val());
-              let locusId = $('#locus-id-label').text().replace('Locus ID: ', '');
+              console.log($featureSelect.val());
+              let locusId = ((modalEls.locusId && modalEls.locusId.textContent) || '').replace('Locus ID: ', '');
               console.log(locusId);
-              let new_selected_features = $('select[multiple].active.3col').val();
+              let new_selected_features = $featureSelect.val();
               trackModalRequest(query_featureplot(locusId, new_selected_features.join(','), modalSessionId));
           },
           onOptionClick: function( element, option ) {
@@ -1749,6 +1868,7 @@
       localization: {
         locale: 'utc', //NaN?
         format: 'yyyy-MM-dd',
+        dayViewHeaderFormat: { month: 'long', year: 'numeric' },
       },
       display: {
       icons: {

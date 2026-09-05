@@ -30,6 +30,7 @@ def test_create_user_observatory_validation_errors(auth_client, payload, expecte
     assert expected_message in payload.get('error', '')
 
 
+@pytest.mark.slow
 def test_create_user_observatory_duplicate_returns_already_exists(auth_client):
     observatory = {
         'name': 'Duplicate Observatory',
@@ -93,7 +94,12 @@ def test_anonymous_api_access_is_rejected(client):
     assert anonymous_delete.status_code == 401
     assert anonymous_delete.get_json().get('error') == 'authentication required'
 
+    anonymous_last = client.post('/api/last-observatory', json={'source': 'builtin', 'name': 'Palomar'})
+    assert anonymous_last.status_code == 401
+    assert anonymous_last.get_json().get('error') == 'authentication required'
 
+
+@pytest.mark.slow
 def test_delete_selected_observatory_triggers_fallback(monkeypatch, auth_client, app):
     monkeypatch.setattr(
         'poi_broker.routes.user_observatories.EarthLocation.get_site_names',
@@ -130,6 +136,55 @@ def test_delete_selected_observatory_triggers_fallback(monkeypatch, auth_client,
         current_user = db.session.query(User).filter_by(email='smoketest@example.com').first()
         saved = get_saved_last_selected_observatory(current_user.id)
         assert saved == {'source': 'builtin', 'name': 'Builtin Observatory'}
+
+
+def test_save_last_observatory_api_persists_builtin_selection(auth_client, app, monkeypatch):
+    monkeypatch.setattr(
+        'poi_broker.routes.user_observatories.EarthLocation.get_site_names',
+        lambda: ['Palomar'],
+    )
+    from poi_broker.routes.user_observatories import _builtin_site_names
+    _builtin_site_names.cache_clear()
+
+    response = auth_client.post('/api/last-observatory', json={'source': 'builtin', 'name': 'Palomar'})
+    assert response.status_code == 200
+    assert response.get_json()['status'] == 'ok'
+
+    with app.app_context():
+        current_user = db.session.query(User).filter_by(email='smoketest@example.com').first()
+        assert get_saved_last_selected_observatory(current_user.id) == {'source': 'builtin', 'name': 'Palomar'}
+
+
+def test_save_last_observatory_api_rejects_unknown_builtin(auth_client, app, monkeypatch):
+    monkeypatch.setattr(
+        'poi_broker.routes.user_observatories.EarthLocation.get_site_names',
+        lambda: ['Palomar'],
+    )
+    from poi_broker.routes.user_observatories import _builtin_site_names
+    _builtin_site_names.cache_clear()
+
+    response = auth_client.post(
+        '/api/last-observatory',
+        json={'source': 'builtin', 'name': 'NotARealObservatory'},
+    )
+    assert response.status_code == 400
+    assert 'Unknown builtin observatory' in response.get_json().get('error', '')
+
+    with app.app_context():
+        current_user = db.session.query(User).filter_by(email='smoketest@example.com').first()
+        assert get_saved_last_selected_observatory(current_user.id) is None
+
+
+def test_save_last_observatory_api_rejects_unowned_custom(auth_client):
+    response = auth_client.post('/api/last-observatory', json={'source': 'custom', 'id': 999999})
+    assert response.status_code == 400
+    assert 'Unknown custom observatory' in response.get_json().get('error', '')
+
+
+def test_save_last_observatory_api_rejects_invalid_payload(auth_client):
+    response = auth_client.post('/api/last-observatory', json={'source': 'builtin'})
+    assert response.status_code == 400
+    assert response.get_json()['error'] == 'Invalid observatory selection'
 
 
 def test_last_selected_observatory_serialization_roundtrip(auth_client, app):

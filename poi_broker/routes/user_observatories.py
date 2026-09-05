@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timezone
+from functools import lru_cache
 import logging
 
 from astropy.coordinates import EarthLocation
@@ -13,11 +14,20 @@ from timezonefinder import TimezoneFinder
 
 from .. import db
 from ..models import UserObservatory
-from ..user_settings import get_saved_last_selected_observatory, save_last_selected_observatory
+from ..user_settings import (
+    _normalize_last_selected_observatory,
+    get_saved_last_selected_observatory,
+    save_last_selected_observatory,
+)
 
 logger = logging.getLogger(__name__)
 
 user_observatories_bp = Blueprint('user_observatories', __name__, url_prefix='/api')
+
+
+@lru_cache(maxsize=1)
+def _builtin_site_names() -> frozenset[str]:
+    return frozenset(EarthLocation.get_site_names())
 
 
 def _validate_payload(raw: object) -> tuple[dict[str, float | str] | None, str | None]:
@@ -157,3 +167,33 @@ def delete_user_observatory(observatory_id: int):
             payload['fallback'] = {'source': 'builtin', 'name': fallback_site_name}
 
     return jsonify(payload), 200
+
+
+@user_observatories_bp.route('/last-observatory', methods=['POST'])
+@login_required
+def save_last_observatory():
+    """Persist last-selected observatory from an authenticated, CSRF-checked POST."""
+    normalized = _normalize_last_selected_observatory(request.get_json(silent=True) or {})
+    if normalized is None:
+        return jsonify({'error': 'Invalid observatory selection'}), 400
+
+    if normalized['source'] == 'custom':
+        owned = UserObservatory.query.filter_by(
+            id=normalized['id'],
+            user_id=current_user.id,
+        ).first()
+        if owned is None:
+            return jsonify({'error': 'Unknown custom observatory'}), 400
+    elif normalized['source'] == 'builtin':
+        if normalized['name'] not in _builtin_site_names():
+            return jsonify({'error': 'Unknown builtin observatory'}), 400
+
+    try:
+        save_last_selected_observatory(current_user.id, normalized)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('Failed to save last-selected observatory for user_id=%s: %s', current_user.id, exc, exc_info=True)
+        return jsonify({'error': 'Unable to save observatory selection'}), 500
+
+    return jsonify({'status': 'ok'})
