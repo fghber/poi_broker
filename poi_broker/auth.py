@@ -54,6 +54,17 @@ RESET_TOKEN_TTL_SECONDS = int(timedelta(hours=1).total_seconds())
 DUMMY_PASSWORD_HASH = generate_password_hash(secrets.token_urlsafe(32))
 
 
+def _password_is_too_weak(password: str | None) -> bool:
+    """True when a password is missing, whitespace-only, or shorter than 8 chars.
+
+    Outer spaces are part of the secret (login compares the raw value), so
+    emptiness is judged on the trimmed copy while length uses the raw value.
+    """
+    if not isinstance(password, str):
+        return True
+    return not password.strip() or len(password) < 8
+
+
 def _absolute_url(endpoint: str, **values) -> str:
     """Absolute URL for email links; PUBLIC_BASE_URL wins over request Host."""
     public_base = (current_app.config.get('PUBLIC_BASE_URL') or '').rstrip('/')
@@ -153,7 +164,7 @@ def signup_post():
     # Validate password length. Leading/trailing spaces are part of the
     # password (login compares the raw value), so only the trimmed copy
     # feeds the emptiness check — otherwise 8 spaces would pass len().
-    if not password.strip() or len(password) < 8:
+    if _password_is_too_weak(password):
         flash('Password must be at least 8 characters.', 'danger')
         return redirect(url_for('auth.signup'))
     
@@ -342,7 +353,7 @@ def reset_password_post(token):
         flash('Passwords do not match', 'danger')
         return redirect(url_for('auth.reset_password', token=token))
 
-    if len(password) < 8:
+    if _password_is_too_weak(password):
         flash('Password must be at least 8 characters', 'danger')
         return redirect(url_for('auth.reset_password', token=token))
 
@@ -410,7 +421,7 @@ def change_password():
         return redirect(url_for('auth.security'))
     
     # Validate password length
-    if len(new_password) < 8:
+    if _password_is_too_weak(new_password):
         flash('New password must be at least 8 characters.', 'danger')
         return redirect(url_for('auth.security'))
     

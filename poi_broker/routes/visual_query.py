@@ -79,9 +79,10 @@ def save_watchlist():
         if not isinstance(data, dict):
             return jsonify({'error': 'Invalid or missing JSON'}), 400
 
-        name = data.get('name', '').strip()
-        if not name:
+        name = data.get('name', '')
+        if not isinstance(name, str) or not name.strip():
             return jsonify({'error': 'Watchlist name is required'}), 400
+        name = name.strip()
         if len(name) > 128:
             return jsonify({'error': 'Watchlist name must be 128 characters or fewer'}), 400
 

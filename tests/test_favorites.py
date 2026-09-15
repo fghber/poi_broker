@@ -530,3 +530,25 @@ def test_delete_favorite_group_generic_exception(app, auth_client, monkeypatch):
     r = auth_client.delete(f"/api/favorite-groups/{group_id}")
     assert r.status_code == 500
     assert "Error deleting favorite group" in r.get_json()["error"]
+
+
+def test_favorite_group_rejects_non_string_name(auth_client):
+    r = auth_client.post("/api/favorite-groups", json={"name": 12345})
+    assert r.status_code == 400
+    assert r.is_json
+
+
+def test_favorite_rejects_non_string_locus_id(auth_client):
+    r = auth_client.post("/api/favorite", json={"locusId": ["nested"], "fav": True})
+    assert r.status_code == 400
+    assert r.is_json
+
+
+def test_favorite_rejects_boolean_group_id(auth_client):
+    r = auth_client.post(
+        "/api/favorite",
+        json={"locusId": "locus-bool", "fav": True, "groupId": True},
+    )
+    assert r.status_code == 400
+    assert r.is_json
+    assert "groupId" in r.get_json()["error"]

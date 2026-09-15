@@ -114,3 +114,29 @@ def test_authenticated_watchlist_crud(auth_client):
     assert r.status_code == 200
     assert r.is_json
     assert r.get_json().get("status") == "ok"
+
+
+def test_watchlist_rejects_non_string_name(auth_client):
+    r = auth_client.post(
+        "/api/watchlist",
+        json={"name": 12345, "rules": {
+            "condition": "AND",
+            "rules": [{"field": "featuretable.alert_id", "operator": "is_not_null"}],
+        }},
+    )
+    assert r.status_code == 400
+    assert r.is_json
+    assert "name" in r.get_json()["error"].lower()
+
+
+def test_preview_query_rejects_non_column_field(auth_client):
+    r = auth_client.post(
+        "/api/preview-query",
+        json={
+            "condition": "AND",
+            "rules": [{"field": "featuretable.classification", "operator": "is_null"}],
+        },
+    )
+    assert r.status_code == 400
+    assert r.is_json
+    assert "error" in r.get_json()

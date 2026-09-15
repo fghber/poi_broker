@@ -161,3 +161,10 @@ def test_filter_bookmarks_cross_user_delete(app, auth_client):
     with app.app_context():
         still = db.session.get(FilterBookmark, foreign_id)
         assert still is not None
+
+
+def test_filter_bookmarks_reject_non_string_name(auth_client):
+    r = auth_client.post("/api/filter-bookmarks", json={"name": 12345, "params": {}})
+    assert r.status_code == 400
+    assert r.is_json
+    assert "name" in r.get_json()["error"].lower()

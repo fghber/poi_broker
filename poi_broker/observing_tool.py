@@ -256,6 +256,8 @@ def calc_observing_plot():
 
         # 2: Create moon panel. Moon-down is a plain label (moonMessage), not HTML.
         night_moon_alt = moon_alt[np.where(sun_alt < 0)]
+        if night_moon_alt.size == 0:
+            return jsonify({'image': obs_img, 'moonMessage': 'No nighttime hours on this date'})
         if np.max(night_moon_alt) < 0:
             return jsonify({'image': obs_img, 'moonMessage': 'Moon down'})
 

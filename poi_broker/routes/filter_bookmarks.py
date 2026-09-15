@@ -122,7 +122,10 @@ def create_filter_bookmark():
     if not isinstance(data, dict):
         return jsonify({'error': 'Invalid or missing JSON'}), 400
 
-    name = (data.get('name') or '').strip()
+    raw_name = data.get('name')
+    if not isinstance(raw_name, str):
+        return jsonify({'error': 'name is required'}), 400
+    name = raw_name.strip()
     if not name:
         return jsonify({'error': 'name is required'}), 400
     if len(name) > 200:

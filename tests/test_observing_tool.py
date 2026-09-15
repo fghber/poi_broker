@@ -220,3 +220,31 @@ def test_query_observing_plot_builtin_valid_iana_resolution_failure_logs_diagnos
     assert 'Failed to resolve timezone via ZoneInfo' in logs
     assert 'America/Santiago' in logs
     assert 'simulated zoneinfo resolution failure' in logs
+
+
+@pytest.mark.slow
+def test_query_observing_plot_polar_summer_returns_moon_message(client, monkeypatch):
+    """Midnight-sun dates have no night samples; must not 500 on empty np.max."""
+    import poi_broker.observing_tool as observing_tool
+    from datetime import timezone
+
+    location = EarthLocation(lat=78.0 * u.deg, lon=16.0 * u.deg, height=10 * u.m)
+    monkeypatch.setattr(observing_tool.EarthLocation, 'of_site', lambda site_name: location)
+    monkeypatch.setattr(observing_tool.TimezoneFinder, 'timezone_at', lambda self, lng, lat: 'UTC')
+    monkeypatch.setattr(observing_tool, 'ZoneInfo', lambda tz_name: timezone.utc)
+
+    response = client.get(
+        '/query_observing_plot',
+        query_string={
+            'obs_loc': 'NyAlesund',
+            'obs_date': '2025-06-21',
+            'obs_tz': 'option_utc',
+            'ra': '101.28715533',
+            'dec': '70',
+        },
+    )
+    payload = response.get_json()
+    assert response.status_code == 200, response.get_data(as_text=True)
+    assert 'error' not in payload
+    assert payload['image'].startswith('data:image/png;base64,')
+    assert payload.get('moonMessage') == 'No nighttime hours on this date'

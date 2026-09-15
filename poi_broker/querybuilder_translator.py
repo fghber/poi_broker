@@ -147,6 +147,9 @@ class Filter(object):
                     )
 
                 try:
+                    inspected = sa_inspect(model)
+                    if column_name not in inspected.columns:
+                        raise ValueError(f'Unknown field: {field_name}')
                     field = getattr(model, column_name)
                 except AttributeError as exc:
                     raise ValueError(f'Unknown field: {field_name}') from exc

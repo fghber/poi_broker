@@ -270,7 +270,7 @@ def create_app():
     # Global error handler for CSRF errors raised by Flask-WTF
     @app.errorhandler(CSRFError)
     def handle_csrf_error(error):
-        if request.path.startswith('/api/'):
+        if request.path.startswith('/api/') or request.is_json:
             return jsonify({'error': 'csrf validation failed', 'message': str(error)}), 400
         flash('Your form session expired or is invalid. Please reload this page and submit again. If this is a reset link, request a new one.', 'danger')
         return redirect(request.path)

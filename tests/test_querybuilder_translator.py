@@ -224,3 +224,14 @@ def test_querybuilder_contains_still_works_for_anomaly_fields(app):
         compiled = filtered_query.whereclause.compile()
         params = compiled.params
         assert any(v == '%bad%' for v in params.values())
+
+
+def test_querybuilder_rejects_non_column_attribute(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'rules': [{'field': 'featuretable.classification', 'operator': 'is_null'}]
+        }
+        with pytest.raises(ValueError, match='Unknown field'):
+            filter_obj.querybuilder(rules)
