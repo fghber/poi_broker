@@ -40,9 +40,14 @@ def _validate_payload(raw: object) -> tuple[dict[str, float | str] | None, str |
     if len(name) > UserObservatory.MAX_NAME_LENGTH:
         return None, f'name must be {UserObservatory.MAX_NAME_LENGTH} characters or fewer'
 
+    latitude_raw = raw.get('latitude')
+    longitude_raw = raw.get('longitude')
+    # bool is a subclass of int, so float(True) == 1.0; reject it explicitly.
+    if isinstance(latitude_raw, bool) or isinstance(longitude_raw, bool):
+        return None, 'latitude and longitude must be numeric'
     try:
-        latitude = float(raw.get('latitude'))
-        longitude = float(raw.get('longitude'))
+        latitude = float(latitude_raw)
+        longitude = float(longitude_raw)
     except (TypeError, ValueError):
         return None, 'latitude and longitude must be numeric'
 

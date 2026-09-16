@@ -112,12 +112,16 @@ class Filter(object):
     def _make_query(self, query, rules):
         cond_list = []
         for cond in rules.get('rules', []):
+            if not isinstance(cond, dict):
+                raise ValueError('Invalid querybuilder rule')
             if 'condition' not in cond:
                 operator_name = cond.get('operator')
-                if operator_name not in self.operators:
-                    raise NotImplementedError(f'Unsupported operator: {operator_name}')
+                if not isinstance(operator_name, str) or operator_name not in self.operators:
+                    raise ValueError(f'Unsupported operator: {operator_name}')
 
                 field_name = cond.get('field', '')
+                if not isinstance(field_name, str):
+                    raise ValueError(f'Invalid field format: {field_name}')
                 parts = field_name.split('.', 1)
                 if len(parts) != 2:
                     raise ValueError(f'Invalid field format: {field_name}')

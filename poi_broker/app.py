@@ -112,7 +112,7 @@ def _resolve_selected_observatory(
     
     if source == 'custom':
         selected_id = selected_meta.get('id')
-        if isinstance(selected_id, int):
+        if isinstance(selected_id, int) and not isinstance(selected_id, bool):
             candidate = f'custom:{selected_id}'
             if candidate in custom_values:
                 return candidate

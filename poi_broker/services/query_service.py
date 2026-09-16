@@ -10,7 +10,7 @@ from sqlalchemy.orm import Query
 
 from .. import db
 from ..models import Classification, Ztf
-from ..querybuilder_translator import Filter
+from ..querybuilder_translator import Filter, TableNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,8 @@ def build_export_row(row: Row) -> dict[str, Any]:
 def _rules_need_classification(rules_payload: dict) -> bool:
     """Return True if any rule field targets the classification table."""
     for cond in rules_payload.get('rules', []):
+        if not isinstance(cond, dict):
+            raise ValueError('Invalid querybuilder rules payload')
         if 'condition' in cond:
             if _rules_need_classification(cond):
                 return True
@@ -71,12 +73,21 @@ def _rules_need_classification(rules_payload: dict) -> bool:
     return False
 
 
-def _validate_rules_payload(rules_payload: dict) -> None:
+def _validate_rules_payload(rules_payload: dict, *, require_rules: bool = True) -> None:
     if not isinstance(rules_payload, dict) or 'rules' not in rules_payload:
         raise ValueError('Invalid querybuilder rules payload')
 
-    if not isinstance(rules_payload.get('rules'), list) or len(rules_payload['rules']) == 0:
+    rules = rules_payload.get('rules')
+    if not isinstance(rules, list):
+        raise ValueError('Invalid querybuilder rules payload')
+    if require_rules and len(rules) == 0:
         raise ValueError('At least one filter rule is required')
+
+    for cond in rules:
+        if not isinstance(cond, dict):
+            raise ValueError('Invalid querybuilder rules payload')
+        if 'condition' in cond:
+            _validate_rules_payload(cond, require_rules=False)
 
 
 def build_query_from_rules(
@@ -123,7 +134,12 @@ def build_query_from_rules(
 
     models_dict = {'featuretable': Ztf, 'classification': Classification}
     myfilter = Filter(models_dict, base_query)
-    filtered_query = myfilter.querybuilder(rules_payload)
+    try:
+        filtered_query = myfilter.querybuilder(rules_payload)
+    except TableNotFoundError as exc:
+        raise ValueError(f'Unknown table: {exc}') from exc
+    except NotImplementedError as exc:
+        raise ValueError(str(exc)) from exc
 
     if filtered_query.whereclause is None:
         raise ValueError('No filter conditions could be built from the rules')

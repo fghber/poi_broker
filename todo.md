@@ -33,6 +33,23 @@
 - [x] Add Bulk Export based on Visual Query (Top 1M/Preview or All)
   - [x] Create CSV fully async, inform user when ready
 
+# Unproven / high-risk (repro-gate, 2026-09-15)
+
+Not confirmed as bugs. Either the candidate did not reproduce, or it is a documented accepted risk. Do not treat these as findings without a failing test.
+
+- Observing plot `dec=999`: returns 200 “not visible” (`|lat−dec| ≥ 90`). Correct, not a 500.
+- Remember-me cookie not bound to IP/User-Agent: documented trade-off in `docs/sec.md`.
+- CSP `'unsafe-inline'` / `'unsafe-eval'`: documented Bokeh/jQuery compromise.
+- `ProxyFix(..., x_host=1)`: documented; `PUBLIC_BASE_URL` is the email-host control.
+- Classification plot echoing `alertId` into Bokeh when a row exists: missing-row path is escaped and tested; XSS via a stored matching `alert_id` was not reproduced.
+- Lightcurve CSV built with f-strings: possible CSV injection if `locus_id` has commas/`=`; no failing test.
+- Unbounded query-builder nesting: possible CPU/DoS; not executed as a crash.
+- Huge `page` OFFSET: slow/empty, not shown to 500.
+- Observing plot `ra=inf` / `nan`: not re-tested after the calendar-date fix.
+- `/query_lightcurve_data` has no 128-char id cap (unlike features/classification): inconsistency, not a crash.
+- `query_features` 404 on missing alert: intentional data API, not a plot empty-state.
+- Rate-limit `memory://` under multi-worker Gunicorn: documented ops risk.
+
 # Future
 
 - Migrate to more capable DB (PostgreSQL)

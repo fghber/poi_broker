@@ -140,3 +140,48 @@ def test_preview_query_rejects_non_column_field(auth_client):
     assert r.status_code == 400
     assert r.is_json
     assert "error" in r.get_json()
+
+
+def test_preview_query_rejects_unknown_table(auth_client):
+    r = auth_client.post(
+        "/api/preview-query",
+        json={
+            "condition": "AND",
+            "rules": [{"field": "unknown.alert_id", "operator": "is_not_null"}],
+        },
+    )
+    assert r.status_code == 400
+    assert r.is_json
+
+
+def test_preview_query_rejects_unsupported_operator(auth_client):
+    r = auth_client.post(
+        "/api/preview-query",
+        json={
+            "condition": "AND",
+            "rules": [{"field": "featuretable.alert_id", "operator": "totally_fake", "value": "x"}],
+        },
+    )
+    assert r.status_code == 400
+    assert r.is_json
+
+
+def test_preview_query_rejects_non_dict_rule(auth_client):
+    r = auth_client.post(
+        "/api/preview-query",
+        json={"condition": "AND", "rules": ["not-a-rule"]},
+    )
+    assert r.status_code == 400
+    assert r.is_json
+
+
+def test_preview_query_rejects_non_string_field(auth_client):
+    r = auth_client.post(
+        "/api/preview-query",
+        json={
+            "condition": "AND",
+            "rules": [{"field": ["featuretable", "alert_id"], "operator": "is_not_null"}],
+        },
+    )
+    assert r.status_code == 400
+    assert r.is_json

@@ -32,3 +32,28 @@
 - Date: 2026-09-15
 - Status: fixed
 - Repro: tests/test_observing_tool.py::test_query_observing_plot_polar_summer_returns_moon_message
+
+## [iso-date-uncalendar] InputParser.parse_dates — ISO-looking tokens skipped calendar validation; to_mjd raised ErfaError
+- Date: 2026-09-15
+- Status: fixed
+- Repro: tests/test_mjd_filter.py::TestMjdRoute::test_iso_date_with_invalid_month_shows_warning, tests/test_input_parser.py::TestInputParser::test_parse_dates_rejects_invalid_month
+
+## [observing-uncalendar-date] observing_tool — obs_date split('-') without strptime; invalid calendar dates 500'd in Time()
+- Date: 2026-09-15
+- Status: fixed
+- Repro: tests/test_observing_tool.py::test_query_observing_plot_rejects_non_calendar_date_with_numeric_coords, tests/test_observing_tool.py::test_query_observing_plot_rejects_impossible_calendar_date
+
+## [querybuilder-malformed-rule] preview/export/watchlist — non-dict rules, non-string fields, unknown tables, unknown operators 500'd
+- Date: 2026-09-15
+- Status: fixed
+- Repro: tests/test_visual_query.py::test_preview_query_rejects_unknown_table, tests/test_visual_query.py::test_preview_query_rejects_unsupported_operator, tests/test_visual_query.py::test_preview_query_rejects_non_dict_rule, tests/test_visual_query.py::test_preview_query_rejects_non_string_field
+
+## [bool-latlon] POST /api/user-observatories — JSON true/false passed float() as 1.0/0.0
+- Date: 2026-09-15
+- Status: fixed
+- Repro: tests/test_user_observatories.py::test_create_user_observatory_validation_errors (latitude True)
+
+## [bool-custom-obs-id] last-selected observatory — isinstance(id, int) accepted JSON true as 1
+- Date: 2026-09-15
+- Status: fixed
+- Repro: tests/test_user_observatories.py::test_save_last_observatory_api_rejects_boolean_custom_id, tests/test_observatory_context.py::TestResolveSelectedObservatory::test_custom_selection_boolean_id_returns_none

@@ -94,7 +94,10 @@ def calc_observing_plot():
             return jsonify({'error': 'Missing required query parameters: obs_loc, obs_date, ra, dec'}), 400
 
         try:
-            year, month, day = obs_date.split('-')
+            parsed_date = datetime.strptime(obs_date, '%Y-%m-%d')
+            year = f'{parsed_date.year:04d}'
+            month = f'{parsed_date.month:02d}'
+            day = f'{parsed_date.day:02d}'
             ra = float(ra_value)
             dec = float(dec_value)
         except (ValueError, TypeError):

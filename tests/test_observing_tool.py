@@ -27,6 +27,38 @@ def test_query_observing_plot_rejects_invalid_parameter_format(client):
     assert 'Invalid parameter format' in response.get_data(as_text=True)
 
 
+def test_query_observing_plot_rejects_non_calendar_date_with_numeric_coords(client):
+    response = client.get(
+        '/query_observing_plot',
+        query_string={
+            'obs_loc': 'Palomar',
+            'obs_date': 'not-a-date',
+            'obs_tz': 'option_utc',
+            'ra': '10',
+            'dec': '20',
+        },
+    )
+    assert response.status_code == 400
+    assert response.is_json
+    assert 'Invalid parameter format' in response.get_json().get('error', '')
+
+
+def test_query_observing_plot_rejects_impossible_calendar_date(client):
+    response = client.get(
+        '/query_observing_plot',
+        query_string={
+            'obs_loc': 'Palomar',
+            'obs_date': '2024-99-99',
+            'obs_tz': 'option_utc',
+            'ra': '10',
+            'dec': '20',
+        },
+    )
+    assert response.status_code == 400
+    assert response.is_json
+    assert 'Invalid parameter format' in response.get_json().get('error', '')
+
+
 def test_query_observing_plot_not_visible_returns_message(client, monkeypatch):
     import poi_broker.observing_tool as observing_tool
 

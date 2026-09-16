@@ -30,7 +30,7 @@ def test_querybuilder_unsupported_operator_raises(app):
         filter_obj = Filter({'featuretable': Ztf}, base_query)
         rules = {'rules': [{'field': 'featuretable.alert_id', 'operator': 'not_a_real_op', 'value': 'x'}]}
 
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(ValueError, match='Unsupported operator'):
             filter_obj.querybuilder(rules)
 
 
@@ -51,6 +51,26 @@ def test_querybuilder_unknown_table_name_raises(app):
         rules = {'rules': [{'field': 'unknown.alert_id', 'operator': 'equal', 'value': 'x'}]}
 
         with pytest.raises(TableNotFoundError):
+            filter_obj.querybuilder(rules)
+
+
+def test_querybuilder_non_dict_rule_raises(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {'rules': ['not-a-rule']}
+
+        with pytest.raises(ValueError, match='Invalid querybuilder rule'):
+            filter_obj.querybuilder(rules)
+
+
+def test_querybuilder_non_string_field_raises(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {'rules': [{'field': ['featuretable', 'alert_id'], 'operator': 'is_not_null'}]}
+
+        with pytest.raises(ValueError, match='Invalid field format'):
             filter_obj.querybuilder(rules)
 
 
