@@ -61,18 +61,15 @@ _GROUP_CONDITIONS = frozenset({'AND', 'OR'})
 def _group_condition(rules: dict) -> str:
     """Return AND/OR from a rules group. Non-strings and unknown values are errors."""
     condition = rules.get('condition', 'AND')
-    if not isinstance(condition, str):
+    if not isinstance(condition, str) or condition.upper() not in _GROUP_CONDITIONS:
         raise ValueError('Query condition must be AND or OR')
-    normalized = condition.upper()
-    if normalized not in _GROUP_CONDITIONS:
-        raise ValueError('Query condition must be AND or OR')
-    return normalized
+    return condition.upper()
 
 
 def _assert_bind_scalar(value, operator_name: str) -> None:
     """Reject dict/list binds that sqlite cannot render or execute."""
     if isinstance(value, (dict, list, tuple)):
-        raise ValueError(f'Invalid value for operator "{operator_name}"')
+        raise ValueError(f'Invalid value for operator "{operator_name}"') # noqa: TRY004 - routes map ValueError -> 400
 
 
 OPERATORS = {
@@ -133,7 +130,7 @@ class Filter(object):
         cond_list = []
         for cond in rules.get('rules', []):
             if not isinstance(cond, dict):
-                raise ValueError('Invalid querybuilder rule')
+                raise ValueError('Invalid querybuilder rule') # noqa: TRY004 - routes map ValueError -> 400
             if 'condition' not in cond:
                 operator_name = cond.get('operator')
                 if not isinstance(operator_name, str) or operator_name not in self.operators:
