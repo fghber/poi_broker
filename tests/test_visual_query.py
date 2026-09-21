@@ -185,3 +185,51 @@ def test_preview_query_rejects_non_string_field(auth_client):
     )
     assert r.status_code == 400
     assert r.is_json
+
+
+def test_preview_query_rejects_non_string_condition(auth_client):
+    r = auth_client.post(
+        "/api/preview-query",
+        json={
+            "condition": 1,
+            "rules": [{"field": "featuretable.alert_id", "operator": "is_not_null"}],
+        },
+    )
+    assert r.status_code == 400
+    assert r.is_json
+
+
+def test_preview_query_rejects_dict_equal_value(auth_client):
+    r = auth_client.post(
+        "/api/preview-query",
+        json={
+            "condition": "AND",
+            "rules": [
+                {
+                    "field": "featuretable.alert_id",
+                    "operator": "equal",
+                    "value": {"a": 1},
+                }
+            ],
+        },
+    )
+    assert r.status_code == 400
+    assert r.is_json
+
+
+def test_export_query_rejects_dict_in_elements(auth_client):
+    r = auth_client.post(
+        "/api/export-query",
+        json={
+            "condition": "AND",
+            "rules": [
+                {
+                    "field": "featuretable.alert_id",
+                    "operator": "in",
+                    "value": [{}],
+                }
+            ],
+        },
+    )
+    assert r.status_code == 400
+    assert r.is_json

@@ -26,8 +26,9 @@ def api_favorite_get():
     GET /api/favorite?locusId=...  -> returns {"fav": true/false}
     """
     locus_id = request.args.get('locusId')
-    if not locus_id:
+    if not isinstance(locus_id, str) or not locus_id.strip():
         return jsonify({'error': 'Missing locusId'}), 400
+    locus_id = locus_id.strip()
     if len(locus_id) > 128:
         return jsonify({'error': 'locusId is too long'}), 400
     fav = get_favorite_status(locus_id)
@@ -66,8 +67,9 @@ def api_favorite_post():
         return jsonify({'error': 'Invalid or missing JSON body'}), 400
     
     locus_id = data.get('locusId')
-    if not isinstance(locus_id, str) or not locus_id:
+    if not isinstance(locus_id, str) or not locus_id.strip():
         return jsonify({'error': 'Missing locusId'}), 400
+    locus_id = locus_id.strip()
     if len(locus_id) > 128:
         return jsonify({'error': 'locusId is too long'}), 400
 

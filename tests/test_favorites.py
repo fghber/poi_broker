@@ -253,6 +253,54 @@ def test_favorites_validation(auth_client):
     assert r.status_code == 200
 
 
+def test_favorites_strips_locus_id_before_validation_and_lookup(auth_client):
+    r = auth_client.get("/api/favorite", query_string={"locusId": "   "})
+    assert r.status_code == 400
+    assert "Missing locusId" in r.get_json()["error"]
+
+    r = auth_client.post("/api/favorite", json={"locusId": "   ", "fav": True})
+    assert r.status_code == 400
+    assert "Missing locusId" in r.get_json()["error"]
+
+    r = auth_client.post(
+        "/api/favorite",
+        json={"locusId": "  " + "x" * 129 + "  ", "fav": True},
+    )
+    assert r.status_code == 400
+    assert "too long" in r.get_json()["error"]
+
+    r = auth_client.post(
+        "/api/favorite",
+        json={"locusId": "  trimmed-locus  ", "fav": True},
+    )
+    assert r.status_code == 200
+
+    r = auth_client.get(
+        "/api/favorite",
+        query_string={"locusId": "  trimmed-locus  "},
+    )
+    assert r.status_code == 200
+    assert r.get_json()["fav"] is True
+
+    r = auth_client.get("/api/favorites")
+    favs = r.get_json()["favorites"]
+    assert len(favs) == 1
+    assert favs[0]["locusId"] == "trimmed-locus"
+
+    r = auth_client.post(
+        "/api/favorite",
+        json={"locusId": " trimmed-locus ", "fav": False},
+    )
+    assert r.status_code == 200
+
+    r = auth_client.get(
+        "/api/favorite",
+        query_string={"locusId": "  trimmed-locus  "},
+    )
+    assert r.status_code == 200
+    assert r.get_json()["fav"] is False
+
+
 def test_favorites_cross_user_isolation(app, auth_client):
     """Test that users cannot access other users' favorites."""
     from poi_broker import db

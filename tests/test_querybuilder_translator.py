@@ -255,3 +255,95 @@ def test_querybuilder_rejects_non_column_attribute(app):
         }
         with pytest.raises(ValueError, match='Unknown field'):
             filter_obj.querybuilder(rules)
+
+
+def test_querybuilder_rejects_non_string_condition(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'condition': 1,
+            'rules': [{'field': 'featuretable.alert_id', 'operator': 'is_not_null'}],
+        }
+        with pytest.raises(ValueError, match='Query condition must be AND or OR'):
+            filter_obj.querybuilder(rules)
+
+
+def test_querybuilder_rejects_unknown_condition_string(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'condition': 'XOR',
+            'rules': [{'field': 'featuretable.alert_id', 'operator': 'is_not_null'}],
+        }
+        with pytest.raises(ValueError, match='Query condition must be AND or OR'):
+            filter_obj.querybuilder(rules)
+
+
+def test_querybuilder_rejects_nested_non_string_condition(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'condition': 'AND',
+            'rules': [
+                {
+                    'condition': None,
+                    'rules': [{'field': 'featuretable.alert_id', 'operator': 'is_not_null'}],
+                }
+            ],
+        }
+        with pytest.raises(ValueError, match='Query condition must be AND or OR'):
+            filter_obj.querybuilder(rules)
+
+
+def test_querybuilder_rejects_dict_equal_value(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'rules': [
+                {
+                    'field': 'featuretable.alert_id',
+                    'operator': 'equal',
+                    'value': {'a': 1},
+                }
+            ]
+        }
+        with pytest.raises(ValueError, match='Invalid value for operator "equal"'):
+            filter_obj.querybuilder(rules)
+
+
+def test_querybuilder_rejects_dict_in_elements(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'rules': [
+                {
+                    'field': 'featuretable.alert_id',
+                    'operator': 'in',
+                    'value': [{}],
+                }
+            ]
+        }
+        with pytest.raises(ValueError, match='Invalid value for operator "in"'):
+            filter_obj.querybuilder(rules)
+
+
+def test_querybuilder_rejects_dict_between_elements(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'rules': [
+                {
+                    'field': 'featuretable.locus_ra',
+                    'operator': 'between',
+                    'value': [{}, {}],
+                }
+            ]
+        }
+        with pytest.raises(ValueError, match='Invalid value for operator "between"'):
+            filter_obj.querybuilder(rules)

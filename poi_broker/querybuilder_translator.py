@@ -55,6 +55,26 @@ INDEXED_ID_OPERATORS = frozenset(
     }
 )
 
+_GROUP_CONDITIONS = frozenset({'AND', 'OR'})
+
+
+def _group_condition(rules: dict) -> str:
+    """Return AND/OR from a rules group. Non-strings and unknown values are errors."""
+    condition = rules.get('condition', 'AND')
+    if not isinstance(condition, str):
+        raise ValueError('Query condition must be AND or OR')
+    normalized = condition.upper()
+    if normalized not in _GROUP_CONDITIONS:
+        raise ValueError('Query condition must be AND or OR')
+    return normalized
+
+
+def _assert_bind_scalar(value, operator_name: str) -> None:
+    """Reject dict/list binds that sqlite cannot render or execute."""
+    if isinstance(value, (dict, list, tuple)):
+        raise ValueError(f'Invalid value for operator "{operator_name}"')
+
+
 OPERATORS = {
     'equal': lambda f, a: f.__eq__(a),
     'not_equal': lambda f, a: f.__ne__(a),
@@ -105,7 +125,7 @@ class Filter(object):
         if not cond_list:
             return query
 
-        condition = rules.get('condition', 'AND').upper()
+        condition = _group_condition(rules)
         operator = or_ if condition == 'OR' else and_
         return query.filter(operator(*cond_list))
 
@@ -170,12 +190,17 @@ class Filter(object):
                     if operator_name == 'between':
                         if not isinstance(value, (list, tuple)) or len(value) != 2:
                             raise ValueError('Operator "between" requires a two-item array value')
+                        for item in value:
+                            _assert_bind_scalar(item, operator_name)
                     elif operator_name in ('in', 'not_in'):
                         if not isinstance(value, (list, tuple)) or len(value) == 0:
                             raise ValueError(f'Operator "{operator_name}" requires a non-empty array value')
+                        for item in value:
+                            _assert_bind_scalar(item, operator_name)
                     else:
                         if value is None:
                             raise ValueError(f'Operator "{operator_name}" requires a value')
+                        _assert_bind_scalar(value, operator_name)
 
                     try:
                         cond_list.append(function(field, value))
@@ -185,7 +210,7 @@ class Filter(object):
                     raise NotImplementedError(f'Unsupported operator arity: {arity}')
             else:
                 query, cond_subrule = self._make_query(query, cond)
-                nested_condition = cond.get('condition', 'AND').upper()
+                nested_condition = _group_condition(cond)
                 nested_operator = or_ if nested_condition == 'OR' else and_
                 if cond_subrule:
                     cond_list.append(nested_operator(*cond_subrule))
