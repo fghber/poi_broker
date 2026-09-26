@@ -347,3 +347,151 @@ def test_querybuilder_rejects_dict_between_elements(app):
         }
         with pytest.raises(ValueError, match='Invalid value for operator "between"'):
             filter_obj.querybuilder(rules)
+
+
+def test_querybuilder_in_with_array_builds_where_clause(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'rules': [
+                {
+                    'field': 'featuretable.alert_id',
+                    'operator': 'in',
+                    'value': ['a', 'b'],
+                }
+            ]
+        }
+        filtered_query = filter_obj.querybuilder(rules)
+        sql = str(filtered_query.whereclause.compile(compile_kwargs={'literal_binds': True}))
+
+        assert 'IN' in sql.upper()
+        assert "'a'" in sql
+        assert "'b'" in sql
+
+
+def test_querybuilder_equal_unwraps_single_element_array(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'rules': [
+                {
+                    'field': 'featuretable.ant_passband',
+                    'operator': 'equal',
+                    'value': ['g'],
+                }
+            ]
+        }
+        filtered_query = filter_obj.querybuilder(rules)
+        sql = str(filtered_query.whereclause.compile(compile_kwargs={'literal_binds': True}))
+
+        assert "ant_passband = 'g'" in sql
+
+
+def test_querybuilder_equal_rejects_multi_element_array(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'rules': [
+                {
+                    'field': 'featuretable.alert_id',
+                    'operator': 'equal',
+                    'value': ['a', 'b'],
+                }
+            ]
+        }
+        with pytest.raises(ValueError, match='Invalid value for operator "equal"'):
+            filter_obj.querybuilder(rules)
+
+
+def test_querybuilder_equal_rejects_dict_in_single_element_array(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'rules': [
+                {
+                    'field': 'featuretable.alert_id',
+                    'operator': 'equal',
+                    'value': [{}],
+                }
+            ]
+        }
+        with pytest.raises(ValueError, match='Invalid value for operator "equal"'):
+            filter_obj.querybuilder(rules)
+
+
+def test_querybuilder_in_rejects_scalar_value(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'rules': [
+                {
+                    'field': 'featuretable.alert_id',
+                    'operator': 'in',
+                    'value': 'a,b',
+                }
+            ]
+        }
+        with pytest.raises(ValueError, match='requires a non-empty array value'):
+            filter_obj.querybuilder(rules)
+
+
+def test_querybuilder_in_rejects_empty_array(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'rules': [
+                {
+                    'field': 'featuretable.alert_id',
+                    'operator': 'in',
+                    'value': [],
+                }
+            ]
+        }
+        with pytest.raises(ValueError, match='requires a non-empty array value'):
+            filter_obj.querybuilder(rules)
+
+
+def test_querybuilder_contains_unwraps_single_element_array(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'rules': [
+                {
+                    'field': 'featuretable.anomaly_type',
+                    'operator': 'contains',
+                    'value': ['a'],
+                }
+            ]
+        }
+        filtered_query = filter_obj.querybuilder(rules)
+        sql = str(filtered_query.whereclause.compile(compile_kwargs={'literal_binds': True}))
+
+        assert 'LIKE' in sql.upper()
+        assert 'a' in sql
+
+
+def test_querybuilder_contains_joins_multi_element_array_with_comma(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'rules': [
+                {
+                    'field': 'featuretable.anomaly_type',
+                    'operator': 'contains',
+                    'value': ['a', 'b'],
+                }
+            ]
+        }
+        filtered_query = filter_obj.querybuilder(rules)
+        sql = str(filtered_query.whereclause.compile(compile_kwargs={'literal_binds': True}))
+
+        assert 'LIKE' in sql.upper()
+        assert 'a,b' in sql

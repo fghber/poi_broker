@@ -233,3 +233,41 @@ def test_export_query_rejects_dict_in_elements(auth_client):
     )
     assert r.status_code == 400
     assert r.is_json
+
+
+def test_preview_query_accepts_in_with_array(auth_client):
+    r = auth_client.post(
+        "/api/preview-query",
+        json={
+            "condition": "AND",
+            "rules": [
+                {
+                    "field": "featuretable.alert_id",
+                    "operator": "in",
+                    "value": ["a", "b"],
+                }
+            ],
+        },
+    )
+    assert r.status_code == 200
+    assert r.is_json
+    assert "sql" in r.get_json()
+
+
+def test_preview_query_accepts_equal_with_single_element_array(auth_client):
+    r = auth_client.post(
+        "/api/preview-query",
+        json={
+            "condition": "AND",
+            "rules": [
+                {
+                    "field": "featuretable.ant_passband",
+                    "operator": "equal",
+                    "value": ["g"],
+                }
+            ],
+        },
+    )
+    assert r.status_code == 200
+    assert r.is_json
+    assert "sql" in r.get_json()

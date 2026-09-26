@@ -317,9 +317,35 @@
         quas: 'quas',
         sn: 'sn',
         yso: 'yso'
-      }
+      },
+      // Categorical values: equality + set membership only (mirrors ant_passband).
+      // LIKE on a multi-select would match the literal comma-joined string,
+      // which is never desired for these codes, so do not offer it here.
+      operators: ['equal', 'not_equal', 'in', 'not_in']
     }
   ];
+
+  // in/not_in carry arrays (operator.multiple=true) but the builder only
+  // produces an array when the filter opts in: text/number inputs need
+  // value_separator (splits "a,b" into ["a","b"]), select inputs need
+  // multiple:true (multi-select). Without these the value stays a scalar
+  // string and the backend rejects it with 400, making in/not_in dead.
+  // Apply the opt-ins to every filter that allows in/not_in. LIKE-family
+  // operators may then receive arrays for comma input; the backend rejoins
+  // them with ',' (_LIKE_JOIN_OPERATORS) so contains "a,b" still matches
+  // the literal "a,b" instead of 400ing.
+  filters.forEach((f) => {
+    const ops = f.operators; // undefined = all default operators (includes in/not_in)
+    const allowsIn = !ops || ops.includes('in') || ops.includes('not_in');
+    if (!allowsIn) {
+      return;
+    }
+    if (f.input === 'select') {
+      f.multiple = true;
+    } else if (f.value_separator === undefined) {
+      f.value_separator = ',';
+    }
+  });
 
   const builderChangeEvents = [
     'afterAddRule.queryBuilder', 'afterDeleteRule.queryBuilder',

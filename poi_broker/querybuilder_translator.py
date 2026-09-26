@@ -72,6 +72,21 @@ def _assert_bind_scalar(value, operator_name: str) -> None:
         raise ValueError(f'Invalid value for operator "{operator_name}"') # noqa: TRY004 - routes map ValueError -> 400
 
 
+# LIKE-family operators take a single pattern string. The query-builder UI
+# splits comma input into arrays when a filter allows in/not_in
+# (value_separator), so LIKE rules can arrive as arrays. Join them back with
+# ',' to preserve the pre-separator literal (e.g. contains "a,b" matches the
+# literal "a,b") instead of 400ing. Each element is still scalar-validated.
+_LIKE_JOIN_OPERATORS = frozenset({
+    'contains',
+    'not_contains',
+    'begins_with',
+    'not_begins_with',
+    'ends_with',
+    'not_ends_with',
+})
+
+
 OPERATORS = {
     'equal': lambda f, a: f.__eq__(a),
     'not_equal': lambda f, a: f.__ne__(a),
@@ -195,6 +210,20 @@ class Filter(object):
                         for item in value:
                             _assert_bind_scalar(item, operator_name)
                     else:
+                        # Select filters use multiple:true (required for in/not_in),
+                        # so they always emit an array even for single-value
+                        # operators. Unwrap a single selection so scalar ops keep
+                        # working; multi-selections stay a 400 (except LIKE ops,
+                        # which rejoin with ',' to preserve literal comma input).
+                        if isinstance(value, (list, tuple)):
+                            if operator_name in _LIKE_JOIN_OPERATORS:
+                                if len(value) == 0:
+                                    raise ValueError(f'Operator "{operator_name}" requires a value')
+                                for item in value:
+                                    _assert_bind_scalar(item, operator_name)
+                                value = ','.join(str(v) for v in value)
+                            elif len(value) == 1:
+                                value = value[0]
                         if value is None:
                             raise ValueError(f'Operator "{operator_name}" requires a value')
                         _assert_bind_scalar(value, operator_name)
