@@ -271,3 +271,24 @@ def test_preview_query_accepts_equal_with_single_element_array(auth_client):
     assert r.status_code == 200
     assert r.is_json
     assert "sql" in r.get_json()
+
+
+def test_save_watchlist_rejects_invalid_rules_with_400(auth_client):
+    r = auth_client.post(
+        "/api/watchlist",
+        json={
+            "name": "Bad Rules",
+            "rules": {
+                "condition": "AND",
+                "rules": [
+                    {
+                        "field": "featuretable.alert_id",
+                        "operator": "equal",
+                        "value": ["a", "b"],
+                    }
+                ],
+            },
+        },
+    )
+    assert r.status_code == 400
+    assert r.is_json

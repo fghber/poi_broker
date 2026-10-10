@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from functools import lru_cache
 from typing import Any
 
 from sqlalchemy.dialects import sqlite as _sqlite_dialect
@@ -34,9 +35,13 @@ EXPORT_SELECT_COLS = [getattr(Ztf, name) for name in ZTF_COLUMNS] + [
 EXPORT_YIELD_PER = 1000
 
 
+@lru_cache(maxsize=1)
 def get_export_columns() -> list[str]:
     """
     Return the column names used when writing an export CSV row.
+
+    The result is cached and shared across callers (build_export_row runs once
+    per exported row, up to MAX_EXPORT_ROWS), so it must not be mutated.
 
     Returns:
         list[str]: Ztf object columns followed by classification columns.

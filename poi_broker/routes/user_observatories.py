@@ -10,10 +10,10 @@ from astropy.coordinates import EarthLocation
 from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
-from timezonefinder import TimezoneFinder
 
 from .. import db
 from ..models import UserObservatory
+from ..observing_tool import _get_timezone_finder
 from ..user_settings import (
     _normalize_last_selected_observatory,
     get_saved_last_selected_observatory,
@@ -56,7 +56,7 @@ def _validate_payload(raw: object) -> tuple[dict[str, float | str] | None, str |
     if not (-180.0 <= longitude <= 180.0):
         return None, 'longitude must be between -180 and 180'
 
-    timezone_name = TimezoneFinder().timezone_at(lng=longitude, lat=latitude)
+    timezone_name = _get_timezone_finder().timezone_at(lng=longitude, lat=latitude)
     if not timezone_name:
         return None, 'Unable to resolve timezone for the provided coordinates'
 

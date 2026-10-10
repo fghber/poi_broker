@@ -57,6 +57,12 @@ INDEXED_ID_OPERATORS = frozenset(
 
 _GROUP_CONDITIONS = frozenset({'AND', 'OR'})
 
+# Upper bound on in / not_in list length. SQLite supports up to 32766 bind
+# parameters (SQLITE_MAX_VARIABLE_NUMBER since 3.32). Real multi-selects are
+# far below this; the 1000 limit bounds preview-SQL size and prevents excessive
+# bind expansion.
+MAX_IN_LIST_ITEMS = 1000
+
 
 def _group_condition(rules: dict) -> str:
     """Return AND/OR from a rules group. Non-strings and unknown values are errors."""
@@ -207,6 +213,11 @@ class Filter(object):
                     elif operator_name in ('in', 'not_in'):
                         if not isinstance(value, (list, tuple)) or len(value) == 0:
                             raise ValueError(f'Operator "{operator_name}" requires a non-empty array value')
+                        if len(value) > MAX_IN_LIST_ITEMS:
+                            raise ValueError(
+                                f'Operator "{operator_name}" accepts at most '
+                                f'{MAX_IN_LIST_ITEMS} values'
+                            )
                         for item in value:
                             _assert_bind_scalar(item, operator_name)
                     else:
@@ -224,6 +235,11 @@ class Filter(object):
                                 value = ','.join(str(v) for v in value)
                             elif len(value) == 1:
                                 value = value[0]
+                            elif len(value) > 1:
+                                # Multi-select UI (multiple:true) can emit an
+                                # array for single-value operators. Point the
+                                # caller at "in" instead of a bare 400.
+                                raise ValueError(f'Invalid value for operator "{operator_name}": requires a single value; use "in" for multiple values')
                         if value is None:
                             raise ValueError(f'Operator "{operator_name}" requires a value')
                         _assert_bind_scalar(value, operator_name)

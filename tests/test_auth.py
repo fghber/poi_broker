@@ -353,3 +353,15 @@ def test_is_reset_token_expired_and_format_expire_time():
 
     future = datetime.now(timezone.utc) + timedelta(hours=1)
     assert auth_module._is_reset_token_expired(future) is False
+
+
+def test_verify_email_rate_limit_is_env_configurable(tmp_path, monkeypatch):
+    from poi_broker.settings import build_app_config
+
+    monkeypatch.setenv('SECRET_KEY', 'settings-secret')
+    monkeypatch.setenv('ALERTS_DB_PATH', str(tmp_path / 'alerts.db'))
+    monkeypatch.setenv('USERS_DB_PATH', str(tmp_path / 'users.db'))
+    monkeypatch.setenv('AUTH_RATE_LIMIT_VERIFY_EMAIL', '3 per hour')
+
+    config, _, _ = build_app_config(tmp_path)
+    assert config['AUTH_RATE_LIMIT_VERIFY_EMAIL'] == '3 per hour'

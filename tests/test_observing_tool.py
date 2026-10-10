@@ -4,6 +4,27 @@ from astropy import units as u
 from astropy.coordinates import EarthLocation
 
 
+def test_timezone_finder_accessor_is_cached(monkeypatch):
+    import poi_broker.observing_tool as observing_tool
+
+    observing_tool._get_timezone_finder.cache_clear()
+    constructed = []
+
+    class FakeTimezoneFinder:
+        def __init__(self):
+            constructed.append(self)
+
+    monkeypatch.setattr(observing_tool, 'TimezoneFinder', FakeTimezoneFinder)
+
+    first = observing_tool._get_timezone_finder()
+    second = observing_tool._get_timezone_finder()
+
+    assert first is second
+    assert constructed == [first]
+
+    observing_tool._get_timezone_finder.cache_clear()
+
+
 def test_query_observing_plot_requires_all_parameters(client):
     response = client.get('/query_observing_plot')
 

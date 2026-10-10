@@ -15,15 +15,16 @@ export USERS_DB_PATH=../_broker_db/users.db
 
 **Database:** `users.db` is created from `tools/usersdb_schema.sql` — the app
 never alters the database itself. If your dev `users.db` predates a schema
-change (e.g. `export_task.snapshot_mjd`), either recreate it:
+change (e.g. `export_task.snapshot_mjd`), recreate it:
 
 ```bash
 sqlite3 ../_broker_db/users.db < tools/usersdb_schema.sql
 ```
 
-or, if it holds data worth keeping (accounts, watchlists), alter it in place
-with the matching one-shot script in `tools/`
-(`apply_export_snapshot_mjd.sql`).
+Dev databases are disposable; recreate rather than migrate. (Historical
+note: the one-shot `apply_export_snapshot_mjd.sql` backfill script was
+removed after production was migrated — see
+`docs/adr/adr_db_schema_migration_strategy.md`.)
 
 **Terminal 1 — app**
 

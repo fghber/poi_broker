@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 from matplotlib import dates
 import io
 import base64
+import math
+from functools import lru_cache
 
 import numpy as np
 from astropy.visualization import astropy_mpl_style, quantity_support
@@ -26,6 +28,17 @@ from . import limiter
 from .models import UserObservatory
 
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=1)
+def _get_timezone_finder() -> TimezoneFinder:
+    """Shared TimezoneFinder instance.
+
+    Construction loads all boundary polygon data (~0.5s), so it must not run
+    per request. The instance is read-only after init (timezonefinder 8.x) and
+    safe to share across threads.
+    """
+    return TimezoneFinder()
 
 observing_tool_blueprint = Blueprint('observing_tool', __name__) 
 
@@ -103,6 +116,17 @@ def calc_observing_plot():
         except (ValueError, TypeError):
             return jsonify({'error': 'Invalid parameter format. Expected obs_date=YYYY-MM-DD and numeric ra/dec.'}), 400
 
+        # astropy neither bounds RA (it silently wraps) nor rejects NaN; dec
+        # out of range raises a ValueError much later inside SkyCoord and 500s
+        # the request. Validate here, at the same gate as the format check.
+        if (
+            not math.isfinite(ra)
+            or not math.isfinite(dec)
+            or not (0.0 <= ra < 360.0)
+            or not (-90.0 <= dec <= 90.0)
+        ):
+            return jsonify({'error': 'Invalid parameter value. RA must be within [0, 360) and Dec within [-90, 90] degrees.'}), 400
+
         if obs_loc.startswith('custom:'):
             if not current_user.is_authenticated:
                 return jsonify({'error': 'Authentication required for custom observatories.'}), 401
@@ -127,7 +151,7 @@ def calc_observing_plot():
             tz = _resolve_zoneinfo(custom_row.timezone_name)
             if tz is None:
                 # Fallback by coordinates so malformed legacy values do not break observing plots.
-                fallback_timezone_name = TimezoneFinder().timezone_at(lng=obs_lon, lat=obs_lat)
+                fallback_timezone_name = _get_timezone_finder().timezone_at(lng=obs_lon, lat=obs_lat)
                 tz = _resolve_zoneinfo(fallback_timezone_name)
                 if tz is None:
                     logger.warning('Invalid timezone for custom observatory id=%s', custom_row.id)
@@ -148,8 +172,7 @@ def calc_observing_plot():
                 return jsonify({'error': 'Unknown observatory location.'}), 400
 
             obs_lon, obs_lat = observatory.lon.value, observatory.lat.value
-            tf = TimezoneFinder()
-            timezone_name = tf.timezone_at(lng=obs_lon, lat=obs_lat)
+            timezone_name = _get_timezone_finder().timezone_at(lng=obs_lon, lat=obs_lat)
             if timezone_name is None:
                 return jsonify({'error': 'Failed to determine timezone for selected observatory.'}), 400
             tz = _resolve_zoneinfo(timezone_name)

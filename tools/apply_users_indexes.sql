@@ -40,4 +40,17 @@ DROP TABLE _filter_bookmark_unique_guard;
 CREATE UNIQUE INDEX IF NOT EXISTS uix_filter_bookmark_user_name
     ON filter_bookmark (user_id, name);
 
+-- O4: at most one active export task per user (models.py ExportTask).
+-- Fails loudly here if the existing data already violates the invariant
+-- (two PENDING/RUNNING rows for one user); sqlite3 prints the offending rows.
+SELECT user_id, COUNT(*) AS duplicate_count
+FROM export_task
+WHERE status IN ('PENDING', 'RUNNING')
+GROUP BY user_id
+HAVING COUNT(*) > 1;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uix_export_task_one_active_per_user
+    ON export_task (user_id)
+    WHERE status IN ('PENDING', 'RUNNING');
+
 ANALYZE;

@@ -72,9 +72,11 @@ FK churn.
   logins stop resurrecting sessions once the browser-side session expires
   (default 24h): a bare remember token carries no `login_at` and proves
   nothing about credential freshness. Deliberate, documented tradeoff.
-- Deploy order matters: apply `tools/apply_password_changed_at.sql` **before**
-  restarting into the new ORM, or authenticated pages 500 on the missing
-  column. Runbook: `docs/password_reset/deployment.md`.
+- Deploy order matters: `tools/apply_password_changed_at.sql` had to be
+  applied **before** restarting into the new ORM, or authenticated pages 500
+  on the missing column. Runbook: `docs/password_reset/deployment.md`.
+  [2026-10: applied in production; script removed — see
+  `docs/adr/adr_db_schema_migration_strategy.md`.]
 - The application never writes DDL. This ADR also removed the legacy
   boot-time helper (`_ensure_email_verification_expiry_column`); all schema
   upgrades are manual one-shot SQL scripts.
@@ -108,7 +110,7 @@ FK churn.
 | `poi_broker/auth.py` | `login_at` stamp; watermark + sign-out on reset/change |
 | `poi_broker/models.py` | `User.password_changed_at` column |
 | `poi_broker/app.py` | `epoch_utc_date` Jinja filter (Security page display) |
-| `tools/apply_password_changed_at.sql` | One-shot upgrade script |
+| `tools/apply_password_changed_at.sql` | One-shot upgrade script — applied in production; removed 2026-10 (see `docs/adr/adr_db_schema_migration_strategy.md`) |
 | `tools/usersdb_schema.sql` | Fresh-install schema (column included) |
 | `docs/password_reset/deployment.md` | Deploy/upgrade runbook |
 | `tests/test_security_regressions.py` | Behavior guards |

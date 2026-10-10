@@ -406,6 +406,23 @@ def test_querybuilder_equal_rejects_multi_element_array(app):
             filter_obj.querybuilder(rules)
 
 
+def test_querybuilder_equal_multi_error_guides_toward_in(app):
+    with app.app_context():
+        base_query = db.session.query(Ztf)
+        filter_obj = Filter({'featuretable': Ztf}, base_query)
+        rules = {
+            'rules': [
+                {
+                    'field': 'featuretable.ant_passband',
+                    'operator': 'equal',
+                    'value': ['g', 'R'],
+                }
+            ]
+        }
+        with pytest.raises(ValueError, match='use "in" for multiple values'):
+            filter_obj.querybuilder(rules)
+
+
 def test_querybuilder_equal_rejects_dict_in_single_element_array(app):
     with app.app_context():
         base_query = db.session.query(Ztf)

@@ -5,6 +5,13 @@
 
 # Cleanup
 
+- [ ] Remove deferred-hygiene items from the 2026-09 review (no runtime impact, revisit opportunistically):
+  - unused imports: `auth.py` (_format_expire_time), `filter_service.py` (Optional), `search_service.py` (List/Union/ParsedValue)
+  - dead vendor CSS: `poi_broker/static/css/bootstrap.4org.css` (~10k lines no template references)
+  - `tools/logwatch.py`: scratch script (commented-out code, undeclared `watchdog` dependency) — delete or move out of the repo
+  - `services/query_service.py`: hardcoded `classification.` prefix duplicating the models_dict table list (drift risk)
+- [ ] Remove `tools/apply_users_indexes.sql` once the one-active-export-per-user fix (`uix_export_task_one_active_per_user`) is committed, merged into the parent main, and applied in production — see `docs/adr/adr_db_schema_migration_strategy.md`
+
 - [x] align jQuery/Bootstrap versions and integrity tags
 - JSON responses differs on error types and escaping: Some endpoints use jsonify, others build Response/current_app.response_class with json.dumps or safe_serialize (query_features, query_crossmatches).
 - [x] request.query_string.decode('ascii'): Non-ASCII query strings can raise; utf-8 with errors policy is safer.

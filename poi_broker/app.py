@@ -38,17 +38,21 @@ from .routes import (
     visual_query_bp,
 )
 from .services.catalog_list import (
+    MAX_PAGE,
     PAGE_SIZE,
+    cached_segment_counts,
     count_matches,
     cursor_from_row,
     fetch_keyset,
     fetch_page,
     last_page_from_total,
     parse_keyset_request,
+    parse_legacy_date_cursor,
     resolve_catalog_total,
     should_use_keyset,
 )
 from .services.catalog_query import (
+    SORT_LABELS,
     build_catalog_query,
     catalog_filter_query_string,
     catalog_href,
@@ -188,23 +192,58 @@ def start() -> str:
     page = request.args.get('page', 1, type=int)
     if page is None or page < 1:
         abort(404)
+    # Only the legacy `?page=N` OFFSET jump is bounded; every UI link is a
+    # keyset cursor, whose cost is independent of depth.
+    if page > MAX_PAGE:
+        abort(404, description=(
+            f'Page {page} is beyond the {MAX_PAGE}-page limit for direct page '
+            f'numbers. Use the First / Prev / Next / Last buttons, or narrow the '
+            f'catalog with a filter.'
+        ))
 
     build = build_catalog_query(request.args)
     list_query = project_catalog_columns(build.list_query)
-    use_keyset = should_use_keyset(build.is_date_only_sort, request.args)
+    sort = build.sort
+    use_keyset = should_use_keyset(request.args)
     keyset_direction = 'first'
 
+    segment_counts = cached_segment_counts(build)
+
     if use_keyset:
-        keyset_direction, cursor = parse_keyset_request(request.args)
+        keyset_direction, cursor = parse_keyset_request(request.args, numeric=sort.numeric)
+        if keyset_direction == 'nulls' and not sort.nullable:
+            # Non-nullable sort columns have no null segment; treat ?nulls=1 as page 1.
+            keyset_direction = 'first'
+        if cursor is None and keyset_direction == 'first' and sort.key == 'date':
+            # Pre-2026-10 bookmarks carried before_mjd/after_mjd, which only
+            # ever held a date_alert_mjd value.
+            legacy = parse_legacy_date_cursor(request.args, 'before')
+            if legacy is not None:
+                keyset_direction, cursor = 'before', legacy
+            else:
+                legacy = parse_legacy_date_cursor(request.args, 'after')
+                if legacy is not None:
+                    keyset_direction, cursor = 'after', legacy
         items, has_next, has_prev = fetch_keyset(
             list_query,
+            sort_column=sort.column,
             cursor=cursor,
             direction=keyset_direction,
-            sort_desc=build.date_sort_desc,
+            sort_desc=sort.desc,
             page_size=PAGE_SIZE,
+            segment_counts=segment_counts,
         )
+        if keyset_direction == 'nulls' and not items:
+            abort(404)
     else:
-        items, has_next = fetch_page(list_query, page, page_size=PAGE_SIZE)
+        items, has_next = fetch_page(
+            list_query,
+            page,
+            page_size=PAGE_SIZE,
+            sort_column=sort.column if sort.nullable else None,
+            sort_desc=sort.desc,
+            segment_counts=segment_counts,
+        )
         if page > 1 and not items:
             abort(404)
         has_prev = page > 1
@@ -216,6 +255,7 @@ def start() -> str:
         page=page,
         use_keyset=use_keyset,
         keyset_direction=keyset_direction,
+        segment_counts=segment_counts,
     )
     last_page = last_page_from_total(total_queries) if total_queries is not None else None
 
@@ -223,13 +263,25 @@ def start() -> str:
     filter_query_string = catalog_filter_query_string(request.args)
     first_href = catalog_href(query_string)
     if use_keyset:
-        prev_href = catalog_href(query_string, cursor_from_row(items[0]).as_after_params()) if items and has_prev else None
-        next_href = catalog_href(query_string, cursor_from_row(items[-1]).as_before_params()) if items and has_next else None
+        prev_href = (
+            catalog_href(query_string, cursor_from_row(items[0], sort.attr).as_after_params())
+            if items and has_prev else None
+        )
+        next_href = (
+            catalog_href(query_string, cursor_from_row(items[-1], sort.attr).as_before_params())
+            if items and has_next else None
+        )
         last_href = catalog_href(query_string, {'last': '1'}) if has_next else None
     else:
         prev_href = catalog_href(query_string, {'page': str(page - 1)}) if has_prev else None
         next_href = catalog_href(query_string, {'page': str(page + 1)}) if has_next else None
-        last_href = catalog_href(query_string, {'page': str(last_page)}) if last_page and has_next else None
+        # The OFFSET path still applies MAX_PAGE, so a Last link past it would
+        # 404 — hide it instead (hide_last).
+        last_href = (
+            catalog_href(query_string, {'page': str(last_page)})
+            if last_page and has_next and last_page <= MAX_PAGE
+            else None
+        )
 
     hide_last = bool(has_next and last_href is None)
 
@@ -256,6 +308,11 @@ def start() -> str:
         hide_last=hide_last,
         page_size=PAGE_SIZE,
         filter_warning=build.filter_warning,
+        sort_label=SORT_LABELS.get(sort.key, sort.key),
+        sort_null_count=(segment_counts[1] if segment_counts else 0),
+        nulls_href=(
+            catalog_href(query_string, {'nulls': '1'}) if segment_counts and segment_counts[1] else None
+        ),
         custom_observatory_options=observatory_context['custom_options'],
         builtin_observatory_options=observatory_context['builtin_options'],
         selected_observatory_value=observatory_context['selected_value'],
@@ -386,6 +443,15 @@ def query_crossmatches() -> Response:
         return Response('Error querying crossmatches for selected locus id!', status=500)
 
 # Register Jinja filters
+@main_blueprint.app_template_filter('format_number')
+def format_number_filter(value) -> str:
+    """Thousands separators, for row counts in the UI."""
+    try:
+        return f'{int(value):,}'
+    except (TypeError, ValueError):
+        return str(value)
+
+
 @main_blueprint.app_template_filter('astro_filter')
 def astro_filter(passband: str) -> str:
     if passband == "g":
@@ -398,10 +464,16 @@ def astro_filter(passband: str) -> str:
         return ""
 
 @main_blueprint.app_template_filter('mag_filter')
-def mag_filter(num: float | None) -> float | None:
-    if num is not None:
+def mag_filter(num: float | str | None) -> float | str | None:
+    # 83 production rows store ant_mag_corrected as TEXT ('R', 'g') instead of a
+    # number. They are all from one ingest batch at MJD 60368.5-60369.3; the
+    # newest 439,251 rows have none. round() raises TypeError on those, which
+    # turns one bad row into a 500 for the whole page. Sorting by magnitude
+    # descending puts them first (SQLite orders TEXT after REAL), so they are
+    # reachable from page 1.
+    if isinstance(num, (int, float)):
         return round(num, 3)
-    return None
+    return num
 
 @main_blueprint.app_template_filter('format_mjd_readable')
 def format_mjd_readable(value: float | None) -> str:

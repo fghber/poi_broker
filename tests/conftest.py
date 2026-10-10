@@ -19,6 +19,16 @@ def _reset_worker_app():
     tasks_mod._worker_app = None
 
 
+@pytest.fixture(autouse=True)
+def _reset_timezone_finder_cache():
+    """Drop the shared TimezoneFinder singleton so tests never see a stale one."""
+    from poi_broker.observing_tool import _get_timezone_finder
+
+    _get_timezone_finder.cache_clear()
+    yield
+    _get_timezone_finder.cache_clear()
+
+
 @pytest.fixture()
 def app(tmp_path, monkeypatch):
     alerts_db = tmp_path / "alerts_test.db"

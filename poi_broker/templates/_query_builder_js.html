@@ -308,15 +308,11 @@
       label: 'Probability Class',
       type: 'string',
       input: 'select',
+      {# Values from services.catalog_query.VALID_PROB_CLASSES (auditSBA F15) #}
       values: {
-        cvnova: 'cvnova',
-        e: 'e',
-        lpv: 'lpv',
-        puls: 'puls',
-        periodic_other: 'periodic_other',
-        quas: 'quas',
-        sn: 'sn',
-        yso: 'yso'
+        {% for prob_class_value in prob_classes %}
+        {{ prob_class_value }}: '{{ prob_class_value }}'{{ ',' if not loop.last }}
+        {% endfor %}
       },
       // Categorical values: equality + set membership only (mirrors ant_passband).
       // LIKE on a multi-select would match the literal comma-joined string,
@@ -403,6 +399,33 @@
       resetPreview();
     }
 
+    // Select filters use multiple:true so the <select> collects every chosen
+    // option regardless of operator. Scalar operators (equal, less, ...) only
+    // accept one value, so catch multi+scalar here with guidance instead of
+    // letting the preview round-trip fail with a bare 400.
+    const SCALAR_SINGLE_VALUE_OPERATORS = [
+      'equal', 'not_equal', 'less', 'less_or_equal', 'greater', 'greater_or_equal'
+    ];
+
+    function findScalarMultiError(node) {
+      if (!node || !Array.isArray(node.rules)) {
+        return null;
+      }
+      for (const cond of node.rules) {
+        if (cond && typeof cond === 'object' && Array.isArray(cond.rules)) {
+          const nested = findScalarMultiError(cond);
+          if (nested) {
+            return nested;
+          }
+        } else if (cond && SCALAR_SINGLE_VALUE_OPERATORS.includes(cond.operator)) {
+          if (Array.isArray(cond.value) && cond.value.length > 1) {
+            return cond.operator;
+          }
+        }
+      }
+      return null;
+    }
+
     function initBuilderPlugin() {
       $builder.queryBuilder({
         plugins: ['bt-tooltip-errors'],
@@ -450,6 +473,12 @@
 
         if (!rules || !Array.isArray(rules.rules) || rules.rules.length === 0) {
           resetPreview('Please add at least one valid rule.');
+          return;
+        }
+
+        const scalarMultiOp = findScalarMultiError(rules);
+        if (scalarMultiOp) {
+          resetPreview('Operator "' + scalarMultiOp + '" needs a single value — switch to "in" for multiple selections.');
           return;
         }
 

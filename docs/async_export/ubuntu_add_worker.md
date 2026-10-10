@@ -76,6 +76,16 @@ context and the path is unset, it raises instead of silently creating a second
 empty queue.
 
 The SQLite queue uses WAL (`journal_mode=wal`) in `poi_broker/huey_config.py`.
+It runs at **`PRAGMA synchronous=OFF`** (`fsync=False` is passed explicitly),
+so `huey.db` has no power-loss corruption guarantee: a power loss or hard reset
+can lose committed enqueues and can corrupt the queue. This matches upstream
+and is deliberate. Recovery if the queue is ever corrupt is to delete it
+(`rm "$HUEY_SQLITE_PATH"`); the next enqueue recreates it. Exports are not lost
+with it — the `ExportTask` row in `users.db` stays `PENDING` and the consumer's
+stale-task guard fails it after 30 minutes so the user can retry. Do not remove
+the `fsync=False` argument (it is also huey's default, so deleting it changes
+nothing but hides the intent). See `adr_huey_sqlite.md`, "Queue durability" and
+its revisit trigger.
 
 ---
 
@@ -89,23 +99,27 @@ git pull
 .venv/bin/pip install -r requirements.txt
 ```
 
-The alerts DB stays where it already is. There is no auto-migration: apply
-`tools/usersdb_schema.sql` to `users.db` if `export_task` is missing. If the
-table already exists without the one-active-task index, add it:
+The alerts DB stays where it already is. Schema policy: the application never
+alters the database — existing deployments are migrated with one-shot
+`tools/apply_*.sql` scripts, and fresh installations are built from the full
+schema files (`tools/usersdb_schema.sql`, `tools/alertsdb_schema.sql`), which
+must never be run against an existing database. See
+`docs/adr/adr_db_schema_migration_strategy.md`.
 
-```sql
-CREATE UNIQUE INDEX IF NOT EXISTS uix_export_task_one_active_per_user
-    ON export_task (user_id)
-    WHERE status IN ('PENDING', 'RUNNING');
+For this release, an existing `users.db` still needs the one-active-export-task
+index (the parent repo's copy of the script predates it). Apply the retained
+script once, before restarting into this build:
+
+```bash
+sqlite3 "$USERS_DB_PATH" < tools/apply_users_indexes.sql
 ```
 
-If that statement errors, two `PENDING`/`RUNNING` rows already exist for the
-same user — fail or delete the extras, then retry the index.
-
-If `export_task` already exists from an older build and must be preserved,
-alter it in place with the matching one-shot script
-(`tools/apply_export_snapshot_mjd.sql`) instead of recreating the table.
-Databases created from `usersdb_schema.sql` already include the column.
+The script is safe to re-run (`IF NOT EXISTS` throughout) and fails loudly if
+the data violates an invariant — e.g. two `PENDING`/`RUNNING` export rows for
+one user, or duplicate bookmark names. Fix or delete the offending rows and
+retry. Databases created fresh from `tools/usersdb_schema.sql` already include
+everything; all other historical one-shot scripts were removed after
+production was migrated.
 
 ## 2. Add Huey variables to the existing web env
 
