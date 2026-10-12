@@ -5,6 +5,7 @@ description = "A web application for the POI Broker."
 readme = "README.md"
 dependencies = [
     "Flask==3.*",
+    "itsdangerous==2.*",
     "flask-login==0.6.*",
     "Flask-WTF==1.*",
     "Flask-SQLAlchemy==3.*",

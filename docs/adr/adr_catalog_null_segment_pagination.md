@@ -108,7 +108,10 @@ present→null boundary. That check was confirmed to have teeth by mutating
 - **Nullability is derived, not hand-kept.** `SortSpec.nullable` reads the model
   column, replacing the parallel `PK_SORT_KEYS` frozenset that had to be
   updated by hand alongside `SORT_KEYS`.
-- **Segment sizes come from a cache.** `cached_segment_counts()` does one
+- **Segment sizes come from a cache (superseded 2026-10-12).** See
+  `adr_catalog_count_budgets.md`: web pagination now uses count-free seeks;
+  this cache remains only for explicitly invoked verification tools.
+  Originally, `cached_segment_counts()` did one
   `COUNT(*)` with a filtered `COUNT(col IS NULL)` per (filter signature, sort
   column), TTL-cached like the existing total. Without it `'last'` would have to
   offset blindly.

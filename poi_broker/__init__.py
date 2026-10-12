@@ -220,6 +220,12 @@ def create_app():
         # pre-change (second-granularity boundary — see
         # docs/password_reset/adr_session_invalidation.md).
         changed_at = user.password_changed_at
+        # New logins carry the exact revision of the credential they proved.
+        # Keep the timestamp fallback for sessions issued before this release.
+        if 'password_revision' in session:
+            revision = session['password_revision']
+            if type(revision) is not int or revision != (changed_at or 0):
+                return None
         if changed_at is not None:
             login_at = session.get('login_at')
             if not isinstance(login_at, int) or login_at <= changed_at:

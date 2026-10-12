@@ -40,12 +40,13 @@ from .routes import (
 from .services.catalog_list import (
     MAX_PAGE,
     PAGE_SIZE,
-    cached_segment_counts,
-    count_matches,
+    catalog_null_metadata,
+    count_is_available,
     cursor_from_row,
     fetch_keyset,
     fetch_page,
     last_page_from_total,
+    optional_catalog_count,
     parse_keyset_request,
     parse_legacy_date_cursor,
     resolve_catalog_total,
@@ -207,8 +208,6 @@ def start() -> str:
     use_keyset = should_use_keyset(request.args)
     keyset_direction = 'first'
 
-    segment_counts = cached_segment_counts(build)
-
     if use_keyset:
         keyset_direction, cursor = parse_keyset_request(request.args, numeric=sort.numeric)
         if keyset_direction == 'nulls' and not sort.nullable:
@@ -231,7 +230,6 @@ def start() -> str:
             direction=keyset_direction,
             sort_desc=sort.desc,
             page_size=PAGE_SIZE,
-            segment_counts=segment_counts,
         )
         if keyset_direction == 'nulls' and not items:
             abort(404)
@@ -242,7 +240,6 @@ def start() -> str:
             page_size=PAGE_SIZE,
             sort_column=sort.column if sort.nullable else None,
             sort_desc=sort.desc,
-            segment_counts=segment_counts,
         )
         if page > 1 and not items:
             abort(404)
@@ -255,7 +252,11 @@ def start() -> str:
         page=page,
         use_keyset=use_keyset,
         keyset_direction=keyset_direction,
-        segment_counts=segment_counts,
+        has_prev=has_prev,
+    )
+    sort_null_count, nulls_exist = catalog_null_metadata(
+        build, items,
+        complete=not has_next and (not has_prev if use_keyset else page == 1),
     )
     last_page = last_page_from_total(total_queries) if total_queries is not None else None
 
@@ -294,6 +295,11 @@ def start() -> str:
         "main.html",
         total_queries=total_queries,
         count_deferred=count_deferred,
+        count_lower_bound=len(items),
+        count_available=(
+            count_is_available(build)
+            and current_app.config.get('CATALOG_COUNT_BUDGET_SECONDS', 2.0) > 0
+        ),
         table=items,
         page=page,
         has_next=has_next,
@@ -307,11 +313,13 @@ def start() -> str:
         last_href=last_href,
         hide_last=hide_last,
         page_size=PAGE_SIZE,
+        max_page=MAX_PAGE,
         filter_warning=build.filter_warning,
         sort_label=SORT_LABELS.get(sort.key, sort.key),
-        sort_null_count=(segment_counts[1] if segment_counts else 0),
+        sort_nullable=sort.nullable,
+        sort_null_count=sort_null_count,
         nulls_href=(
-            catalog_href(query_string, {'nulls': '1'}) if segment_counts and segment_counts[1] else None
+            catalog_href(query_string, {'nulls': '1'}) if nulls_exist else None
         ),
         custom_observatory_options=observatory_context['custom_options'],
         builtin_observatory_options=observatory_context['builtin_options'],
@@ -330,7 +338,15 @@ def start() -> str:
 def catalog_count() -> Response:
     """Exact match count for the current main-page filters (on demand)."""
     build = build_catalog_query(request.args, include_sort=False)
-    return jsonify({'count': count_matches(build.count_query)})
+    total = optional_catalog_count(
+        build, current_app.config.get('CATALOG_COUNT_BUDGET_SECONDS', 2.0),
+    )
+    if total is None:
+        return jsonify({
+            'error': 'count_unavailable',
+            'message': 'Exact counting took too long. Narrow the filters and try again.',
+        }), 422
+    return jsonify({'count': total})
 
 @main_blueprint.route('/help', methods=['GET'])
 def help() -> str:

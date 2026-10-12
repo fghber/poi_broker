@@ -101,6 +101,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     exportBtn.addEventListener('click', function () {
+        if (exportBtn.disabled) return;
         let rules;
         try {
             rules = api.getRules();

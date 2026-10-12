@@ -1,5 +1,7 @@
 # Fixes
 
+- [ ] Diagnose the confirmed large-CSV download failure before changing export initialization or delivery configuration. Two earlier failures were reported; the 2026-10-12 live test reproduced a stopped download for task 11 (`locus_ra < 260`, 741,513 preview rows) after the site reported successful background generation. Trace `/export/download/11` through nginx/Gunicorn and verify the server file before selecting a fix. Preserve the earlier **High: Huey initialization order** flag as a locally reproduced concern whose claimed synchronous production behavior was contradicted by this live test. See [large CSV download diagnosis](docs/async_export/large_csv_download_diagnosis.md).
+
 - [x] change order of Summary: Watchlist <-> Bookmarks
 - [x] Rename "Saved Filters" to Bookmarked Filters
 

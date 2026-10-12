@@ -3,7 +3,7 @@
 --
 -- Safe to re-run (the predicate matches nothing once fixed).
 --
---   sqlite3 /path/to/ztf_alerts_stream.db < tools/apply_fix_bad_magnitudes.sql
+--   sqlite3 -bail /path/to/ztf_alerts_stream.db < tools/apply_fix_bad_magnitudes.sql
 --
 -- DIAGNOSIS
 --   The upstream alert schema codes the passband numerically, 1:g, 2:r, 3:i.
@@ -38,8 +38,12 @@
 --   by passband.
 --
 -- SINGLE TRANSACTION
---   One UPDATE, so it either lands whole or not at all. Readers are unaffected;
---   the writer lock is held only for the 83 rows.
+--   Both UPDATEs and their guards run in one transaction. Unknown non-numeric
+--   tokens abort before any repair; a surviving bad magnitude aborts before
+--   COMMIT. The runner rolls back on error. The sqlite3 CLI must use -bail so
+--   it stops at a failed guard rather than continuing the script.
+
+BEGIN IMMEDIATE;
 
 -- Pre-flight. Decode shows the token maps to passband codes 1 (g) and 2 (R).
 SELECT alert_id,
@@ -53,6 +57,20 @@ FROM featuretable
 WHERE typeof(ant_mag_corrected) NOT IN ('real', 'integer')
   AND ant_mag_corrected IS NOT NULL;
 
+-- Only the diagnosed g/R tokens may be repaired. Reject unexpected values
+-- rather than turning them into invalid passbands or discarding them.
+CREATE TEMP TABLE _magnitude_repair_guard (
+    ok INTEGER NOT NULL CHECK (ok = 1)
+);
+INSERT INTO _magnitude_repair_guard (ok)
+SELECT CASE WHEN EXISTS (
+    SELECT 1 FROM featuretable
+    WHERE typeof(ant_mag_corrected) NOT IN ('real', 'integer')
+      AND ant_mag_corrected IS NOT NULL
+      AND ant_mag_corrected NOT IN ('g', 'R')
+) THEN 0 ELSE 1 END;
+DELETE FROM _magnitude_repair_guard;
+
 -- Relocate the passband, then drop the non-numeric magnitude. The
 -- ant_passband IS NULL guard avoids clobbering a passband that is already set:
 -- exactly one of the 83 rows (ztf_candidate:2614538924615010011) already had
@@ -62,6 +80,7 @@ SET ant_passband = ant_mag_corrected,
     ant_mag_corrected = NULL
 WHERE typeof(ant_mag_corrected) NOT IN ('real', 'integer')
   AND ant_mag_corrected IS NOT NULL
+  AND ant_mag_corrected IN ('g', 'R')
   AND ant_passband IS NULL;
 
 -- Second statement: rows the guard above skipped because ant_passband was
@@ -71,7 +90,7 @@ WHERE typeof(ant_mag_corrected) NOT IN ('real', 'integer')
 UPDATE featuretable
 SET ant_mag_corrected = NULL
 WHERE typeof(ant_mag_corrected) NOT IN ('real', 'integer')
-  AND ant_mag_corrected IS NOT NULL;
+  AND ant_mag_corrected IN ('g', 'R');
 
 -- Post-check A: must be zero. This is the assertion that matters -- a single
 -- surviving non-numeric magnitude is still reachable from page 1 of a
@@ -80,6 +99,14 @@ SELECT COUNT(*) AS remaining_non_numeric_magnitudes
 FROM featuretable
 WHERE typeof(ant_mag_corrected) NOT IN ('real', 'integer')
   AND ant_mag_corrected IS NOT NULL;
+
+INSERT INTO _magnitude_repair_guard (ok)
+SELECT CASE WHEN EXISTS (
+    SELECT 1 FROM featuretable
+    WHERE typeof(ant_mag_corrected) NOT IN ('real', 'integer')
+      AND ant_mag_corrected IS NOT NULL
+) THEN 0 ELSE 1 END;
+DROP TABLE _magnitude_repair_guard;
 
 -- Post-check B: the recovered passbands should now be present.
 SELECT ant_passband, COUNT(*) AS recovered
@@ -90,5 +117,7 @@ WHERE alert_id IN (
     'ztf_candidate:2614536533415010003'
 )
 GROUP BY ant_passband;
+
+COMMIT;
 
 ANALYZE;

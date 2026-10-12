@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import func, select, tuple_
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Query
 
 from poi_broker import db
@@ -59,6 +60,9 @@ SEGMENT_NULL = 'null'
 # no longer restricts how much of the catalog a user can browse.
 MAX_PAGE = 1000
 CATALOG_TOTAL_TTL_SECONDS = 300.0
+AUTO_COUNT_BUDGET_SECONDS = 0.1
+OPTIONAL_COUNT_BUDGET_SECONDS = 2.0
+_slow_count_filters: dict[str, float] = {}
 
 _catalog_total_cache: dict[str, float | int | str | None] = {
     'value': None,
@@ -66,8 +70,8 @@ _catalog_total_cache: dict[str, float | int | str | None] = {
     'signature': None,
 }
 
-# Per-(filter, sort-column) segment sizes, so the two-phase walk never has to
-# COUNT on the request path and ?nulls=1 knows whether a Prev exists.
+# Exact segment sizes for explicit migration/verification tools. Web requests
+# never call this cache: a miss aggregates the entire filtered result.
 _MAX_SEGMENT_COUNT_CACHE = 1024
 _segment_count_cache: dict[str, dict[str, Any]] = {}
 
@@ -137,6 +141,7 @@ def clear_catalog_total_cache() -> None:
     _catalog_total_cache['expires'] = 0.0
     _catalog_total_cache['signature'] = None
     _segment_count_cache.clear()
+    _slow_count_filters.clear()
 
 
 def cached_catalog_total(
@@ -256,6 +261,77 @@ def count_matches(query: Query) -> int:
     return int(match_count or 0)
 
 
+def _budgeted_query(query: Query, seconds: float, *, scalar: bool = False):
+    """Run optional metadata on its own connection; None means budget exhausted.
+
+    SQLite's progress handler cancels database work, rather than merely timing
+    out the HTTP caller while leaving a scan running. Never install it on the
+    request session's connection, and always clear it before returning to pool.
+    """
+    if seconds <= 0:
+        return None
+    engine = query.session.get_bind(mapper=Ztf)
+    if engine.dialect.name != 'sqlite':
+        return None
+    deadline = time.perf_counter() + seconds
+    with engine.connect() as connection:
+        driver = connection.connection.driver_connection
+        old_timeout = driver.execute('PRAGMA busy_timeout').fetchone()[0]
+        driver.execute(f'PRAGMA busy_timeout = {max(1, int(seconds * 1000))}')
+        driver.set_progress_handler(lambda: time.perf_counter() >= deadline, 1000)
+        try:
+            result = connection.execute(query.statement)
+            return result.scalar_one() if scalar else result.all()
+        except OperationalError as exc:
+            if 'interrupted' not in str(exc.orig) and 'locked' not in str(exc.orig):
+                raise
+            return None
+        finally:
+            driver.set_progress_handler(None, 0)
+            driver.execute(f'PRAGMA busy_timeout = {old_timeout}')
+
+
+def count_is_available(build: CatalogQueryBuild) -> bool:
+    key = _segment_filter_signature(build.count_query.whereclause)
+    return time.monotonic() >= _slow_count_filters.get(key, 0.0)
+
+
+def optional_catalog_count(
+    build: CatalogQueryBuild, seconds: float = OPTIONAL_COUNT_BUDGET_SECONDS,
+) -> int | None:
+    """Exact count on demand, with a temporary circuit breaker for slow filters."""
+    if not count_is_available(build):
+        return None
+    query = build.count_query.order_by(None).with_entities(func.count(Ztf.alert_id))
+    if not build.has_applied_filters:
+        query = build.count_query.session.query(func.count()).select_from(Ztf)
+    total = _budgeted_query(query, seconds, scalar=True)
+    if total is None:
+        if len(_slow_count_filters) >= _MAX_SEGMENT_COUNT_CACHE:
+            _slow_count_filters.clear()
+        key = _segment_filter_signature(build.count_query.whereclause)
+        _slow_count_filters[key] = time.monotonic() + CATALOG_TOTAL_TTL_SECONDS
+    return int(total) if total is not None else None
+
+
+def catalog_null_metadata(
+    build: CatalogQueryBuild, items: list[Any], *, complete: bool,
+) -> tuple[int | None, bool]:
+    """Count missing values only in a complete page; otherwise probe existence."""
+    if not build.sort.nullable:
+        return 0, False
+    observed = sum(getattr(row, build.sort.attr) is None for row in items)
+    if complete:
+        return observed, observed > 0
+    if observed:
+        return None, True
+    sample = _budgeted_query(
+        build.count_query.order_by(None).filter(build.sort.column.is_(None))
+        .with_entities(Ztf.alert_id).limit(1), AUTO_COUNT_BUDGET_SECONDS,
+    )
+    return None, bool(sample)
+
+
 def _segment_predicate(sort_column, segment: str):
     if segment == SEGMENT_NULL:
         return sort_column.is_(None)
@@ -303,7 +379,7 @@ def fetch_page(
     sort_desc: bool = True,
     segment_counts: tuple[int, int] | None = None,
 ) -> tuple[list[Any], bool]:
-    """OFFSET page without a COUNT. has_next comes from the extra row.
+    """Legacy OFFSET page; has_next comes from an extra row.
 
     Legacy ``?page=N`` path. When the sort column is nullable this must walk
     the same two segments the keyset path does, or a page reached by number
@@ -311,10 +387,8 @@ def fetch_page(
     straddle the segment boundary, taking the tail of the present segment and
     topping up from the head of the null segment.
 
-    ``segment_counts`` gives exact per-segment sizes, so the split is plain
-    arithmetic. Without them the offset has to be walked segment by segment,
-    and an offset that overshoots a short segment is not detectable from an
-    empty result -- which is why the caller always supplies them on this path.
+    Counts are optional. If an offset exhausts the present segment, count only
+    a prefix capped at that offset to locate the null segment correctly.
     """
     if page_size is None:
         page_size = PAGE_SIZE
@@ -365,19 +439,18 @@ def fetch_page(
         if present_rows == page_size and null_total > 0 and len(rows) == page_size:
             has_next = True
     else:
-        # No counts: walk the offset through the segments.
-        segment_offset = offset
-        for segment in (SEGMENT_PRESENT, SEGMENT_NULL):
-            if len(rows) >= page_size:
-                if not has_next and segment == SEGMENT_NULL and fetch(SEGMENT_NULL, 0, 1):
-                    has_next = True
-                break
-            remaining = page_size - len(rows)
-            chunk = fetch(segment, segment_offset, remaining + 1)
-            if len(chunk) > remaining:
-                has_next = True
-            rows.extend(chunk[:remaining])
-            segment_offset = 0
+        rows = fetch(SEGMENT_PRESENT, offset, page_size + 1)
+        if len(rows) <= page_size:
+            null_offset = 0
+            if not rows and offset:
+                prefix = (
+                    base.filter(sort_column.is_not(None))
+                    .with_entities(Ztf.alert_id).limit(offset).subquery()
+                )
+                skipped = query.session.execute(select(func.count()).select_from(prefix)).scalar_one()
+                null_offset = offset - int(skipped)
+            rows += fetch(SEGMENT_NULL, null_offset, page_size + 1 - len(rows))
+        has_next = len(rows) > page_size
     return rows[:page_size], has_next
 
 
@@ -458,12 +531,18 @@ def fetch_keyset(
         # step back into it.
         rows = seek(SEGMENT_NULL, desc=sort_desc, limit=page_size + 1)
         has_next = len(rows) > page_size
+        if rows and present_total is None:
+            # Existence has no ordering requirement. A sorted LIMIT 1 can make
+            # SQLite choose a filter index and sort millions of candidate rows.
+            present_exists = (
+                base.filter(sort_column.is_not(None))
+                .with_entities(Ztf.alert_id).first() is not None
+            )
         has_prev = bool(rows) and present_exists
     elif direction == 'last':
         if null_total is None or present_total is None:
-            # Counts unknown: fall back to a reversed single-segment walk. Only
-            # correct because it can serve the null tail alone, so take the null
-            # segment if it plausibly fills the page, else the present tail.
+            # Read presentation order backwards: null tail, then present tail.
+            # One extra row detects Prev without knowing either segment size.
             if null_exists:
                 rows = seek(SEGMENT_NULL, desc=not sort_desc, limit=page_size + 1)
                 if len(rows) <= page_size and present_exists:
@@ -669,10 +748,17 @@ def resolve_catalog_total(
     use_keyset: bool,
     keyset_direction: str,
     segment_counts: tuple[int, int] | None = None,
+    has_prev: bool | None = None,
 ) -> tuple[int | None, bool]:
-    """Return (total, count_deferred). Never COUNTs an unselective filtered set."""
+    """Infer totals, or calculate cheap metadata under a strict execution budget.
+
+    Segment counts are display hints only. Pagination never waits for them.
+    """
     is_first = (not use_keyset and page == 1) or (use_keyset and keyset_direction == 'first')
     if not has_next and is_first:
+        return len(items), False
+    if use_keyset and not has_next and has_prev is False:
+        # A count-free Last or all-null jump can contain the entire result too.
         return len(items), False
     if not has_next and not use_keyset:
         return (page - 1) * PAGE_SIZE + len(items), False
@@ -683,13 +769,36 @@ def resolve_catalog_total(
         if total <= PAGE_SIZE or build.has_cheap_equality or not build.has_applied_filters:
             return total, False
         return None, True
-    if not build.has_applied_filters:
-        # No sort restriction to honour any more: NULL-valued rows are listed in
-        # the trailing segment, so the unrestricted count is the truth for every
-        # sort key.
-        return cached_catalog_total(), False
-    if build.has_cheap_equality:
-        return count_matches(build.count_query), False
+    if not build.has_applied_filters or build.has_cheap_equality:
+        if not build.has_applied_filters:
+            value = _catalog_total_cache['value']
+            if (
+                value is not None and _catalog_total_cache['signature'] == 'all'
+                and time.monotonic() < float(_catalog_total_cache['expires'])
+            ):
+                return int(value), False
+        query = build.count_query.order_by(None).with_entities(func.count(Ztf.alert_id))
+        if not build.has_applied_filters:
+            # Explicit FROM keeps SQLite's fast, unfiltered COUNT(*) operation
+            # without Query.with_entities accidentally dropping the table.
+            query = build.count_query.session.query(func.count()).select_from(Ztf)
+        total = _budgeted_query(query, AUTO_COUNT_BUDGET_SECONDS, scalar=True)
+        if total is not None:
+            if not build.has_applied_filters:
+                _catalog_total_cache.update(
+                    value=int(total), expires=time.monotonic() + CATALOG_TOTAL_TTL_SECONDS,
+                    signature='all',
+                )
+            return int(total), False
+    elif keyset_direction in ('nulls', 'last', 'before', 'after') and len(items) < PAGE_SIZE:
+        # A short cursor page is not the whole result. Preserve small totals by
+        # sampling at most one page plus a sentinel, without a full aggregate.
+        sample = _budgeted_query(
+            build.count_query.order_by(None).with_entities(Ztf.alert_id).limit(PAGE_SIZE + 1),
+            AUTO_COUNT_BUDGET_SECONDS,
+        )
+        if sample is not None and len(sample) <= PAGE_SIZE:
+            return len(sample), False
     return None, True
 
 

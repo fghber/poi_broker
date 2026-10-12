@@ -377,6 +377,7 @@
     let previewSeq = 0;
     let previewXhr = null;
     let countXhr = null;
+    let savePending = false;
 
     function abortPreviewRequests() {
       if (previewXhr) previewXhr.abort();
@@ -465,6 +466,7 @@
     initBuilderPlugin();
 
     $previewButton.on('click', function () {
+      if ($previewButton.prop('disabled')) return;
       try {
         const result = $builder.queryBuilder('getSQL', false, false);
         const rules = getRules();
@@ -504,7 +506,7 @@
 
           $results.text('Query is valid. Filter: ' + response.sql);
           previewSuccess = true;
-          $saveButton.prop('disabled', false).attr('title', settings.saveTitle);
+          $saveButton.prop('disabled', savePending).attr('title', settings.saveTitle);
           if (typeof settings.onPreview === 'function') {
             settings.onPreview(response, rules);
           }
@@ -551,7 +553,7 @@
     });
 
     $saveButton.on('click', function () {
-      if (!previewSuccess) {
+      if (!previewSuccess || savePending || $saveButton.prop('disabled')) {
         return;
       }
 
@@ -569,10 +571,12 @@
           return;
         }
 
+        savePending = true;
         $saveButton.prop('disabled', true);
         $.ajax({
           url: '/api/watchlist',
           type: 'POST',
+          timeout: 15000,
           data: JSON.stringify({ name: name, rules: rules }),
           headers: {
             'Content-Type': 'application/json',
@@ -582,7 +586,6 @@
           dataType: 'json',
           success: function (response) {
             $results.text('Watchlist "' + response.name + '" saved (id=' + response.id + ').');
-            $saveButton.prop('disabled', false).attr('title', settings.saveTitle);
             if (typeof settings.onSave === 'function') {
               settings.onSave(response, { reset: resetState, root: root });
               return;
@@ -592,12 +595,16 @@
           error: function (xhr, status, error) {
             const resp = xhr.responseJSON;
             $results.text('Save error: ' + ((resp && resp.error) || error));
-            $saveButton.prop('disabled', false).attr('title', settings.saveTitle);
           }
+        }).always(function () {
+          savePending = false;
+          $saveButton.prop('disabled', !previewSuccess);
+          if (previewSuccess) $saveButton.attr('title', settings.saveTitle);
         });
       } catch (error) {
+        savePending = false;
         $results.text('Error: ' + error.message);
-        $saveButton.prop('disabled', false).attr('title', settings.saveTitle);
+        $saveButton.prop('disabled', !previewSuccess);
       }
     });
 

@@ -52,15 +52,16 @@
   {{ filter_warning }}
 </div>
 {% endif %}
-{% if nulls_href %}
+{% if sort_nullable and sort_null_count != 0 %}
 <div class="alert alert-info py-1" role="status">
   <i class="fa fa-info-circle" aria-hidden="true"></i>
-  {{ sort_null_count | format_number }} alerts have no {{ sort_label }} and are
-  listed after the others &mdash;
+  {% if sort_null_count is not none %}{{ sort_null_count | format_number }} alerts have no {{ sort_label }} and are
+  listed after the others{% else %}Alerts without {{ sort_label }} are listed after the others{% endif %}{% if nulls_href %} &mdash;
   <a href="{{ nulls_href }}">jump to them</a>.
+  {% else %}.{% endif %}
 </div>
 {% endif %}
-<form method="GET" action="/" id="filter_form">
+<form method="GET" action="/" id="filter_form" data-single-submit>
   <div class="row">
     
     <div class="col-md-12">
@@ -71,11 +72,13 @@
             {% if total_queries is not none %}
             <span id="catalog-rows-value">{{ total_queries }}</span>
             {% else %}
-            <span id="catalog-rows-value">{{ page_size }}+</span>
+            <span id="catalog-rows-value">{{ count_lower_bound }}+</span>
+            {% if count_available %}
             <button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="btn-catalog-count"
                     data-count-url="/api/catalog-count{% if filter_query_string %}?{{ filter_query_string }}{% endif %}"
                     data-query-string="{{ query_string }}"
-                    data-page-size="{{ page_size }}">Count</button>
+                    data-page-size="{{ page_size }}" data-max-page="{{ max_page }}">Count</button>
+            {% endif %}
             {% endif %}
           </div>
         </div> 
@@ -526,6 +529,8 @@
       return;
     }
 
+    const release = window.PoiPendingActions.begin(this);
+    if (!release) return;
     const pressed = btn.attr('aria-pressed') === 'true';
     const sessionId = modalSessionId;
     btn.attr('aria-pressed', String(!pressed)).toggleClass('active', !pressed);
@@ -552,6 +557,7 @@
       })
       .always(function () {
         if (btn.data('favXhr') === xhr) btn.removeData('favXhr');
+        release();
       });
     btn.data('favXhr', xhr);
     trackModalRequest(xhr);
@@ -559,6 +565,7 @@
 
   {% if current_user.is_authenticated %}
   $('#btn_save_filter_bookmark').on('click', function () {
+    if (this.disabled) return;
     const name = window.prompt('Name this filter bookmark:', '');
     if (name === null) {
       return;
@@ -584,9 +591,12 @@
       params[key] = value;
     });
 
+    const release = window.PoiPendingActions.begin(this);
+    if (!release) return;
     $.ajax({
       type: 'POST',
       url: '/api/filter-bookmarks',
+      timeout: 15000,
       contentType: 'application/json',
       headers: {
         'X-CSRFToken': csrfToken
@@ -609,7 +619,7 @@
         } catch (e) { /* ignore */ }
         alert(msg);
       }
-    });
+    }).always(release);
   });
   {% endif %}
 
@@ -1733,12 +1743,14 @@
             //first, clear all sort__ URL params and pagination cursors
             var keysToDelete = [];
             searchParams.forEach(function(value, key) {
-              if (key.startsWith("sort__") || key === "page" || key === "last"
-                  || key.startsWith("before_") || key.startsWith("after_")) {
+              if (key.startsWith("sort__")) {
                 keysToDelete.push(key);
               }
             });
             keysToDelete.forEach(function(key) { searchParams.delete(key); });
+            {{ pagination_keys | tojson }}.forEach(function(key) {
+              searchParams.delete(key);
+            });
 
           if (desc || (!asc && !desc)) {
             $this.addClass('asc');
@@ -1783,12 +1795,19 @@
                 var pageSize = Number($btn.attr('data-page-size')) || 100;
                 var lastPage = Math.max(1, Math.ceil(count / pageSize));
                 var queryString = $btn.attr('data-query-string') || '';
-                lastBtn.href = queryString ? ('/?' + queryString + '&page=' + lastPage) : ('/?page=' + lastPage);
-                lastBtn.classList.remove('d-none', 'disabled');
+                if (lastPage <= Number($btn.attr('data-max-page'))) {
+                  lastBtn.href = queryString ? ('/?' + queryString + '&page=' + lastPage) : ('/?page=' + lastPage);
+                  lastBtn.classList.remove('d-none', 'disabled');
+                }
               }
               $btn.remove();
             })
             .catch(function (error) {
+              if (error && error.status === 422) {
+                showAlertToast('Exact counting took too long. Narrow the filters and try again.', 'catalog-count-toast');
+                $btn.remove();
+                return;
+              }
               if (error && error.status === 429) {
                 showAlertToast('Too many requests. Please wait a few seconds and try again.', 'rate-limit-toast');
               }

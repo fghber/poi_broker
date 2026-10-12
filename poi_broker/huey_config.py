@@ -51,7 +51,13 @@ def get_huey_sqlite_path():
     # First check if explicitly provided
     explicit_path = os.environ.get('HUEY_SQLITE_PATH')
     if explicit_path:
-        return str(Path(explicit_path).expanduser().resolve())
+        path = Path(explicit_path).expanduser()
+        if not path.is_absolute():
+            raise ValueError(
+                'HUEY_SQLITE_PATH must be an absolute path shared by the '
+                'web app and worker.'
+            )
+        return str(path.resolve())
 
     # No explicit path: try the Flask app's instance folder first.
     try:

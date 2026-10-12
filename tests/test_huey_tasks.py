@@ -423,6 +423,57 @@ def test_export_task_status_transitions(app):
         db.session.commit()
 
 
+def test_sequential_same_second_exports_keep_separate_files(app, tmp_path, monkeypatch):
+    """The active-task slot is released before the next export starts."""
+    import csv
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    import poi_broker.tasks as tasks_mod
+    from poi_broker import db
+    from poi_broker.models import ExportTask, User, Ztf
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 10, 11, 12, 0, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(tasks_mod, 'datetime', FixedDatetime)
+    monkeypatch.setattr(tasks_mod, '_get_worker_app', lambda: app)
+    monkeypatch.setattr(app, 'instance_path', str(tmp_path / 'instance'))
+
+    with app.app_context():
+        user = User(email='same-second@example.com', password='hashed', email_verified=True)
+        db.session.add(user)
+        db.session.add_all([
+            Ztf(alert_id='export-first', locus_id='L-first', date_alert_mjd=60001.0),
+            Ztf(alert_id='export-second', locus_id='L-second', date_alert_mjd=60002.0),
+        ])
+        db.session.commit()
+        user_id = user.id
+
+    paths = []
+    for alert_id in ('export-first', 'export-second'):
+        with app.app_context():
+            task = ExportTask(user_id=user_id, status='PENDING', snapshot_mjd=70000.0)
+            db.session.add(task)
+            db.session.commit()
+            task_id = task.id
+        rules = {'condition': 'AND', 'rules': [
+            {'field': 'featuretable.alert_id', 'operator': 'equal', 'value': alert_id},
+        ]}
+        tasks_mod.create_export_file.call_local(rules, user_id, task_id)
+        with app.app_context():
+            task = db.session.get(ExportTask, task_id)
+            assert task.status == 'SUCCESS'
+            paths.append(Path(task.file_path))
+
+    assert paths[0] != paths[1]
+    for path, expected_alert in zip(paths, ('export-first', 'export-second')):
+        with path.open(newline='', encoding='utf-8') as csv_file:
+            assert [row['alert_id'] for row in csv.DictReader(csv_file)] == [expected_alert]
+
+
 class _StubSession:
     """Scoped session stub for unit-testing Huey export task execution seams."""
 

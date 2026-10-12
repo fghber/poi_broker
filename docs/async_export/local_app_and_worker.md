@@ -8,10 +8,13 @@ Both terminals need the same environment:
 ```bash
 export SECRET_KEY=test-secret-key
 export HUEY_BACKEND=sqlite
-export HUEY_SQLITE_PATH=./instance/huey.db
+export HUEY_SQLITE_PATH="$(pwd)/instance/huey.db"
 export ALERTS_DB_PATH=../_broker_db/ztf_alerts_stream.db
 export USERS_DB_PATH=../_broker_db/users.db
 ```
+
+Set `HUEY_SQLITE_PATH` to the same absolute path in both terminals. Relative
+queue paths are rejected; create the `instance` directory first if needed.
 
 **Database:** `users.db` is created from `tools/usersdb_schema.sql` — the app
 never alters the database itself. If your dev `users.db` predates a schema

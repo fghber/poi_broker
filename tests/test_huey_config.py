@@ -5,7 +5,38 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.mark.parametrize('path', ['huey.db', './instance/huey.db', '../huey.db'])
+def test_sqlite_backend_rejects_relative_queue_paths(tmp_path, monkeypatch, path):
+    from poi_broker.huey_config import create_huey
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('HUEY_BACKEND', 'sqlite')
+    monkeypatch.setenv('HUEY_SQLITE_PATH', path)
+    with pytest.raises(ValueError, match='absolute path'):
+        create_huey()
+    assert not list(tmp_path.rglob('huey.db'))
+
+
+def test_absolute_queue_path_is_shared_across_working_directories(tmp_path, monkeypatch):
+    from poi_broker.huey_config import create_huey
+
+    web_dir = tmp_path / 'web'
+    worker_dir = tmp_path / 'worker'
+    web_dir.mkdir()
+    worker_dir.mkdir()
+    monkeypatch.setenv('HUEY_BACKEND', 'sqlite')
+    monkeypatch.setenv('HUEY_SQLITE_PATH', str(tmp_path / 'shared.db'))
+    monkeypatch.chdir(web_dir)
+    sender = create_huey()
+    sender.storage.enqueue(b'test-task')
+    monkeypatch.chdir(worker_dir)
+    consumer = create_huey()
+    assert consumer.storage.dequeue() == b'test-task'
 
 
 def test_sqlite_queue_runs_at_documented_sync_level(tmp_path, monkeypatch):

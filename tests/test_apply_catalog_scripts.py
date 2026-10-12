@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import subprocess
+import sys
 from pathlib import Path
 
 TOOLS = Path(__file__).resolve().parents[1] / 'tools'
@@ -42,14 +44,15 @@ def _schema(conn) -> None:
 
 
 def _seed(conn) -> None:
-    """Two numeric magnitudes, one passband token, one row that already has
-    ant_passband set (so the relocation guard must skip it)."""
+    """Numeric and NULL magnitudes, g/R tokens, and an existing passband."""
     rows = [
         ('ztf_candidate:0000000000000000001', 'L1', 60000.0, 18.5, 'g'),
         ('ztf_candidate:0000000000000000002', 'L2', 60001.0, 19.5, 'R'),
         # token in the wrong column, and its own column already populated
         ('ztf_candidate:0000000000000000003', 'L3', 60002.0, 'R', 'R'),
         ('ztf_candidate:0000000000000000004', 'L4', 60003.0, None, None),
+        ('ztf_candidate:0000000000000000005', 'L5', 60004.0, 'g', None),
+        ('ztf_candidate:0000000000000000006', 'L6', 60005.0, 'R', None),
     ]
     conn.executemany(
         'INSERT INTO featuretable (alert_id, locus_id, date_alert_mjd, '
@@ -76,6 +79,8 @@ def test_magnitude_script_relocates_the_passband_and_nulls_the_magnitude(tmp_pat
     # The passband token is recovered, not discarded: this row ends up
     # filterable by passband, which it was not before.
     assert state['ztf_candidate:0000000000000000003'][0] == 'R'
+    assert state['ztf_candidate:0000000000000000005'] == ('g', None)
+    assert state['ztf_candidate:0000000000000000006'] == ('R', None)
     # ... and no non-numeric magnitude survives anywhere.
     assert all(
         isinstance(mag, (int, float)) or mag is None
@@ -86,6 +91,128 @@ def test_magnitude_script_relocates_the_passband_and_nulls_the_magnitude(tmp_pat
     # Numeric magnitudes are not disturbed.
     assert state['ztf_candidate:0000000000000000001'][1] == 18.5
     conn.close()
+
+
+def _run_repair(path):
+    return subprocess.run(
+        [sys.executable, str(TOOLS / 'apply_sql.py'), str(APPLY_SQL),
+         '--db', str(path), '--yes'], capture_output=True, text=True, timeout=30,
+    )
+
+
+def test_magnitude_repair_rejects_unknown_tokens_without_changing_other_rows(tmp_path):
+    path = tmp_path / 'alerts copy #1%.db'
+    conn = sqlite3.connect(path)
+    _schema(conn)
+    _seed(conn)
+    conn.execute(
+        'INSERT INTO featuretable (alert_id,locus_id,date_alert_mjd,ant_mag_corrected) '
+        'VALUES (?,?,?,?)', ('unknown', 'L-unknown', 61000, 'UNKNOWN_TOKEN'),
+    )
+    conn.commit()
+    before = _magnitude_state(conn)
+    conn.close()
+    result = _run_repair(path)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert 'UNKNOWN_TOKEN' in result.stdout
+    with sqlite3.connect(path) as conn:
+        assert _magnitude_state(conn) == before
+
+
+def test_magnitude_repair_preserves_numeric_strings_and_existing_passbands(tmp_path):
+    path = tmp_path / 'numeric.db'
+    conn = sqlite3.connect(path)
+    _schema(conn)
+    conn.executemany(
+        'INSERT INTO featuretable (alert_id,locus_id,date_alert_mjd,ant_mag_corrected,ant_passband) '
+        'VALUES (?,?,?,?,?)',
+        [('numeric', 'L1', 61000, '18.5', None), ('populated', 'L2', 61001, 'R', 'g')],
+    )
+    conn.commit()
+    conn.close()
+    result = _run_repair(path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    with sqlite3.connect(path) as conn:
+        assert _magnitude_state(conn) == {'numeric': (None, 18.5), 'populated': ('g', None)}
+
+
+def test_failed_repair_postcondition_rolls_back_prior_updates(tmp_path):
+    path = tmp_path / 'postcondition.db'
+    conn = sqlite3.connect(path)
+    _schema(conn)
+    _seed(conn)
+    before = _magnitude_state(conn)
+    conn.executescript("""
+        CREATE TRIGGER preserve_token BEFORE UPDATE ON featuretable
+        WHEN OLD.locus_id = 'L6' BEGIN SELECT RAISE(IGNORE); END;
+    """)
+    conn.close()
+    result = _run_repair(path)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert 'remaining_non_numeric_magnitudes' in result.stdout
+    assert 'rolled back' in result.stdout
+    with sqlite3.connect(path) as conn:
+        assert _magnitude_state(conn) == before
+
+
+def test_failure_in_second_repair_update_rolls_back_first_update(tmp_path):
+    path = tmp_path / 'second-update.db'
+    conn = sqlite3.connect(path)
+    _schema(conn)
+    _seed(conn)
+    before = _magnitude_state(conn)
+    conn.executescript("""
+        CREATE TRIGGER fail_second BEFORE UPDATE ON featuretable
+        WHEN OLD.locus_id = 'L3' BEGIN
+            SELECT RAISE(ABORT, 'second update failed');
+        END;
+    """)
+    conn.close()
+    result = _run_repair(path)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert 'second update failed' in result.stdout
+    with sqlite3.connect(path) as conn:
+        assert _magnitude_state(conn) == before
+
+
+def test_sql_runner_handles_trigger_bodies_and_quoted_semicolons(capsys):
+    from tools.apply_sql import execute_script
+
+    conn = sqlite3.connect(':memory:', isolation_level=None)
+    execute_script(conn, """
+        BEGIN;
+        CREATE TABLE data (value TEXT); CREATE TABLE audit (value TEXT);
+        CREATE TRIGGER log_insert AFTER INSERT ON data BEGIN
+            INSERT INTO audit VALUES ('trigger;one');
+            INSERT INTO audit VALUES ('trigger;two');
+        END;
+        INSERT INTO data VALUES ('value;with;semicolons');
+        COMMIT;
+        SELECT value FROM data;
+    """)
+    assert conn.execute('SELECT value FROM audit').fetchall() == [('trigger;one',), ('trigger;two',)]
+    assert 'value;with;semicolons' in capsys.readouterr().out
+    assert not conn.in_transaction
+    conn.close()
+
+
+def test_sql_runner_rejects_and_rolls_back_unfinished_transaction(tmp_path):
+    path = tmp_path / 'unfinished.db'
+    conn = sqlite3.connect(path)
+    _schema(conn)
+    _seed(conn)
+    before = _magnitude_state(conn)
+    conn.close()
+    script = tmp_path / 'unfinished.sql'
+    script.write_text('BEGIN; UPDATE featuretable SET ant_mag_corrected=99;', encoding='utf-8')
+    result = subprocess.run(
+        [sys.executable, str(TOOLS / 'apply_sql.py'), str(script), '--db', str(path), '--yes'],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert 'transaction open' in result.stdout
+    with sqlite3.connect(path) as conn:
+        assert _magnitude_state(conn) == before
 
 
 def test_magnitude_script_is_idempotent(tmp_path):

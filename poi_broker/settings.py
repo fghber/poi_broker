@@ -92,6 +92,8 @@ def build_app_config(base_dir):
 			'users': login_db_uri,
 		},
 		'SQLALCHEMY_TRACK_MODIFICATIONS': False,
+		# Set to zero to disable optional counts on slower deployments.
+		'CATALOG_COUNT_BUDGET_SECONDS': max(0.0, float(os.environ.get('CATALOG_COUNT_BUDGET_SECONDS', '2.0'))),
 		'SECRET_KEY': secret_key,
 		# The app has no file uploads and its JSON payloads (query-builder
 		# rules, favorites, settings) are KB-scale; bound request bodies so a

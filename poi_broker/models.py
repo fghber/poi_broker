@@ -395,7 +395,7 @@ class User(UserMixin, db.Model):
     email_verification_token_expires = db.Column(db.Integer, nullable=True)  # epoch seconds
     reset_token = db.Column(db.String(128), index=True, nullable=True)
     reset_token_expires = db.Column(db.Integer, nullable=True)  # epoch seconds
-    password_changed_at = db.Column(db.Integer, nullable=True)  # epoch seconds; sessions whose login_at is not newer are rejected
+    password_changed_at = db.Column(db.Integer, nullable=True)  # monotonic epoch-based credential revision; also displayed as a date
     # created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     def __repr__(self):

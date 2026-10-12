@@ -14,7 +14,9 @@ Both migration scripts are written to be re-runnable (IF NOT EXISTS / IF EXISTS,
 and UPDATE predicates that match nothing once applied), so an interrupted run is
 recovered by running the same command again. Individual DDL/DML statements are
 atomic on their own; a partial run leaves the database in a state the same
-command completes.
+command completes. Scripts with an explicit BEGIN/COMMIT are rolled back on
+failure; scripts without them retain per-statement atomicity. SELECT results
+are printed so pre-flight and post-check output can be captured.
 """
 
 from __future__ import annotations
@@ -24,18 +26,41 @@ import os
 import sqlite3
 import sys
 import time
+from pathlib import Path
 
 
 def state(path: str) -> tuple[int, int, int]:
     """(bytes, page_count, freelist_count) without opening read-write."""
     size = os.path.getsize(path)
-    con = sqlite3.connect(f'file:{path}?mode=ro', uri=True)
+    con = sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)
     try:
         pages = con.execute('PRAGMA page_count').fetchone()[0]
         free = con.execute('PRAGMA freelist_count').fetchone()[0]
     finally:
         con.close()
     return size, pages, free
+
+
+def execute_script(con: sqlite3.Connection, sql: str) -> None:
+    """Execute complete statements, preserving transactions and SELECT output.
+
+    complete_statement handles quoted semicolons, comments and trigger bodies;
+    splitting directly on semicolons would corrupt those SQL statements.
+    """
+    def execute(statement: str) -> None:
+        cursor = con.execute(statement)
+        if cursor.description:
+            print('\t'.join(column[0] for column in cursor.description))
+            for row in cursor:
+                print('\t'.join('NULL' if value is None else str(value) for value in row))
+
+    start = 0
+    for end, character in enumerate(sql, 1):
+        if character == ';' and sqlite3.complete_statement(sql[start:end]):
+            execute(sql[start:end])
+            start = end
+    if sql[start:].strip():
+        execute(sql[start:])
 
 
 def main() -> int:
@@ -64,19 +89,29 @@ def main() -> int:
     print(f'before   : {before_bytes/1e9:.2f} GB  '
           f'({before_pages:,} pages, {before_free:,} free)')
 
-    sql = open(args.script, encoding='utf-8').read()
+    sql = Path(args.script).read_text(encoding='utf-8')
     con = sqlite3.connect(db, isolation_level=None)
     con.execute('PRAGMA busy_timeout=120000')
     started = time.time()
+    applied = False
     try:
-        con.executescript(sql)
+        execute_script(con, sql)
+        if con.in_transaction:
+            raise sqlite3.ProgrammingError('SQL script left a transaction open; add COMMIT.')
+        applied = True
     except Exception as exc:  # noqa: BLE001 - report and stop, do not mask
+        con.rollback()
         print(f'\nFAILED after {time.time()-started:.1f}s: {exc}')
+        print('Any open transaction was rolled back.')
         print('The scripts are re-runnable: fix the cause and run the same '
               'command again.')
         return 1
     finally:
-        con.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+        if applied:
+            try:
+                con.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+            except sqlite3.Error as exc:
+                print(f'Checkpoint warning: {exc}')
         con.close()
 
     after_bytes, after_pages, after_free = state(db)

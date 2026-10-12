@@ -186,9 +186,9 @@ def create_export_file(query_params: dict, user_id: int, task_id: int):
             exports_dir = Path(app.instance_path) / 'exports'
             exports_dir.mkdir(parents=True, exist_ok=True)
             
-            # Generate filename with timestamp
+            # Task identity prevents sequential same-second exports colliding.
             timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
-            filename = f'export_{user_id}_{timestamp}.csv'
+            filename = f'export_{user_id}_{task_id}_{timestamp}.csv'
             file_path = exports_dir / filename
 
             # Persist the path before writing: a worker killed mid-write then

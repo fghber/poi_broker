@@ -1134,7 +1134,6 @@ def test_unselective_list_does_not_call_count_matches(client, app, monkeypatch):
         called.append('count')
         return 0
 
-    monkeypatch.setattr('poi_broker.app.count_matches', _fail_count)
     monkeypatch.setattr('poi_broker.services.catalog_list.count_matches', _fail_count)
     with app.app_context():
         for index in range(3):
@@ -1434,7 +1433,9 @@ def test_nulls_direction_defers_broad_unselective_filter(client, app, monkeypatc
     assert '<span id="catalog-rows-value">2+</span>' in resp_p1.get_data(as_text=True)
 
     resp_nulls = client.get('/?sort__ant_mag_corrected=asc&ant_passband=g&nulls=1')
-    assert '<span id="catalog-rows-value">2+</span>' in resp_nulls.get_data(as_text=True)
+    # This jump displays one row; without a total we only know that more rows
+    # precede it. Do not claim a full-page lower bound for an arbitrary tail.
+    assert '<span id="catalog-rows-value">1+</span>' in resp_nulls.get_data(as_text=True)
 
 
 
