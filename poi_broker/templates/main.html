@@ -52,7 +52,7 @@
   {{ filter_warning }}
 </div>
 {% endif %}
-{% if sort_nullable and sort_null_count != 0 %}
+{% if nulls_href %}
 <div class="alert alert-info py-1" role="status">
   <i class="fa fa-info-circle" aria-hidden="true"></i>
   {% if sort_null_count is not none %}{{ sort_null_count | format_number }} alerts have no {{ sort_label }} and are
