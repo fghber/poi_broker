@@ -10,7 +10,7 @@ from . import db
 # This is a deliberate models -> services layering trade-off: avoiding it
 # would mean duplicating the astropy-backed MJD helper. Both the web app
 # and the Huey worker already load astropy via other imports, so this does
-# not change the runtime import surface. See todo.md "Layering" entry.
+# not change the runtime import surface.
 from .services.filter_service import datetime_to_mjd
 
 

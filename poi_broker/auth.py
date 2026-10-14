@@ -6,11 +6,10 @@ from .models import User
 from . import db
 import secrets
 from datetime import datetime, timedelta, timezone
-import os
 import logging
 from email_validator import validate_email, EmailNotValidError
 from . import limiter
-from .services.email_service import send_email, _format_expire_time
+from .services.email_service import send_email
 import hashlib
 from dataclasses import dataclass
 from itsdangerous import BadData, TimestampSigner, URLSafeTimedSerializer

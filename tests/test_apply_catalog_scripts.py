@@ -1,11 +1,12 @@
-"""Invariants of the two pending alerts-DB migration scripts.
+"""Invariants of the two alerts-DB scripts awaiting upstream integration.
 
 Pins the properties that are load-bearing and easy to break by editing the SQL:
 the magnitude repair is idempotent and relocates rather than discards the
 passband; the index migration creates every composite before dropping anything;
 and the composite column order still matches the keyset cursor.
 
-See docs/catalog_sort_migration.md (pending) and
+See docs/catalog_sort_migration.md and the consolidated migration ledger in
+docs/adr/adr_migration_completion_status.md, plus
 docs/adr/adr_db_schema_migration_strategy.md.
 """
 

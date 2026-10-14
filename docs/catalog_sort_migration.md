@@ -1,12 +1,10 @@
 # Deployment: catalog sort keysets + composite sort indexes
 
-> **Applied to production 2026-10.** Both scripts below were run against
-> production and reported success. The scripts are **retained** for now: under
-> `docs/adr/adr_db_schema_migration_strategy.md` an apply script may only be
-> deleted once the fix is committed *and* in the parent `main` *and* confirmed
-> in production, and the change is not committed yet. Once all three hold, this
-> page becomes a past-tense historical record like
-> `docs/password_reset/deployment.md`, and the scripts go with it.
+> **Recorded as applied to production 2026-10.** Both scripts below reported
+> success. They are committed in this branch but not in original upstream
+> `main` as checked on 2026-10-14, so they remain until upstream integration.
+> See the [consolidated migration ledger](adr/adr_migration_completion_status.md).
+> The commands below are the preserved runbook, not outstanding deployment work.
 >
 > Follow-on: the magnitude repair made it possible to list NULL-valued sort
 > rows rather than hiding them — see

@@ -1,5 +1,10 @@
 # ADR: SQLite schema migration strategy (one-shot apply scripts, no framework)
 
+> Completion/retirement rules and status notes below are historical, superseded
+> by [Migration completion and current status](adr_migration_completion_status.md).
+> Use that consolidated ledger for open work. Fresh-install-only schema files
+> and the no-runtime-DDL decision remain in force.
+
 - **Status:** Accepted
 - **Date:** 2026-10
 - **Scope:** all database schema changes (`users.db`, alerts DB); deployment docs

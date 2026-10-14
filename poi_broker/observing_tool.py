@@ -97,7 +97,8 @@ def _resolve_zoneinfo(timezone_name):
 def calc_observing_plot():
     try:
         # Parse query parameters
-        obs_loc = request.args.get('obs_loc') #E.g. #EarthLocation.of_site('Rubin Observatory') TODO: we could also allow users to specify lat/lon instead of site name, but that would require more complex parsing and error handling. For now, let's just stick with site names.
+        # Built-in site name or an authenticated user's saved custom:<id>.
+        obs_loc = request.args.get('obs_loc')
         obs_date = request.args.get('obs_date')
         obs_tz = request.args.get('obs_tz')
         ra_value = request.args.get('ra')

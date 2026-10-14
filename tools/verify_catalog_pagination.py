@@ -380,7 +380,6 @@ def main() -> int:
                          if a != b)
                 detail += f'  first divergence @{i}'
             check(f'{key:20}', ok, detail)
-        del list_q
 
     print()
     print(f'FAILURES: {len(failures)}')

@@ -106,18 +106,20 @@ schema files (`tools/usersdb_schema.sql`, `tools/alertsdb_schema.sql`), which
 must never be run against an existing database. See
 `docs/adr/adr_db_schema_migration_strategy.md`.
 
-For this release, an existing `users.db` still needs the one-active-export-task
-index (the parent repo's copy of the script predates it). Apply the retained
-script once, before restarting into this build:
+The original upstream `main` already contains the housekeeping and bookmark
+indexes from the retired `apply_users_indexes.sql`. This branch's separate
+one-active-export constraint is recorded in the
+[migration ledger](../adr/adr_migration_completion_status.md). For an existing
+database that does not yet have that constraint:
 
 ```bash
-sqlite3 "$USERS_DB_PATH" < tools/apply_users_indexes.sql
+sqlite3 -bail "$USERS_DB_PATH" < tools/apply_active_export_index.sql
 ```
 
 The script is safe to re-run (`IF NOT EXISTS` throughout) and fails loudly if
 the data violates an invariant — e.g. two `PENDING`/`RUNNING` export rows for
-one user, or duplicate bookmark names. Fix or delete the offending rows and
-retry. Databases created fresh from `tools/usersdb_schema.sql` already include
+one user. Inspect and resolve those tasks before retrying. Databases created
+fresh from `tools/usersdb_schema.sql` already include
 everything; all other historical one-shot scripts were removed after
 production was migrated.
 

@@ -34,6 +34,12 @@ EXPORT_SELECT_COLS = [getattr(Ztf, name) for name in ZTF_COLUMNS] + [
 
 EXPORT_YIELD_PER = 1000
 
+# Shared with Filter so table names and join detection cannot drift apart.
+QUERY_MODELS = {'featuretable': Ztf, 'classification': Classification}
+CLASSIFICATION_TABLE = next(
+    name for name, model in QUERY_MODELS.items() if model is Classification
+)
+
 
 @lru_cache(maxsize=1)
 def get_export_columns() -> list[str]:
@@ -73,7 +79,7 @@ def _rules_need_classification(rules_payload: dict) -> bool:
                 return True
             continue
         field_name = cond.get('field', '')
-        if isinstance(field_name, str) and field_name.startswith('classification.'):
+        if isinstance(field_name, str) and field_name.startswith(f'{CLASSIFICATION_TABLE}.'):
             return True
     return False
 
@@ -137,8 +143,7 @@ def build_query_from_rules(
     else:
         base_query = db.session.query(Ztf)
 
-    models_dict = {'featuretable': Ztf, 'classification': Classification}
-    myfilter = Filter(models_dict, base_query)
+    myfilter = Filter(QUERY_MODELS, base_query)
     try:
         filtered_query = myfilter.querybuilder(rules_payload)
     except TableNotFoundError as exc:

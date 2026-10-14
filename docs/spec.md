@@ -376,10 +376,10 @@ CRUD custom observatories (auto timezone via `TimezoneFinder`); last selection p
 | # | Gap | Detail | Source |
 |---|---|---|---|
 | G1 | No formal external spec | All requirements inferred from code; no authoritative external document | — |
-| G2 | No CI workflow | No GitHub Actions / pre-commit config; validation is manual | repo root |
-| G3 | No Flask-Migrate | Schema migrations are manual SQL scripts only (`tools/*.sql`); the app never writes DDL — pinned by `test_boot_does_not_alter_legacy_users_db` | `tools/`, `docs/password_reset/deployment.md` |
+| G2 | Resolved: CI and commit checks | GitHub Actions runs full tests/coverage; commit hooks run lightweight checks only | `.github/workflows/ci.yml`, `pre-commit.md` |
+| G3 | Accepted: one-shot migrations | Manual SQL scripts are the chosen strategy, not missing implementation; original upstream main defines completion; the app never writes DDL | `docs/adr/adr_db_schema_migration_strategy.md`, `docs/adr/adr_migration_completion_status.md` |
 | G4 | `requirements2.txt` not guaranteed installable | Reference freeze only; may not install on all systems | `requirements2.txt` |
-| G5 | Coverage targets not enforced by CI | `tests/coverage.md` states targets but no gate | `tests/coverage.md` |
+| G5 | Per-module coverage not gated | CI enforces 75% total; individual-module targets remain advisory | `tests/coverage.md` |
 | G6 | Internal service contracts undocumented | `QueryService`, `FavoritesService`, etc. excluded (per scope decision) | `services/` |
 | G7 | Dual Popper (BS4 v1 bundle + TD6 v2) | Required while staying on Bootstrap 4 + Tempus Dominus 6. Do not unify without a major upgrade (§1.5) | `common_js.html`, `main_ui_js.html` |
 
@@ -421,10 +421,10 @@ CRUD custom observatories (auto timezone via `TimezoneFinder`); last selection p
 
 ---
 
-## 13. Top 5 Spec Gaps
+## 13. Documentation and validation considerations
 
 1. **No authoritative external spec** — requirements are code-inferred; this document is the first formal reference.
-2. **No CI enforcement** — no GitHub Actions; tests/coverage are not gated automatically.
-3. **No schema migration tooling** — Flask-Migrate absent; schema changes are manual SQL.
-4. **Coverage targets not enforced** — `tests/coverage.md` goals have no automated gate.
+2. **Per-module coverage enforcement** — CI gates total coverage; module targets remain advisory.
+3. **Schema migration policy is settled** — one-shot SQL scripts are intentional; use the migration ledger for remaining upstream integration work.
+4. **Validation baselines** — correctness lint is enforced; broader typing/security lint baselines are deferred.
 5. **Internal service contracts undocumented** — service-layer APIs excluded from this spec (scope decision); may need a follow-up doc.
