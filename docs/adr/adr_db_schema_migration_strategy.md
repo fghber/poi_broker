@@ -1,7 +1,7 @@
 # ADR: SQLite schema migration strategy (one-shot apply scripts, no framework)
 
-> Completion/retirement rules and status notes below are historical, superseded
-> by [Migration completion and current status](adr_migration_completion_status.md).
+> Completion/retirement rules and status follow
+> [Migration completion and current status](adr_migration_completion_status.md).
 > Use that consolidated ledger for open work. Fresh-install-only schema files
 > and the no-runtime-DDL decision remain in force.
 
@@ -17,10 +17,11 @@ idempotent (bare `CREATE TABLE`s) while `docs/async_export/ubuntu_add_worker.md`
 instructed applying it to an existing production `users.db`. The team's model
 was already different: the full schema files are for **fresh installations**,
 and schema changes for existing deployments travel as **one-shot
-`apply_*.sql` scripts**. Production databases are fully migrated as of
-2026-10 (maintainer statement; the parent repo `ninahernitschek/poi_broker_frontend`
-`main` carries the same schema tooling), which makes four of the five then-existing
-apply scripts spent artifacts.
+`apply_*.sql` scripts**. The original decision treated four of the five
+then-existing apply scripts as completed based on the maintainer's production
+migration statement. The later completion ledger supersedes that retirement
+criterion and records which migrations are complete in original upstream
+`ninahernitschek/poi_broker_frontend` `main`.
 
 ## Decision
 
@@ -34,17 +35,15 @@ apply scripts spent artifacts.
    Each script's lifecycle:
    - **created** together with the fix (schema-file update + script + tests),
    - **applied** to production when the fix deploys,
-   - **removed** from the repo once the fix is committed/merged into the
-     parent `main` **and** applied in production.
-4. Current state (2026-10): `apply_email_verification_expiry.sql`,
-   `apply_password_changed_at.sql`, `apply_export_snapshot_mjd.sql`, and
-   `apply_lookup_indexes.sql` were removed under this rule.
-   **`tools/apply_users_indexes.sql` is retained**: it carries the
-   one-active-export-per-user partial unique index
-   (`uix_export_task_one_active_per_user`), a fix that was uncommitted at
-   decision time — the parent's copy of the script does not contain it, so
-   production has not received it yet. Remove the script after that fix is
-   committed, merged to the parent, and applied in production.
+   - **removed** together with script-specific tests once the migration is
+     carried by original upstream `main`, as defined in the
+     [completion ledger](adr_migration_completion_status.md). No separate
+     server inspection is required for retirement here.
+4. The completed housekeeping and bookmark indexes from
+   `tools/apply_users_indexes.sql` are retired. The branch's
+   one-active-export-per-user constraint (`uix_export_task_one_active_per_user`)
+   is isolated in **`tools/apply_active_export_index.sql`** until it reaches
+   original upstream `main`. See the ledger for all current migration status.
 5. **Caveat:** the parent repo also tracks these files, so an upstream merge
    may re-add deleted scripts — re-delete them.
 
@@ -58,15 +57,16 @@ apply scripts spent artifacts.
   double as migrations: rejected — it blurs "fresh install DDL" (where plain
   DDL catches typos) with "migration" (where re-runnability matters), and
   hides partial-application states instead of failing loudly.
-- **Delete all five apply scripts**: rejected — `apply_users_indexes.sql`
-  carried a fix that was not yet committed anywhere; production had not
-  received its index. Deleting it would have orphaned the fix.
+- **Delete all five apply scripts**: originally rejected because
+  `apply_users_indexes.sql` also carried the branch's new active-export
+  constraint. That constraint is now preserved in its own apply script while
+  the completed portion is retired.
 
 ## Consequences
 
-- Removing an apply script is safe only when the fix it carries is committed,
-  in the parent `main`, and applied in production — check all three, not just
-  the file's presence in the parent.
+- Before retiring an apply script, compare its contents with original upstream
+  `main` under the completion ledger's rule. Isolate any branch-only SQL in a
+  separate script instead of retiring it with completed work.
 - Historical script contents remain recoverable from git history.
 - Deployment docs must describe *pending* migrations only; applied ones are
   removed from docs together with their scripts (historical mentions become
@@ -77,12 +77,12 @@ apply scripts spent artifacts.
 1. Never run `usersdb_schema.sql` / `alertsdb_schema.sql` against an existing
    database.
 2. Never make the app alter the database at boot or at runtime.
-3. A DB change is not "done" until the schema files, the apply script, and the
-   doc note exist together; the apply script is deleted only under rule 3
-   above.
-4. `tools/apply_users_indexes.sql` must not be deleted until
-   `uix_export_task_one_active_per_user` is confirmed applied in production
-   (its uncommitted fix must also be committed).
+3. A new DB change must include the schema files, an apply script, tests, and a
+   doc note together. Completion and script retirement follow the
+   [completion ledger](adr_migration_completion_status.md).
+4. Retain `tools/apply_active_export_index.sql` until the active-export
+   constraint reaches original upstream `main`. Do not restore the retired
+   `tools/apply_users_indexes.sql` or its script-specific tests.
 
 ## Related
 
@@ -90,10 +90,11 @@ apply scripts spent artifacts.
 |------|------|
 | `tools/usersdb_schema.sql` | users.db schema — fresh installs |
 | `tools/alertsdb_schema.sql` | alerts DB schema — fresh installs |
-| `tools/apply_users_indexes.sql` | retained: pending one-active-export-per-user migration |
-| `tools/apply_fix_bad_magnitudes.sql` | retained: pending 83 corrupt-magnitude repair |
-| `tools/apply_catalog_sort_indexes.sql` | retained: pending composite sort indexes |
-| `docs/catalog_sort_migration.md` | pending runbook for the two scripts above |
-| `tests/test_apply_users_indexes.py` | pins the retained script's invariants |
+| `docs/adr/adr_migration_completion_status.md` | authoritative completion rules and current status |
+| `tools/apply_active_export_index.sql` | retained: one-active-export-per-user constraint awaiting upstream integration |
+| `tools/apply_fix_bad_magnitudes.sql` | retained: magnitude repair awaiting upstream integration |
+| `tools/apply_catalog_sort_indexes.sql` | retained: sort indexes awaiting upstream integration |
+| `docs/catalog_sort_migration.md` | runbook and recorded production application for the two scripts above |
+| `tests/test_apply_active_export_index.py` | pins the retained active-export script's invariants |
 | `docs/password_reset/deployment.md` | historical runbook, kept as record |
 | `tests/test_security_regressions.py::test_boot_does_not_alter_legacy_users_db` | pins "the app never alters the DB" |

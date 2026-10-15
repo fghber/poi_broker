@@ -59,8 +59,10 @@ node --test tests/test_pending_actions.cjs
 `.github/workflows/ci.yml` runs lightweight checks and the full test suite on
 pull requests and pushes to main, plus a weekly run and manual dispatch.
 Feature-branch pushes do not duplicate PR runs. Newer commits cancel
-superseded runs. Changes consisting only of Markdown or files under docs/
-skip automatic runs; those paths contain documentation and saved runbooks.
+superseded runs for the same event and PR or ref. Scheduled, manual, push,
+and PR runs use separate concurrency groups. Changes consisting only of
+Markdown or files under docs/ skip automatic runs; those paths contain
+documentation and saved runbooks.
 Manual dispatch still validates them when desired.
 
 Tests use Python 3.12, temporary SQLite databases, the immediate memory queue,
